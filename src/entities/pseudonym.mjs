@@ -50,17 +50,51 @@ function escapeRe(s) {
 // Exactly what randomBytes(32).toString('hex') produces, and nothing else.
 const SALT_RE = /^[0-9a-f]{64}$/;
 
+// The shape test is not an entropy test, and the shape test alone is what the
+// all-zero branch below was working around one case at a time. 64 zeros were
+// caught; 63 zeros and a `1` were not, and neither was a salt of 64 digits or
+// one repeating `abab…`. BRIEF §3's per-uploader reasoning — seven teammates
+// uploading to one recipient who holds the roster — only holds while the salt
+// is actually random.
+//
+// 32 random bytes give all 16 hex characters with probability > 0.999999, so
+// requiring 12 distinct characters rejects degenerate files and never rejects
+// one deident wrote.
+const MIN_DISTINCT_HEX = 12;
+
+/** True when the salt has too little variety to have been generated. */
+export function degenerateSalt(text) {
+  return new Set(text).size < MIN_DISTINCT_HEX;
+}
+
 /** Say what the file holds without printing it: a salt is never printed. */
 function describeSalt(text) {
   const bytes = Buffer.byteLength(text, 'utf8');
   if (bytes === 0) return 'it is empty';
   const nul = String.fromCharCode(0);
   if (text.length > 0 && [...text].every((ch) => ch === nul)) return `${bytes} zero bytes`;
+  if (SALT_RE.test(text)) return `${new Set(text).size} distinct hex characters, fewer than the ${MIN_DISTINCT_HEX} a random salt has`;
   return `${bytes} bytes, not 64 hex characters`;
 }
 
 export function defaultSaltDir(env) {
   return env.DEIDENT_SALT_DIR ?? path.join(os.homedir(), '.deident-private');
+}
+
+/**
+ * The salt if one already exists, else null. Never creates one.
+ *
+ * `scan` and `review` promise to write nothing but review.md (cli-ux §1/§2),
+ * so they cannot mint a salt to show real tokens. They show the tokens when a
+ * salt is already there, and entity ids when it is not.
+ */
+export function readSalt(saltDir) {
+  try {
+    const existing = fs.readFileSync(path.join(saltDir, 'salt'), 'utf8').trim();
+    return SALT_RE.test(existing) && !degenerateSalt(existing) ? existing : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -80,11 +114,12 @@ export function loadOrCreateSalt(saltDir) {
     // which is the whole per-uploader salt decision in BRIEF §3 undone in
     // silence. deident writes exactly 64 lowercase hex characters, so anything
     // else was not written by deident.
-    if (SALT_RE.test(existing)) return existing;
+    if (SALT_RE.test(existing) && !degenerateSalt(existing)) return existing;
     throw new RefusalError(`the salt at ${file} is not a salt deident wrote`, {
       why: [
-        'deident writes 64 hexadecimal characters. This file holds something else,',
-        `so it is truncated, zeroed or from another tool (${describeSalt(existing)}).`,
+        'deident writes 64 hexadecimal characters drawn from 32 random bytes. This',
+        `file holds something else, so it is truncated, zeroed, patterned or from`,
+        `another tool (${describeSalt(existing)}).`,
         'Replacing it silently would break reversal against every earlier export;',
         'using it as-is could mean pseudonyms derived from an all-zero salt.',
       ],

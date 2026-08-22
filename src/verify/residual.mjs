@@ -79,6 +79,13 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
   // as a number the reader can see, and covered by the "NOT protected against"
   // block, rather than either silently ignored or treated as a leak.
   let embedded = 0;
+  // Counted separately from `embedded`, because the reason is different and so
+  // is what a reader can do about it. An escape artifact IS legible to anyone
+  // who greps the shipped file — measured 2026-08-22: 16 occurrences of the OS
+  // username and 2 of the storage slug, beside a printed
+  // `known-entity residue 0`. Exempting it silently was the part that was
+  // wrong, not the exemption.
+  let escapeArtifacts = 0;
 
   for (let i = 0; i < bytes.length && entityHits.length <= 10_000; i += 1) {
     const bucket = byFirst.get(bytes[i]);
@@ -98,7 +105,10 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       // The test is the standard one: a backslash is an escape introducer only
       // when preceded by an even number of backslashes, so a match starting
       // immediately after an ODD run is inside an escape.
-      if (startsInsideEscape(bytes, i)) continue;
+      if (startsInsideEscape(bytes, i)) {
+        escapeArtifacts += 1;
+        break;
+      }
       // Same boundary rule as the substituter, for the same reason.
       const end = i + form.length;
       if (end > bytes.length) continue;
@@ -136,6 +146,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
     uuidHits: Object.freeze(uuidHits),
     entityCount: entityHits.length,
     embedded,
+    escapeArtifacts,
     uuidCount: uuidHits.length,
     entitiesScanned: table.entries.length,
   });

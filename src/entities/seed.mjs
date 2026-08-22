@@ -76,7 +76,10 @@ export function seedEntities(env, corpus, opts = {}) {
 
   // --- git remotes, for every workspace directory that is a checkout.
   const remoteWords = new Set();
-  for (const remote of gitRemotes(opts.repoDirs ?? [], warnings)) {
+  // The probe is shared with the tier proposal when the caller has one: git
+  // costs ~85 ms per spawn on this machine, and classify() had already asked
+  // the same question of the same directories from a separate cache.
+  for (const remote of gitRemotes(opts.repoDirs ?? [], warnings, opts.probeRemote ?? null)) {
     add('org', remote.host ? `${remote.owner}/${remote.repo}` : remote.raw, 'git remote');
     if (remote.owner) add('org', remote.owner, 'git remote owner');
     for (const word of `${remote.owner ?? ''} ${remote.repo ?? ''}`.split(/[^A-Za-z0-9]+/)) {
@@ -431,8 +434,15 @@ function gitConfig(key, warnings) {
   }
 }
 
-function gitRemotes(dirs, warnings) {
+function gitRemotes(dirs, warnings, probeRemote = null) {
   const seen = new Map();
+  if (probeRemote !== null) {
+    for (const dir of dirs) {
+      const parsed = probeRemote(dir);
+      if (parsed && !seen.has(parsed.raw)) seen.set(parsed.raw, parsed);
+    }
+    return [...seen.values()];
+  }
   for (const dir of dirs) {
     let out;
     try {

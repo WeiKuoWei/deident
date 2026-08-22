@@ -34,6 +34,7 @@ import { readReview, readSessionDrops, writeReview, renderReviewHtml, REVIEW_FIL
 import { seedEntities } from './entities/seed.mjs';
 import {
   loadOrCreateSalt,
+  readSalt,
   defaultSaltDir,
   assignPseudonyms,
   namespaceRefusal,
@@ -70,10 +71,21 @@ export async function runScan(flags, env) {
   const corpus = resolveCorpus(env, flags.root);
 
   const loaded = surveyCorpus(corpus, flags);
-  const { decisions, workspaceOf } = classify(loaded, loadSavedDecisions(saltDir), flags);
 
+  // scan REGENERATES review.md, so it reads the old one leniently: every line
+  // it can parse is carried forward, every line it cannot is reported and
+  // ignored. Refusing here made the recovery command the one command a broken
+  // review.md could block, and left the broken file in place.
   const reviewPath = path.join(outDir, REVIEW_FILENAME);
-  const model = buildReviewModel(decisions, loaded, workspaceOf, [], nowStamp(), readSessionDrops(reviewPath));
+  const reviewProblems = [];
+  const lenient = { onProblem: (why) => reviewProblems.push(why) };
+  const saved = { ...loadSavedDecisions(saltDir), ...readReview(reviewPath, lenient) };
+  const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
+
+  const model = buildReviewModel(
+    decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe),
+    nowStamp(), readSessionDrops(reviewPath, lenient),
+  );
   const written = writeReview(model, reviewPath);
 
   report.renderScan({
@@ -86,7 +98,7 @@ export async function runScan(flags, env) {
     reviewPath: written.path,
     unreadable: loaded.badLines,
   });
-  for (const w of loaded.warnings) report.renderWarning(w);
+  for (const w of [...reviewProblems, ...loaded.warnings]) report.renderWarning(w);
   return 0;
 }
 
@@ -97,11 +109,16 @@ export async function runReview(flags, env) {
   const saltDir = flags.saltDir ?? defaultSaltDir(env);
   const corpus = resolveCorpus(env, flags.root);
   const loaded = surveyCorpus(corpus, flags);
-  const saved = { ...loadSavedDecisions(saltDir), ...readReview(path.join(outDir, REVIEW_FILENAME)) };
-  const { decisions, workspaceOf } = classify(loaded, saved, flags);
+  const reviewPath = path.join(outDir, REVIEW_FILENAME);
+  const problems = [];
+  const lenient = { onProblem: (why) => problems.push(why) };
+  const saved = { ...loadSavedDecisions(saltDir), ...readReview(reviewPath, lenient) };
+  const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
   const model = buildReviewModel(
-    decisions, loaded, workspaceOf, [], nowStamp(), readSessionDrops(path.join(outDir, REVIEW_FILENAME)),
+    decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe),
+    nowStamp(), readSessionDrops(reviewPath, lenient),
   );
+  for (const w of problems) report.renderWarning(w);
 
   if (flags.html) {
     const target = path.join(outDir, 'review.html');
@@ -163,7 +180,7 @@ export async function runExport(flags, env) {
 
   //  5  workspace tiers (4 ran inside surveyCorpus, per file)
   const saved = { ...loadSavedDecisions(saltDir), ...readReview(path.join(outDir, REVIEW_FILENAME)) };
-  const { decisions, workspaceOf } = classify(loaded, saved, flags);
+  const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
   if (!flags.skipUnclassified) {
     const refusal = unclassifiedRefusal(decisions);
     if (refusal !== null) throw refusal;
@@ -216,6 +233,9 @@ export async function runExport(flags, env) {
     // the probe shells out, and an excluded directory's remote is not an
     // entity anybody in the export can see.
     repoDirs: exportedCwds.slice(0, 200),
+    // The same memoised probe classify() used, not a second cache of the same
+    // question: git costs ~85 ms per spawn and 200 workspaces paid it twice.
+    probeRemote: probe,
     texts: collectRetainedStrings(retained.records),
   });
 
@@ -324,7 +344,7 @@ export async function runExport(flags, env) {
   //     how many secrets and phone numbers were replaced and those are counted
   //     per entity, not per record.
   const entities = withOccurrences([...tier0.entities, ...tier1Assigned.entities], allStrings);
-  const manifest = buildManifest(retained, decisions, serialized, residue.scan.embedded, entities);
+  const manifest = buildManifest(retained, decisions, serialized, residue, entities);
   report.renderManifest(manifest);
 
   // 17  the only step that writes an output artifact
@@ -776,7 +796,7 @@ function sanitizeEntryName(name) {
 }
 
 /** Step 16. */
-function buildManifest(retained, decisions, serialized, embedded, entities) {
+function buildManifest(retained, decisions, serialized, residue, entities) {
   const s = retained.stats;
   const num = (v) => v.toLocaleString('en-US');
   const occurrencesOf = (kind) =>
@@ -807,7 +827,12 @@ function buildManifest(retained, decisions, serialized, embedded, entities) {
     unknownTypes: Object.freeze(
       [...(s.unknownTypes ?? new Map())].map(([type, count]) => Object.freeze({ type, count })),
     ),
-    embedded,
+    embedded: residue.scan.embedded,
+    escapeArtifacts: residue.scan.escapeArtifacts ?? 0,
+    // The residue line belongs beside the limits, not only in the checks
+    // table: review.html and the preview print the limits block and used to
+    // carry no residue figure at all.
+    residueLine: residue.detail,
     countOnly: Object.freeze({
       sessions: decisions.filter((d) => d.tier === 'count-only').reduce((a, d) => a + d.sessionCount, 0),
       workspaces: decisions.filter((d) => d.tier === 'count-only').length,
@@ -828,9 +853,8 @@ function buildManifest(retained, decisions, serialized, embedded, entities) {
  *   session file path, because a session's workspace is now a derived fact and
  *   every later step has to look it up the same way.
  */
-function classify(loaded, saved, flags) {
+function classify(loaded, saved, flags, probe = makeRemoteProbe()) {
   const groups = groupSessions(loaded.sessions);
-  const probe = makeRemoteProbe();
   const decisions = classifyWorkspaces(groups, saved, {
     includeDenied: flags.includeDenied,
     propose: (g) => proposeTier(g, probe),
@@ -846,7 +870,37 @@ function classify(loaded, saved, flags) {
       workspaceOf.set(p, Object.freeze({ key: g.key, name: d.name, cwd: g.cwd ?? null }));
     }
   }
-  return { decisions, workspaceOf };
+  return { decisions, workspaceOf, probe };
+}
+
+/**
+ * The entity list the review surface shows (cli-ux §3 and §4).
+ *
+ * Both commands used to pass a literal `[]` here, so `review.md` read
+ * `## entities to be replaced  (0)` and `review.html`'s entity table had no
+ * rows — on a corpus whose export replaces 146,904 occurrences of 2,778
+ * spellings. §F6's rule that low-confidence entities are listed individually
+ * cannot be enforced over an empty list, and the person doing the review had
+ * nothing to review.
+ *
+ * Two honest limits, stated in the file rather than papered over:
+ *   - the classes swept out of session TEXT (emails, credentials, phone
+ *     numbers, platform ids, MCP names) are not listed here. Finding them
+ *     needs the retention pass, which is the 24-minute half of `export`, and
+ *     cli-ux §1 says scan and review are the cheap commands.
+ *   - occurrences are not counted here for the same reason. `export --preview`
+ *     counts them.
+ */
+function scanEntities(corpus, env, loaded, saltDir, probe) {
+  const cwds = [...allCorpusCwds(loaded)];
+  const seeded = seedEntities(env, corpus, { cwds, repoDirs: cwds.slice(0, 200), probeRemote: probe, texts: [] });
+  const salt = readSalt(saltDir);
+  // No salt yet means no export has run. scan and review write nothing but
+  // review.md (cli-ux §1), so they must not mint one just to print a token.
+  const withToken = salt === null
+    ? seeded.entities.map((e) => Object.freeze({ ...e, pseudonym: e.rejected ? null : `<${e.id}>` }))
+    : assignPseudonyms(seeded.entities, salt, null).entities;
+  return Object.freeze(withToken.map((e) => Object.freeze({ ...e, occurrences: null })));
 }
 
 /** A session's id is its file's basename: stable, and local to this machine. */

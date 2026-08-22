@@ -47,7 +47,7 @@ import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/g
 import { proposeTier, personalDataShape } from './policy/signals.mjs';
 import { readSession } from './corpus/reader.mjs';
 import { resolveRoot } from './corpus/root.mjs';
-import { setCommand, renderRefusal, renderReadError, captureOutput } from './cli/report.mjs';
+import { setCommand, renderRefusal, renderReadError, renderManifest, captureOutput } from './cli/report.mjs';
 import {
   namespaceCollisions,
   assignPseudonyms,
@@ -56,7 +56,7 @@ import {
 } from './entities/pseudonym.mjs';
 import { buildZip } from './output/zip.mjs';
 import { renderPreview } from './output/preview.mjs';
-import { parseReview, parseSessionDrops, renderReview } from './policy/reviewfile.mjs';
+import { parseReview, parseSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
 import { readEntities } from './entities/tier1.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { serializeSessions } from './pipeline.mjs';
@@ -2244,6 +2244,135 @@ const FIXTURES = [
     });
     assert.match(captureOutput(() => renderReadError(other)), /Fix the permissions\./);
     assert.ok(!captureOutput(() => renderReadError(other)).includes('--skip-unreadable'));
+  }],
+
+  // F75 — `review.md` read `## entities to be replaced  (0)` and review.html's
+  // entity table had no rows, on the same corpus whose export replaced 146,904
+  // occurrences of 2,778 spellings: runScan and runReview both passed a
+  // literal `[]` as the entity list. §F6's rule that low-confidence entities
+  // are listed individually is unenforceable over an empty list, and the
+  // person doing the review had nothing to review.
+  ['F75', 'scan and review list the entities, and say what they have not counted', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(scan.code, 0, scan.out);
+    const review = fs.readFileSync(path.join(out, 'review.md'), 'utf8');
+    const header = /## entities to be replaced {2}\((\d+)\)/.exec(review);
+    assert.ok(header, 'the section exists');
+    assert.ok(Number(header[1]) > 0, `the entity list must not be empty: ${header[1]}`);
+    assert.match(review, /not yet counted/, 'a count nobody measured is not printed as 0');
+    assert.match(review, /export --preview/, 'and the file says where the counts come from');
+
+    // scan writes review.md and nothing else (cli-ux §1/§2): no salt is minted
+    // just to print a token.
+    assert.equal(fs.existsSync(path.join(saltDir, 'salt')), false, 'scan must not create the salt');
+
+    const html = runCli(['review', '--html', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(html.code, 0, html.out);
+    const page = fs.readFileSync(path.join(out, 'review.html'), 'utf8');
+    assert.ok((page.match(/<tr class=/g) ?? []).length > 0, 'the entity table has rows');
+    assert.match(page, /type="search"/, 'cli-ux §4: the reader can search');
+    assert.ok(!/https?:\/\//.test(page.replace(/[^]*?<script>/, '')), 'no network, no CDN');
+  }],
+
+  // F76 — the "NOT protected against" block lived in three files and two of
+  // them still listed MCP server names as unprotected while the entity table
+  // was replacing 2,864 of them. cli-ux §6: a disclosure hiding an
+  // implemented-but-inert control is worse than either honest option.
+  ['F76', 'one source of truth for the NOT-protected block', () => {
+    const m = {
+      sessions: 1, workspaces: 1, userMessages: 1, zeros: [],
+      droppedByCwd: 0, emptiedSessions: 0, embedded: 7, escapeArtifacts: 3,
+      residueLine: '0 occurrences of 12 entity spellings', unknownTypes: [],
+      countOnly: { sessions: 0, workspaces: 0 },
+    };
+    const terminal = captureOutput(() => renderManifest(m));
+    const preview = renderPreview({
+      generated: 'now', strings: [], table: null, entities: [], manifest: m, checks: [],
+    });
+    const html = renderReviewHtml({
+      generated: 'now', workspaces: [], entities: [], sessions: [], flaggedSessions: [], manifest: m,
+    });
+
+    for (const [name, whole] of [['terminal', terminal], ['preview', preview], ['review.html', html]]) {
+      // Only the block itself: elsewhere on the page, naming a class deident
+      // DOES sweep is the honest statement.
+      const at = whole.indexOf('NOT protected against');
+      assert.ok(at >= 0, `${name} has no NOT-protected block`);
+      const text = whole.slice(at);
+      assert.ok(!/MCP server names/.test(text), `${name} still claims MCP names are unprotected`);
+      assert.match(text, /localhost ports/, `${name} lost the fingerprint line`);
+      assert.match(text, /0 occurrences of 12 entity spellings/, `${name} has no residue figure`);
+      assert.match(text, /7 known-entity spellings abut/, `${name} has no embedded count`);
+      assert.match(text, /3 spellings are legible in the raw bytes/, `${name} hides the escape artifacts`);
+      assert.match(text, /a tool read for you/, `${name} still says only pasted documents`);
+    }
+  }],
+
+  // F77 — `deident scan` is the command whose whole job is to regenerate
+  // review.md, and it was the one command a hand-broken review.md could block.
+  // It refused, left the broken file exactly as the user broke it, and the
+  // other refusals in the codebase point at this command as the fix.
+  ['F77', 'scan regenerates a review.md it cannot parse', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    fs.mkdirSync(out, { recursive: true });
+    fs.writeFileSync(
+      path.join(out, 'review.md'),
+      ['## sessions', 'maybe 2026-08-22 demo aaaa', '', '## workspaces', 'perhaps alpha 1 sessions'].join(NL) + NL,
+      'utf8',
+    );
+
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(scan.code, 0, scan.out);
+    assert.match(scan.out, /"maybe" is not a session decision/, 'the bad line is reported');
+    assert.match(scan.out, /"perhaps" is not a tier/, 'both sections are reported');
+    const rewritten = fs.readFileSync(path.join(out, 'review.md'), 'utf8');
+    assert.ok(!rewritten.includes('maybe 2026'), 'the broken file was replaced');
+    assert.match(rewritten, /## workspaces/);
+
+    // export still refuses on a line it cannot parse: it is not the recovery
+    // command, and guessing a tier is how an excluded workspace ships.
+    fs.writeFileSync(path.join(out, 'review.md'), ['## workspaces', 'perhaps alpha 1 sessions'].join(NL) + NL, 'utf8');
+    const exported = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(exported.code, 1, exported.out);
+    assert.match(exported.out, /is not a tier/);
+  }],
+
+  // F78 — SALT_RE is a shape test. 64 zeros were caught by an explicit branch;
+  // 63 zeros and a 1 walked around it, and so did 64 digits. BRIEF §3's
+  // per-uploader salt reasoning only holds while the salt is actually random.
+  ['F78', 'a patterned salt is refused, not accepted on shape', () => {
+    const check = (text) => {
+      const dir = tmpdir();
+      fs.writeFileSync(path.join(dir, 'salt'), `${text}${NL}`, 'utf8');
+      try {
+        loadOrCreateSalt(dir);
+        return null;
+      } catch (err) {
+        return err;
+      }
+    };
+    assert.ok(check('0'.repeat(63) + '1') instanceof RefusalError, '63 zeros and a 1 is not a salt');
+    assert.ok(check('0123456789'.repeat(6) + '0123') instanceof RefusalError, '64 digits is not a salt');
+    assert.ok(check('ab'.repeat(32)) instanceof RefusalError, 'a two-character period is not a salt');
+    assert.equal(check('0123456789abcdef'.repeat(4)), null, 'all 16 hex characters is a salt');
+
+    // And a real one round-trips, which is what proves the guard is not simply
+    // rejecting everything.
+    const fresh = tmpdir();
+    const made = loadOrCreateSalt(fresh);
+    assert.match(made, /^[0-9a-f]{64}$/);
+    assert.equal(loadOrCreateSalt(fresh), made, 'the salt is stable across runs (I10)');
   }],
 ];
 

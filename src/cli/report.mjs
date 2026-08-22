@@ -8,6 +8,7 @@
 //   - every refusal names a reason and a remedy
 
 import { DeidentError, ReadError, UsageError } from './errors.mjs';
+import { limitLines } from './limits.mjs';
 
 export const VERSION = '0.1.0';
 
@@ -207,30 +208,10 @@ export function renderManifest(m) {
   }
   say('');
   say('  NOT protected against    (README § Limits)');
-  say('    device fingerprint: localhost ports, model mix, CLI version sequence');
-  say('    verbatim documents you pasted into your own messages');
-  say('    third-party names the semantic pass did not recognise');
-  if (m.unknownTypes && m.unknownTypes.length > 0) {
-    // --skip-unknown-types was given, so these were dropped rather than
-    // refused. Say which and how many; a dropped record class the user never
-    // hears about is the §4.4 failure arriving through the escape hatch.
-    say(`    ${m.unknownTypes.map((u) => `${u.type} (${n(u.count)})`).join(', ')}`);
-    say('      dropped unread under --skip-unknown-types');
-  }
-  if (m.embedded > 0) {
-    // Honest, not reassuring: these are occurrences of a known entity that
-    // abut a word character, where §4.5's boundary rule does not fire.
-    //
-    // `ray` inside `array` is the case the rule exists for and is a CORRECT
-    // non-match. But `_` is in the same character class, so a filename like
-    // `contract_<name>.pdf` is left alone too, and calling that "inside a
-    // longer word" would be the kind of reassuring phrasing this tool is
-    // supposed to avoid. Measured on the real corpus 2026-08-22: filename
-    // separators are the largest single share of this number. Say what the
-    // rule actually did and let the reader judge.
-    say(`    ${n(m.embedded)} known-entity spellings abut an ordinary letter or digit`);
-    say('      (<name>son, <org>123) and were left alone under the §4.5 boundary rule');
-  }
+  // One source of truth, shared with review.html and the --preview file
+  // (src/cli/limits.mjs). Three copies of a disclosure is three chances to be
+  // wrong, and two of them were.
+  for (const line of limitLines(m)) say(`    ${line}`);
   say('');
 }
 

@@ -14,6 +14,7 @@ import { RefusalError } from '../cli/errors.mjs';
 import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
 import { safeUnlink } from './zip.mjs';
 import { substituteString } from '../substitute/engine.mjs';
+import { limitLines } from '../cli/limits.mjs';
 
 const CONTEXT_CHARS = 45;
 
@@ -103,9 +104,10 @@ export function renderPreview(state) {
   push('');
   push('== NOT protected against ==');
   push('');
-  push('    device fingerprint: MCP server names, model mix, CLI version sequence');
-  push('    verbatim documents you pasted into your own messages');
-  push('    third-party names the semantic pass did not recognise');
+  // The same block report.mjs prints, from src/cli/limits.mjs. This copy still
+  // read "MCP server names" for a run whose entity table replaced 2,864 of
+  // them, which is exactly the disclosure defect cli-ux §6 names.
+  for (const line of limitLines(state.manifest)) push(`    ${line}`);
   push('');
 
   return `${lines.join('\n')}\n`;
