@@ -270,6 +270,10 @@ const SECRET_RE = new RegExp(
     'sk-ant-[A-Za-z0-9_-]{20,}',
     'xox[baprse]-[A-Za-z0-9-]{10,}',
     'AKIA[0-9A-Z]{16}',
+    // Temporary credentials. Same shape as AKIA, different first letter, and
+    // the one that actually turned up: a presigned S3 URL carries an ASIA key
+    // id beside the session token below.
+    'ASIA[0-9A-Z]{16}',
     'ntn_[A-Za-z0-9]{20,}',
     'AIza[0-9A-Za-z_-]{30,}',
   ].join('|'),
@@ -290,6 +294,20 @@ const SECRET_RE = new RegExp(
 // or more token characters does not occur by accident. Only the token is
 // captured, so the word stays and a reader can still see a header was there.
 const BEARER_RE = /[Bb]earer[ ]+([A-Za-z0-9][A-Za-z0-9._~+/=-]{19,})/g;
+
+// AWS SigV4 query credentials in a presigned URL.
+//
+// Measured on the 2026-08-22 corpus: a session held presigned S3 URLs whose
+// `X-Amz-Security-Token` is a live session token. It matches no vendor prefix
+// (the prefix is on the key id, not the token), it is not a JWT, and no
+// `Bearer` precedes it, so all three sweeps above walked past it and the
+// manifest printed `0 secrets`. The reviewer could only say "truncated in the
+// quotes, so exact removal cannot be guaranteed", which is how a session gets
+// dropped for a value the tool could have taken.
+//
+// Same §F7 posture as BEARER_RE: the parameter name is the evidence and it
+// stays, so a reader still sees a signed URL was there. Only the value goes.
+const AWS_SIGV4_RE = /X-Amz-(?:Security-Token|Signature|Credential)=([A-Za-z0-9%._~+/-]{20,})/g;
 
 // A JSON Web Token anywhere, header included: `eyJ` is base64 of `{"`. Three
 // dot-separated base64url runs is not a shape ordinary prose produces.
@@ -357,6 +375,7 @@ export function sweepSecrets(texts) {
     if (sweep(text, SECRET_RE, 0)) break;
     if (/earer/.test(text) && sweep(text, BEARER_RE, 1)) break;
     if (text.includes('eyJ') && sweep(text, JWT_RE, 0)) break;
+    if (text.includes('X-Amz-') && sweep(text, AWS_SIGV4_RE, 1)) break;
   }
   return [...found];
 }

@@ -234,6 +234,24 @@ export function renderCandidates(path, chars) {
   say('');
 }
 
+/**
+ * Declared entities the export replaced nowhere.
+ *
+ * stderr, like every other warning: it is a finding about the run, not part of
+ * the manifest. Names its own canonical spelling because the reader supplied
+ * it and this is a local terminal, and because "one entity matched nothing" is
+ * not actionable without knowing which.
+ */
+export function renderUnmatched(entities) {
+  warn('');
+  warn(`  ! ${n(entities.length)} declared entit${entities.length === 1 ? 'y' : 'ies'} matched nothing and replaced nothing:`);
+  for (const e of entities.slice(0, 20)) warn(`      ${pad(e.kind, 10)} ${e.canonical}`);
+  if (entities.length > 20) warn(`      ... and ${n(entities.length - 20)} more`);
+  warn('    Either it is not in this corpus, or tier 0 had already replaced part of');
+  warn('    the spelling. Check the row in "deident export --preview".');
+  warn('');
+}
+
 export function renderNote(text) {
   say(`  ${text}`);
 }

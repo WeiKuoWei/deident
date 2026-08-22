@@ -55,6 +55,7 @@ import {
   namespaceCollisions,
   assignPseudonyms,
   pseudonymPattern,
+  pseudonymGuardPattern,
   pseudonymScanPattern,
   loadOrCreateSalt,
 } from './entities/pseudonym.mjs';
@@ -2784,6 +2785,54 @@ const FIXTURES = [
     assert.ok(types.has('last-prompt'), `last-prompt must not be a class at zero: ${[...types]}`);
     assert.ok(types.has('mode'), 'privacy-tiers count-only promises work mode, so mode must ship');
     assert.ok(!types.has('queue-operation'), 'the replayed one is the only one dropped');
+  }],
+
+  // F85 — a declared tier-1 entity whose spelling contains a tier-0 spelling
+  // was never applied, and its remainder shipped with every gate green.
+  //
+  // Tier 1 runs over CLEANED text, so `Devuser Consulting Ltd` is already
+  // `PERSON_n Consulting Ltd` by the time tier 1 looks, the declared spelling
+  // no longer exists, and nothing can catch it: checkSubstitution only
+  // receives strings that CHANGED, and residualScan cannot find a spelling
+  // tier 0 has already destroyed. A 20,000-trial two-tier fuzz produced 3,636
+  // instances and the gates caught 0.
+  ['F85', 'a tier-1 entity survives tier-0 substitution, or the run says so', () => {
+    const tier0 = buildTable([entity('P0', 'person', 'Devuser', 'PERSON_1')]);
+    const declared = { kind: 'org', canonical: 'Devuser Consulting Ltd', spellings: ['Devuser Consulting Ltd'], rejected: null };
+    const cleanedSpellings = [
+      ...new Set([
+        ...declared.spellings,
+        ...declared.spellings.map((sp) => substituteString(sp, tier0).out),
+      ]),
+    ];
+    assert.ok(cleanedSpellings.includes('PERSON_1 Consulting Ltd'), 'the cleaned form is a spelling');
+
+    const tier1 = buildTable(
+      [{ ...entity('O1', 'org', 'Devuser Consulting Ltd', 'ORG_1'), spellings: cleanedSpellings }],
+      { forbidInside: pseudonymGuardPattern(null) },
+    );
+    const cleaned = substituteString('The invoice came from Devuser Consulting Ltd today.', tier0).out;
+    assert.equal(cleaned, 'The invoice came from PERSON_1 Consulting Ltd today.');
+    const final = substituteString(cleaned, tier1);
+    assert.equal(final.out, 'The invoice came from ORG_1 today.', 'the remainder must not ship');
+    assert.equal(reverseString(final.out, final.spans), cleaned, 'and reversal is still exact');
+
+    // The guard it had to walk past is still a guard: a semantic pass that
+    // returns `PERSON` as a name cannot destroy tier-0 tokens.
+    const greedy = buildTable([entity('P9', 'person', 'PERSON', 'ORG_9')], { forbidInside: pseudonymGuardPattern(null) });
+    assert.equal(substituteString('PERSON_1 wrote it', greedy).out, 'PERSON_1 wrote it');
+
+    // And the fixpoint guard covers a token glued to a word character, which
+    // is exactly the shape the fixpoint exists to create.
+    const guard = pseudonymGuardPattern(null);
+    guard.lastIndex = 0;
+    assert.deepEqual('Vendor ORG_11499881Corp invoiced'.match(guard), ['ORG_11499881']);
+    const eats = buildTable([entity('X1', 'org', '11499881Corp', 'ORG_2')]);
+    assert.equal(
+      substituteString('Vendor ORG_11499881Corp invoiced', eats, eats.repassGuard).out,
+      'Vendor ORG_11499881Corp invoiced',
+      'a repeat pass must not substitute inside its own token',
+    );
   }],
 ];
 

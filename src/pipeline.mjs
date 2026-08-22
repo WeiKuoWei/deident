@@ -40,6 +40,7 @@ import {
   assignPseudonyms,
   namespaceRefusal,
   pseudonymPattern,
+  pseudonymGuardPattern,
   pseudonymScanPattern,
 } from './entities/pseudonym.mjs';
 import { writeCandidates, readEntities, CANDIDATES_FILENAME } from './entities/tier1.mjs';
@@ -318,8 +319,19 @@ export async function runExport(flags, env) {
   //     The tier-0 tokens are threaded in, so a tier-1 entity that hashes onto
   //     one is walked forward rather than silently sharing it. Proving I9 twice
   //     over two halves proves nothing about the merged table that ships.
-  const tier1Assigned = assignPseudonyms(tier1.entities, salt, flags.namespace, { taken: tier0.taken });
-  const tier1Table = buildTable(tier1Assigned.entities, { forbidInside: pseudonymPattern(flags.namespace) });
+  //
+  //     Each declared spelling is also carried in its TIER-0-CLEANED form.
+  //     Without it, a declared entity whose spelling contains a tier-0
+  //     spelling can never match: `Devuser Consulting Ltd` is already
+  //     `PERSON_3877290 Consulting Ltd` by the time tier 1 runs, so tier 1
+  //     matched nothing and the remainder shipped verbatim with every gate
+  //     green. Nothing could catch it either — checkSubstitution only sees
+  //     strings that CHANGED, and residualScan cannot find a spelling tier 0
+  //     already destroyed. A 20,000-trial two-tier fuzz produced 3,636 of
+  //     these and the gates caught none.
+  const tier1Entities = tier1.entities.map((e) => withCleanedSpellings(e, tier0Table));
+  const tier1Assigned = assignPseudonyms(tier1Entities, salt, flags.namespace, { taken: tier0.taken });
+  const tier1Table = buildTable(tier1Assigned.entities, { forbidInside: pseudonymGuardPattern(flags.namespace) });
   const final = substituteAll(cleaned.records, tier1Table);
 
   // 13  substitution invariant, at string level, before serialization.
@@ -385,6 +397,18 @@ export async function runExport(flags, env) {
   //     how many secrets and phone numbers were replaced and those are counted
   //     per entity, not per record.
   const entities = withOccurrences([...tier0.entities, ...tier1Assigned.entities], allStrings);
+  // A declared entity that matched NOTHING is the loudest thing this run can
+  // say. It means either the semantic pass named something that is not in the
+  // corpus, or tier 0 had already destroyed the spelling — and the second is
+  // how a declared org shipped its remainder while `--preview` alone would
+  // have shown the row reading `1 spelling, 0 occurrences`. Plain `export`
+  // printed nothing at all.
+  const unmatched = entities.filter(
+    (e) => e.tier === 1 && !e.rejected && e.spellings.length > 0 && (e.occurrences ?? 0) === 0,
+  );
+  if (unmatched.length > 0) {
+    report.renderUnmatched(unmatched.map((e) => ({ id: e.id, kind: e.kind, canonical: e.canonical })));
+  }
   const manifest = buildManifest(retained, decisions, serialized, residue, entities);
   report.renderManifest(manifest);
 
@@ -736,6 +760,28 @@ function retainCorpus(
     records: Object.freeze(out),
     cwds: Object.freeze(cwds),
     stats,
+  });
+}
+
+/**
+ * A tier-1 entity plus the form its spellings take AFTER tier-0 substitution.
+ *
+ * Tier 1 runs over cleaned text, so a spelling that contains a tier-0 spelling
+ * is not present any more and can never match. The cleaned form is: the engine
+ * allows a match that strictly contains a pseudonym, so the whole span goes
+ * and reversal still restores exactly what was there.
+ */
+function withCleanedSpellings(entity, tier0Table) {
+  if (entity.rejected || entity.spellings.length === 0) return entity;
+  const forms = new Set(entity.spellings);
+  for (const spelling of entity.spellings) {
+    const cleaned = substituteString(spelling, tier0Table).out;
+    if (cleaned !== spelling && cleaned.length > 0) forms.add(cleaned);
+  }
+  if (forms.size === entity.spellings.length) return entity;
+  return Object.freeze({
+    ...entity,
+    spellings: Object.freeze([...forms].sort((a, b) => b.length - a.length || (a < b ? -1 : 1))),
   });
 }
 

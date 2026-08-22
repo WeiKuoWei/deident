@@ -68,6 +68,21 @@ export function pseudonymPattern(namespace = null) {
  * implementation of the escape-tail rule both the substituter and the residual
  * scan already read.
  */
+/**
+ * The tokens, with NO boundary lookarounds at all, for PROTECTING them.
+ *
+ * A guard has to cover a token whatever abuts it. walker.mjs promises "every
+ * pass after the first runs under the pseudonym guard, so the fixpoint can
+ * never eat its own output", and the guard was pseudonymPattern, whose
+ * trailing lookahead refuses to match `ORG_11499881Corp` — the exact shape the
+ * fixpoint exists to create. The token sat in no forbidden range and pass 2
+ * was free to substitute inside it.
+ */
+export function pseudonymGuardPattern(namespace = null) {
+  const prefix = namespace ? `${escapeRe(namespace)}_` : '';
+  return new RegExp(`${prefix}(?:${NAMESPACE_PREFIXES.join('|')})_\\d+`, 'gu');
+}
+
 export function pseudonymScanPattern(namespace = null) {
   const prefix = namespace ? `${escapeRe(namespace)}_` : '';
   return new RegExp(`${prefix}(?:${NAMESPACE_PREFIXES.join('|')})_\\d+(?![A-Za-z0-9_])`, 'gu');

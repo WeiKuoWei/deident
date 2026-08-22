@@ -12,7 +12,7 @@
 // implemented as direct character tests rather than a regex so there is no
 // `\b` in the file to drift back to.
 
-import { pseudonymPattern } from '../entities/pseudonym.mjs';
+import { pseudonymGuardPattern } from '../entities/pseudonym.mjs';
 
 const WORD_RE = /[A-Za-z0-9_]/;
 
@@ -256,7 +256,14 @@ export function buildTable(entities, opts = {}) {
     forbidInside: opts.forbidInside ?? null,
     // The guard a REPEAT pass runs under: whatever the first pass emitted is
     // off limits, so re-running to a fixpoint can never eat its own output.
-    repassGuard: opts.forbidInside ?? pseudonymPattern(opts.namespace ?? null),
+    //
+    // pseudonymGuardPattern, NOT pseudonymPattern. The latter carries the §4.5
+    // boundary lookarounds, so it refused to match a token abutting a word
+    // character — `ORG_11499881Corp`, which is precisely the shape the
+    // fixpoint exists to create. The token then sat in no forbidden range and
+    // the next pass was free to substitute inside it. A guard that relies on
+    // the same boundary rule the fixpoint is there to defeat is not a guard.
+    repassGuard: opts.forbidInside ?? pseudonymGuardPattern(opts.namespace ?? null),
     size: entries.length,
   });
 }
@@ -389,7 +396,22 @@ function collectForbidden(s, pattern) {
 
 function overlapsForbidden(start, end, ranges) {
   for (const [a, b] of ranges) {
-    if (start < b && end > a) return true;
+    if (start >= b || end <= a) continue;
+    // A match that STRICTLY CONTAINS a protected token is allowed.
+    //
+    // The guard exists so a semantic pass returning `PERSON` as a name cannot
+    // destroy every tier-0 token; `PERSON` inside `PERSON_1` does not contain
+    // the token, so that is still refused. What it was also refusing is the
+    // case tier 1 cannot otherwise reach at all: a declared entity whose
+    // spelling contains a tier-0 spelling. `Devuser Consulting Ltd` becomes
+    // `PERSON_3877290 Consulting Ltd` after tier 0, so the declared spelling
+    // no longer exists in the cleaned text, tier 1 matched nothing, and the
+    // remainder shipped verbatim with every gate green (20,000-trial fuzz:
+    // 3,636 leaks, 0 caught). The cleaned form is seeded as a spelling, and
+    // this is what lets it match. Reversal is unaffected: the span records the
+    // text that was actually there.
+    if (start <= a && end >= b && end - start > b - a) continue;
+    return true;
   }
   return false;
 }
