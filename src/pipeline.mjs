@@ -39,7 +39,7 @@ import {
   pseudonymPattern,
 } from './entities/pseudonym.mjs';
 import { writeCandidates, readEntities, CANDIDATES_FILENAME } from './entities/tier1.mjs';
-import { buildTable } from './substitute/engine.mjs';
+import { buildTable, substituteString } from './substitute/engine.mjs';
 import { substituteRecord, collectStrings } from './substitute/walker.mjs';
 import { newRetentionContext, retainRecord, rewriteUuidsInRecord } from './retain/records.mjs';
 import {
@@ -203,13 +203,13 @@ export async function runExport(flags, env) {
     checkSubstitution(cleaned.strings, tier0Table),
     checkSubstitution(final.strings, tier1Table),
   );
-  const mergedTable = buildTable([...tier0.entities, ...tier1Assigned.entities]);
 
   // 14  serialize
-  const serialized = serializeSessions(final.records);
+  const mergedTable = buildTable([...tier0.entities, ...tier1Assigned.entities]);
+  const serialized = serializeSessions(final.records, mergedTable, rewriteUuid);
 
   // 15  residual scan on the serialized bytes
-  const residue = checkResidue(serialized.allBytes, mergedTable, retained.knownUuids);
+  const residue = checkResidue(serialized.allBytes, mergedTable, rewriteUuid.minted);
 
   const checks = runAllChecks({
     linesRead: loaded.lineCount,
@@ -303,7 +303,6 @@ function loadCorpus(corpus, flags) {
 function retainCorpus(loaded, exportable, excludedPrefixes, rewriteUuid) {
   const out = [];
   const cwds = [];
-  const knownUuids = new Set();
   const stats = {
     kept: 0,
     dropped: 0,
@@ -322,11 +321,7 @@ function retainCorpus(loaded, exportable, excludedPrefixes, rewriteUuid) {
 
   for (const { file, session, cwds: lineCwds } of loaded.sessions) {
     if (!exportable.has(file.dirName)) continue;
-    const ctx = newRetentionContext((u) => {
-      const rewritten = rewriteUuid(u);
-      if (rewritten !== null) knownUuids.add(rewritten);
-      return rewritten;
-    });
+    const ctx = newRetentionContext(rewriteUuid);
     const records = [];
 
     for (let i = 0; i < session.records.length; i += 1) {
@@ -358,7 +353,6 @@ function retainCorpus(loaded, exportable, excludedPrefixes, rewriteUuid) {
   return Object.freeze({
     records: Object.freeze(out),
     cwds: Object.freeze(cwds),
-    knownUuids,
     stats,
   });
 }
@@ -414,16 +408,34 @@ function extractProse(sessions) {
   return chunks;
 }
 
-/** Step 14. */
-function serializeSessions(sessions) {
+/**
+ * Step 14.
+ *
+ * Entry NAMES are de-identified too, and are included in the bytes the
+ * residual scan sees. The raw name would be
+ * `sessions/C--Users-devuser/006033ea-...jsonl`: the slug carries the username
+ * and the filename is the real session uuid. Neither is inside any JSON body,
+ * so a scan over record bytes alone would report `known-entity residue: 0`
+ * over a zip whose directory listing names the user — the §F1 failure, one
+ * level up from the text.
+ */
+function serializeSessions(sessions, table, rewriteUuid) {
   const entries = [];
   const parts = [];
   for (const s of sessions) {
     const body = `${s.records.map((r) => JSON.stringify(r)).join('\n')}\n`;
-    entries.push({ name: `sessions/${s.file.dirName}/${s.file.sessionId}.jsonl`, data: body });
-    parts.push(body);
+    const dir = substituteString(s.file.dirName, table).out;
+    const id = rewriteUuid(s.file.sessionId) ?? s.file.sessionId;
+    const name = `sessions/${sanitizeEntryName(dir)}/${sanitizeEntryName(id)}.jsonl`;
+    entries.push({ name, data: body });
+    parts.push(body, name, '\n');
   }
   return Object.freeze({ entries, allBytes: parts.join('') });
+}
+
+/** Keep entry names portable across Windows, macOS and Linux extractors. */
+function sanitizeEntryName(name) {
+  return name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120) || 'unnamed';
 }
 
 /** Step 16. */
@@ -498,15 +510,23 @@ function withOccurrences(entities, strings) {
  */
 function makeUuidRewriter(salt) {
   const cache = new Map();
-  return (value) => {
+  // The set of minted uuids lives ON the rewriter, not beside it. Every caller
+  // that mints one registers it by construction, so a new call site cannot
+  // forget and leave I5 reporting its own output as an unknown uuid — which is
+  // exactly what happened when zip entry names started being rewritten.
+  const minted = new Set();
+  const rewrite = (value) => {
     if (typeof value !== 'string' || value.length === 0) return null;
     const hit = cache.get(value);
     if (hit !== undefined) return hit;
-    const h = createHash('sha256').update(`${salt} uuid ${value}`, 'utf8').digest('hex');
+    const h = createHash('sha256').update(JSON.stringify([salt, 'uuid', value]), 'utf8').digest('hex');
     const uuid = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
     cache.set(value, uuid);
+    minted.add(uuid);
     return uuid;
   };
+  rewrite.minted = minted;
+  return rewrite;
 }
 
 function nowStamp() {
