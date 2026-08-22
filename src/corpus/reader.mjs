@@ -9,6 +9,9 @@
 import fs from 'node:fs';
 import { ReadError, RefusalError } from '../cli/errors.mjs';
 
+// U+FFFD, written without an escape so no editing round-trip can mangle it.
+const REPLACEMENT_CHAR = String.fromCharCode(0xfffd);
+
 /**
  * @param {string} filePath
  * @param {{skipUnreadable?: boolean}} opts
@@ -18,9 +21,9 @@ import { ReadError, RefusalError } from '../cli/errors.mjs';
 export function readSession(filePath, opts = {}) {
   const skip = opts.skipUnreadable === true;
 
-  let raw;
+  let buf;
   try {
-    raw = fs.readFileSync(filePath, 'utf8');
+    buf = fs.readFileSync(filePath);
   } catch (err) {
     throw new ReadError(`could not open ${filePath}`, {
       detail: {
@@ -32,12 +35,31 @@ export function readSession(filePath, opts = {}) {
     });
   }
 
+  const raw = buf.toString('utf8');
+  const bytes = buf.length;
+
+  // The serialization invariant is reported as "byte-identical", and it cannot
+  // be that while the comparison happens against an already-lossily-decoded
+  // string. `readFileSync(path, 'utf8')` replaces every invalid byte with
+  // U+FFFD, so `stringify(parse(line)) === line` compares two strings that both
+  // already lost the bytes — the check can never see the damage, by
+  // construction, and the report still says byte-identical.
+  //
+  // Re-encoding is the cheap proof: a lossless decode round-trips. It is only
+  // attempted when U+FFFD is actually present, so the common path costs one
+  // substring search rather than a second copy of the file.
+  const lossyUtf8 = raw.includes(REPLACEMENT_CHAR) && Buffer.compare(Buffer.from(raw, 'utf8'), buf) !== 0;
+  buf = null;
+
   // A BOM is legal in the file but is not part of the first JSON line.
   const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
 
   const records = [];
   const badLines = [];
   const roundTripFailures = [];
+  if (lossyUtf8) {
+    roundTripFailures.push(Object.freeze({ file: filePath, line: null, why: 'invalid UTF-8 bytes' }));
+  }
 
   // Split on \n and tolerate a trailing \r (Git Bash / Windows editors) and a
   // trailing newline. An empty file yields zero records, not an error (F19).
@@ -83,7 +105,7 @@ export function readSession(filePath, opts = {}) {
     records: Object.freeze(records),
     badLines: Object.freeze(badLines),
     roundTripFailures: Object.freeze(roundTripFailures),
-    bytes: Buffer.byteLength(raw, 'utf8'),
+    bytes,
     lineCount: records.length + badLines.length,
   });
 }
@@ -95,14 +117,19 @@ export function readSession(filePath, opts = {}) {
 export function roundTripRefusal(failures) {
   const first = failures.slice(0, 5);
   return new RefusalError(
-    `${failures.length} line${failures.length === 1 ? '' : 's'} do not round-trip through JSON.parse/stringify`,
+    `${failures.length} input${failures.length === 1 ? '' : 's'} do not round-trip byte-identically`,
     {
       why: [
-        "Claude Code's log format has changed in a way deident does not round-trip.",
-        'Substituting inside a format we cannot re-serialize byte-identically risks',
-        'corrupting the record or silently dropping a field. Do not export; report this.',
+        "Claude Code's log format has changed in a way deident does not round-trip,",
+        'or a file contains bytes that are not valid UTF-8. Substituting inside a',
+        'format we cannot re-serialize byte-identically risks corrupting the record',
+        'or silently dropping a field. Do not export; report this.',
         '',
-        ...first.map((f) => `  ${f.file}  line ${f.line}`),
+        ...first.map((f) =>
+          f.line === null || f.line === undefined
+            ? `  ${f.file}  ${f.why ?? 'does not round-trip'}`
+            : `  ${f.file}  line ${f.line}`,
+        ),
       ],
       remedies: [{ label: 'Report with the lines above', command: 'file an issue against deident' }],
       detail: { failures: failures.length },

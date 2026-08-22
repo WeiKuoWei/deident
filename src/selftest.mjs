@@ -1028,6 +1028,31 @@ const FIXTURES = [
     assert.doesNotMatch(result.err, /EPIPE/, 'EPIPE must be swallowed, not reported');
     assert.equal(result.code, 0, 'a closed pipe is exit 0, not a crash');
   }],
+
+  // F46 — invalid UTF-8 is silently replaced with U+FFFD by a 'utf8' read, and
+  // the serialization check then compares two already-damaged strings and
+  // reports the line as byte-identical. The whole point of I1 is to catch a
+  // writer that changed, so a check that cannot see the damage is not a check.
+  ['F46', 'invalid UTF-8 bytes are a round-trip failure, not a byte-identical line', () => {
+    const dir = tmpdir();
+    const file = path.join(dir, 'lossy.jsonl');
+    const head = Buffer.from('{"type":"user","uuid":"u","text":"', 'utf8');
+    const tail = Buffer.from(`"}${String.fromCharCode(10)}`, 'utf8');
+    // Valid CJK around three bytes that decode to nothing: FF FE 80.
+    const body = Buffer.from([0xe4, 0xbd, 0xa0, 0xff, 0xfe, 0x80, 0xe5, 0xa5, 0xbd]);
+    fs.writeFileSync(file, Buffer.concat([head, body, tail]));
+
+    const session = readSession(file);
+    assert.equal(session.records.length, 1, 'the line still parses after replacement');
+    const utf8 = session.roundTripFailures.filter((f) => f.line === null);
+    assert.equal(utf8.length, 1, 'the lossy decode must be reported');
+    assert.match(utf8[0].why, /UTF-8/);
+
+    // And a clean file with the same CJK reports nothing.
+    const clean = path.join(dir, 'clean.jsonl');
+    fs.writeFileSync(clean, Buffer.concat([head, Buffer.from([0xe4, 0xbd, 0xa0, 0xe5, 0xa5, 0xbd]), tail]));
+    assert.equal(readSession(clean).roundTripFailures.length, 0);
+  }],
 ];
 
 export function selftest() {
