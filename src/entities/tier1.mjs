@@ -22,7 +22,7 @@ import { RefusalError } from '../cli/errors.mjs';
 import { expandVariants } from './variants.mjs';
 import { rejectReason } from './seed.mjs';
 import { CANDIDATE_EXCERPT_CHARS } from '../retain/constants.mjs';
-import { residualScan, firstExamples } from '../verify/residual.mjs';
+import { residualScan, entityExamples } from '../verify/residual.mjs';
 
 export const CANDIDATES_FILENAME = 'deident-candidates.txt';
 export const ENTITIES_FILENAME = 'deident-entities.json';
@@ -77,15 +77,26 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
     parts.push(text.length > CANDIDATE_EXCERPT_CHARS ? `${text.slice(0, CANDIDATE_EXCERPT_CHARS)}…` : text);
     parts.push('');
   }
-  const body = parts.join('\n');
+  const prose = parts.slice(1).join(String.fromCharCode(10));
+  const body = HEADER + prose;
 
   // The same gate the zip gets. This file's header states that the username,
   // paths, git identity, git remotes and MCP server names have already been
   // replaced, and it is the one artifact meant to be read by an LLM — so a
   // tier-0 entity surviving in it is the §F1 failure with the shortest route
   // off the machine.
+  //
+  // The PROSE is scanned, not the header. The header is deident's own text and
+  // it names the tool: on the real corpus the tool's own name is a seeded
+  // entity (the repo is `gitroll-dev/deident`), so scanning the header refused
+  // every export over deident's own boilerplate — §F7's cry-wolf failure
+  // arriving as a gate that can never go green.
+  //
+  // Only entity residue gates here. UUIDs are not rewritten until
+  // serialization, so the cleaned prose still carries the real ones and an
+  // I5-style check would report thousands of hits the zip does not contain.
   if (opts.table) {
-    const scan = residualScan(body, opts.table, new Set());
+    const scan = residualScan(prose, opts.table, new Set());
     if (scan.entityCount > 0) {
       throw new RefusalError(`${scan.entityCount} known-entity occurrences would be written to ${outPath}`, {
         why: [
@@ -93,7 +104,7 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
           'It has, and something survived anyway, so the claim in its header would',
           'be false. Nothing was written.',
           '',
-          ...firstExamples(scan),
+          ...entityExamples(scan),
         ],
         remedies: [{ label: 'Report with the lines above', command: 'file an issue against deident' }],
       });

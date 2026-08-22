@@ -173,6 +173,11 @@ export function residueLine(scan) {
   return `${scan.entityCount} occurrences of ${scan.entitiesScanned} entity spellings`;
 }
 
+/** Entity residue only, for a gate that does not look at UUIDs. */
+export function entityExamples(scan) {
+  return scan.entityHits.slice(0, EXAMPLES_PER_REPORT).map((h) => `  ${h.entityId}  …${h.excerpt}…`);
+}
+
 export function firstExamples(scan) {
   return [
     ...scan.entityHits.slice(0, EXAMPLES_PER_REPORT).map((h) => `  ${h.entityId}  …${h.excerpt}…`),
