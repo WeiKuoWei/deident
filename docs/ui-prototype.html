@@ -171,11 +171,16 @@
     margin: 0 0 20px;
     padding: 0 2px;
   }
-  .payload .who {
-    display: block;
-    margin-top: 6px;
-    color: var(--ink-2);
-    font-size: 13.5px;
+  /* Who receives this and what happens afterwards is the single most consequential
+     paragraph on the page, so it is ruled off like a total, not set as small print.
+     Same weight and same motif as .limits: a heavy rule above, a hairline below. */
+  .who {
+    font-size: 14.5px;
+    color: var(--ink);
+    border-top: 2px solid var(--ink-2);
+    border-bottom: 1px solid var(--rule-2);
+    padding: 13px 2px 14px;
+    margin: 0 0 18px;
   }
 
   /* ---------- panel ---------- */
@@ -235,6 +240,47 @@
   }
   .row .fig.zero { color: var(--ok); }
 
+  /* controls that belong to a ledger row, under the row's own text */
+  .rowacts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .rowacts button {
+    font-family: var(--mono); font-size: 11.5px; padding: 3px 9px;
+    border-radius: 2px; letter-spacing: 0.02em;
+  }
+
+  /* ---------- before / after sample ---------- */
+  /* cli-ux.md §4: side-by-side before/after for a sample of every replacement
+     class. Counts alone never made anybody comfortable handing over a log. */
+  .sample { margin: 2px 0 12px; }
+  .sample .pair {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+    align-items: baseline;
+  }
+  .sample .pair:last-of-type { border-bottom: 0; }
+  .sample .k {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+  .sample .b, .sample .a {
+    font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere;
+  }
+  .sample .b { color: var(--ink-2); }
+  .sample .a { color: var(--ink); }
+  .sample .tag {
+    color: var(--ink-3); margin-right: 7px; font-size: 11px; letter-spacing: 0.06em;
+  }
+  .sample mark { background: var(--warn-bg); color: var(--warn); padding: 0 2px; border-radius: 1px; }
+  .sample ins {
+    background: var(--ok-bg); color: var(--ok); text-decoration: none;
+    padding: 0 2px; border-radius: 1px;
+  }
+  @media (max-width: 640px) {
+    .sample .pair { grid-template-columns: minmax(0, 1fr); }
+  }
+
   /* the redaction motif: a solid block standing for what was removed */
   .removed {
     display: inline-flex;
@@ -282,6 +328,11 @@
     line-height: 1.1;
   }
   .head .n { font-size: 12.5px; color: var(--ink-2); font-family: var(--mono); }
+  /* the sentence-shaped one: prose, not a figure, so it sets in the text face */
+  .head .n.hold {
+    font-family: var(--sans); font-size: 12.5px; color: var(--ink-3);
+    line-height: 1.45; margin-top: 7px;
+  }
 
   /* ---------- pills ---------- */
   .pill {
@@ -381,13 +432,17 @@
   .sesslist { font-family: var(--mono); font-size: 12.5px; }
   .sesslist div {
     display: grid;
-    grid-template-columns: auto 92px 1fr auto;
+    grid-template-columns: auto 92px minmax(0, 1fr) auto auto;
     gap: 12px;
     padding: 7px 0;
     border-bottom: 1px solid var(--rule);
     align-items: baseline;
   }
   .sesslist div:last-child { border-bottom: 0; }
+  .sesslist button {
+    font-family: var(--mono); font-size: 11px; padding: 2px 8px;
+    border-radius: 2px; white-space: nowrap;
+  }
   .sesslist .q { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sesslist .why { color: var(--warn); font-size: 11.5px; }
   .drop { color: var(--ink-3); text-decoration: line-through; }
@@ -396,9 +451,10 @@
      candidate list below: cli-ux.md §3 calls this list the last escape hatch,
      and an escape hatch truncated to five characters is not one. */
   @media (max-width: 640px) {
-    .sesslist div { grid-template-columns: auto auto 1fr; row-gap: 3px; }
+    .sesslist div { grid-template-columns: auto auto minmax(0, 1fr); row-gap: 3px; }
     .sesslist .q   { grid-column: 1 / -1; white-space: normal; overflow: visible; }
     .sesslist .why { grid-column: 1 / -1; }
+    .sesslist .act2 { grid-column: 1 / -1; justify-self: start; }
   }
 
   /* ---------- candidate chips ---------- */
@@ -467,7 +523,8 @@
   }
   .ws[hidden] { display: none; }
   .ws:last-child { border-bottom: 0; }
-  .ws .nm { font-family: var(--mono); font-size: 13.5px; font-weight: 500; }
+  .ws > div:first-child { min-width: 0; }
+  .ws .nm { font-family: var(--mono); font-size: 13.5px; font-weight: 500; overflow-wrap: anywhere; }
   .ws .why { display: block; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
   .ws .ct {
     font-family: var(--mono); font-size: 13px; text-align: right;
@@ -524,6 +581,22 @@
      that caused it, not小字 in a panel 700px further down */
   .ws .chosen.grave {
     font-family: var(--sans); font-size: 13.5px; color: var(--ink);
+  }
+  /* a full-weight explanation attached to a row, for the cases where the
+     one-line reason is the thing the reader is suspicious about */
+  .ws .expl {
+    display: block; font-size: 13.5px; color: var(--ink);
+    margin-top: 6px; line-height: 1.5;
+  }
+
+  /* Narrow: the action buttons drop onto their own line. The workspace name is a
+     mono identifier that will not shrink, so 1fr + a fixed 74px count + an auto
+     button column pushes the buttons past the right edge of the viewport and
+     gives the whole page a horizontal scrollbar. Same treatment as .sesslist
+     and .cand. Declared after the .decide override so it wins over it too. */
+  @media (max-width: 640px) {
+    .ws, .decide .ws { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
+    .ws .act { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; }
   }
 
   /* summary of what THIS run sends, after de-duplication */
@@ -622,15 +695,16 @@
   <section class="screen on" id="scr1" tabindex="-1">
 
     <p class="preamble">
-      這一頁是預覽。檔案還沒產生,也沒有任何東西離開過這台電腦。
-      第 3 步才會在你的硬碟上寫出 zip;寄給誰、什麼時候寄,永遠是你自己手動做的。
+      這一頁是預覽,檔案還沒產生。這個工具不連網、不寄信,第 3 步只會在你自己的硬碟上寫出一個 zip。
+      要不要寄、寄給誰、什麼時候寄,都是你自己手動做。
     </p>
 
     <div class="heads">
       <div class="head">
-        <div class="k">會交出去</div>
+        <div class="k">選進範圍</div>
         <div class="v" id="hIn">153</div>
         <div class="n" id="hInWs">16 workspaces</div>
+        <div class="n hold" id="hInHold"></div>
       </div>
       <div class="head">
         <div class="k">需要你決定</div>
@@ -645,11 +719,19 @@
     </div>
 
     <p class="payload">
-      <strong>這次會離開這台電腦的是 <span id="payloadRun">42</span> 個 session。</strong>
-      <span id="payloadMath"></span><br>
+      <strong>這次產出的檔案裡是 <span id="payloadRun">42</span> 個 session。</strong>
+      <span id="payloadMath"></span>
+    </p>
+
+    <p class="who">
+      收件人:GitRoll 內部評測小組。用途:評估 AI coding agent 的使用方式。
+      你把檔案寄出去之後,這個工具就管不到它了:誰能看、留多久、會不會再轉給別人,由收件人那邊決定。
+      要求刪除或撤回,請直接聯絡評測小組,這個工具做不到。
+    </p>
+
+    <p class="payload">
       每個 session 送的是:你自己打的每一句話原文、Claude 回了什麼、來回幾輪、每輪隔多久。
       程式碼、檔案路徑、圖片、金鑰不送。
-      <span class="who">收件人:GitRoll 內部評測小組。用途:評估 AI coding agent 的使用方式。檔案離開這台電腦之後,這個工具就管不到它了:誰能看、留多久、會不會再轉給別人,由收件人那邊決定。</span>
     </p>
 
     <!-- ── the blocking group: only a person can settle these ── -->
@@ -684,7 +766,7 @@
 
     <!-- ── what actually leaves ── -->
     <details open id="inDetails">
-      <summary><span id="inSum">會交出去 · 16 workspaces · 153 sessions</span><span class="cue"></span></summary>
+      <summary><span id="inSum">選進範圍 · 16 workspaces · 153 sessions</span><span class="cue"></span></summary>
       <div class="body" id="inBody">
         <div class="ws" id="i1"
              data-id="payments-api" data-tier="in"
@@ -723,7 +805,7 @@
              data-ws="12" data-n="40" data-new="7" data-upd="0" data-sent="33" data-unattr="24" data-msgs="549" data-code="4812" data-img="19" data-path="6932" data-key="0" data-lines="7202" data-reason="">
           <div><span class="nm" style="color:var(--ink-3)">… 還有 12 個 workspace</span><span class="st new">7 新</span><span class="st sent">33 已送過</span></div>
           <div class="ct">40</div>
-          <div class="act"><button onclick="stubExpand('in')">全部展開</button></div>
+          <div class="act"><button onclick="stubExpand(this)">全部展開</button></div>
         </div>
         <div class="ws" id="inMirror" hidden>
           <div><span class="nm">你在上面決定要交出去的</span>
@@ -783,7 +865,7 @@
              data-ws="9" data-n="4" data-new="4" data-upd="0" data-sent="0" data-unattr="0" data-msgs="47" data-code="520" data-img="2" data-path="610" data-key="0" data-lines="720" data-reason="規則排除">
           <div><span class="nm" style="color:var(--ink-3)">… 還有 9 個 workspace</span></div>
           <div class="ct">4</div>
-          <div class="act"><button onclick="stubExpand('out')">全部展開</button></div>
+          <div class="act"><button onclick="stubExpand(this)">全部展開</button></div>
         </div>
         <div class="ws" id="outMirror" hidden>
           <div><span class="nm">你在上面決定不交的</span>
@@ -799,7 +881,7 @@
       <summary><span id="groupSum">這些 session 屬於哪個專案 · 其中 24 個我們不猜,因為沒有 repo 可判斷</span><span class="cue"></span></summary>
       <div class="body">
         <p class="note" style="margin:10px 0 4px" id="groupNote">
-          會送出的 153 個裡,129 個從 git remote 判定得出專案,24 個判定不出來。
+          選進範圍的 153 個裡,129 個從 git remote 判定得出專案,24 個判定不出來。
           <strong>沒有 repo 的我們不猜</strong>:猜錯了會被寫進送出去的那份檔案,而你事後看不出來是哪一筆猜錯了。
           標成「未歸屬」是誠實的答案,猜一個不是。你想分就分,不分也可以照樣送出。
         </p>
@@ -811,7 +893,8 @@
         </div>
         <div class="ws">
           <div><span class="nm">未歸屬</span>
-            <span class="why">有 workspace 資料夾,但沒有 git remote,磁碟上沒有訊號說得出它屬於哪個專案</span></div>
+            <span class="why">沒有 git remote,磁碟上沒有訊號說得出它屬於哪個專案。</span>
+            <span class="expl">這 24 個所在的 workspace 在 <code>projects/</code> 底下,而且上次匯出時你就決定要送了(決定記在 workspaces.json,這次沿用),所以「送不送」這一層早就定案了,判不出來的只有「屬於哪個專案」這一層。同樣是沒有 git remote 卻待遇不同的另外兩個:sketch-ui 是上次匯出之後才出現的新 workspace,沒有你的決定可以沿用,所以擋在上面問你;&lt;home&gt; 不在任何 repo 底下、也不在 <code>projects/</code> 底下,連 workspace 那一層都沒過,所以整包不送。</span></div>
           <div class="ct" id="unattrN">24</div>
           <div class="act"><button onclick="stubGroup()">我來分</button></div>
         </div>
@@ -838,7 +921,7 @@
         </div>
         <div class="row">
           <div class="label">上次送出過、這次被你排除的:<span id="pulledNames">目前沒有</span>
-            <span class="sub grave">已經送出去的那一份不會因此消失。要刪必須另外通知收件人。</span></div>
+            <span class="sub grave" id="pulledGrave" hidden>已經送出去的那一份不會因此消失。要刪必須另外通知收件人。</span></div>
           <div class="fig">
             <span id="pulledFig" class="pill ok">0 個 session</span>
             <button style="padding:4px 10px;font-size:12px" onclick="stubPulled()">看是哪些</button>
@@ -848,8 +931,9 @@
     </div>
 
     <div class="panel">
-      <h2>會交出去的內容裡</h2>
+      <h2 id="contentH2">選進範圍的內容裡</h2>
       <div class="body">
+        <p class="note" id="contentNote" style="margin:10px 0 4px"></p>
         <div class="row">
           <div class="label">程式碼
             <div class="removed"><i id="barCode" style="width:118px"></i> <span id="cntCode">18,402</span> 行已計數,只送數字</div>
@@ -877,8 +961,40 @@
         <div class="row">
           <div class="label">人名與公司名
             <span class="sub" id="entSub"></span>
-            <span class="sub grave" id="entClear" hidden></span></div>
+            <span class="sub grave" id="entClear" hidden></span>
+            <div class="rowacts">
+              <button onclick="stubEntities()">看這 47 個</button>
+              <button onclick="toggle('d-sample', this, '看一段處理後的樣子', '收起範例')">看一段處理後的樣子</button>
+            </div>
+          </div>
           <div class="fig" id="entFig">52</div>
+        </div>
+
+        <div class="disclosure" id="d-sample">
+          <div class="sample">
+            <p class="note" style="margin:12px 0 2px">
+              左邊是你語料裡的原文,右邊是交出去的檔案裡實際會有的字。每一類替換各一組。
+              同一個人不管出現幾次、有幾種寫法,代號永遠是同一個。
+            </p>
+            <div class="pair"><span class="k">人名</span>
+              <span class="b"><span class="tag">原文</span>…跟 <mark>Marta Alvarez</mark> 約禮拜四,<mark>Marta</mark> 說她下週交…</span>
+              <span class="a"><span class="tag">送出</span>…跟 <ins>PERSON_03</ins> 約禮拜四,<ins>PERSON_03</ins> 說她下週交…</span></div>
+            <div class="pair"><span class="k">公司名</span>
+              <span class="b"><span class="tag">原文</span>…<mark>Northwind Health</mark> 那邊的 schema 又改了,<mark>northwind</mark> 那個 repo…</span>
+              <span class="a"><span class="tag">送出</span>…<ins>ORG_01</ins> 那邊的 schema 又改了,<ins>ORG_01</ins> 那個 repo…</span></div>
+            <div class="pair"><span class="k">檔案路徑</span>
+              <span class="b"><span class="tag">原文</span>幫我看 <mark>C:\Users\devuser\projects\payments-api\src\billing.ts</mark></span>
+              <span class="a"><span class="tag">送出</span>幫我看 <ins>&lt;PATH_412&gt;</ins></span></div>
+            <div class="pair"><span class="k">圖片</span>
+              <span class="b"><span class="tag">原文</span><mark>[貼上截圖 screenshot-2026-08-14.png · 1.2 MB]</mark></span>
+              <span class="a"><span class="tag">送出</span><ins>&lt;IMAGE_07&gt;</ins>,只留「這裡有一張圖」,圖本身不進 zip</span></div>
+            <div class="pair"><span class="k">金鑰</span>
+              <span class="b"><span class="tag">原文</span>export STRIPE_KEY=<mark>sk_live_51QhT2mB9kFwq8xZr</mark></span>
+              <span class="a"><span class="tag">送出</span>export STRIPE_KEY=<ins>&lt;SECRET_03&gt;</ins></span></div>
+            <p class="note" style="margin:12px 0 2px">
+              原型:這五組是寫死的示意。真的版本從你這次選進範圍的語料裡隨機抽,想再看一組就再按一次。
+            </p>
+          </div>
         </div>
         <div class="row">
           <div class="label">Claude 的回覆
@@ -887,37 +1003,35 @@
         </div>
         <div class="row">
           <div class="label">你自己打的字
-            <span class="sub"><span id="cntMsg">2,104</span> 則訊息,原文保留。這是被評分的東西。</span></div>
+            <span class="sub"><span id="cntMsg">2,104</span> 則訊息,原文保留、不做任何處理。</span>
+            <span class="sub grave">收件人讀的就是這些字,並依此評估你怎麼用 AI coding agent。分數怎麼算、給誰看、會不會影響到你,這個工具不知道也管不到,要問 GitRoll 內部評測小組。</span></div>
           <div class="fig" id="cntMsgFig">2,104</div>
         </div>
       </div>
     </div>
 
     <div class="panel">
-      <h2>檢查 · 還沒跑</h2>
-      <div class="body">
-        <p class="note" style="margin:10px 0 4px">
-          這四項要等你在第 2 步把名字確認完才有得跑:要搜尋哪些寫法,取決於你在那一步勾了什麼。
-          跑完的結果會跟檔案一起出現在第 3 步。下面是上次 2026-08-08 匯出時的數字,只能當參考,不是這一份的結論。
-        </p>
+      <h2 id="s1ckH2">檢查 · 還沒跑</h2>
+      <div class="body" id="s1checks">
+        <p class="note" style="margin:10px 0 4px" id="s1ckNote"></p>
         <div class="row">
           <div class="label">每一行都能原樣重建
-            <span class="sub">上次:27,545 / 27,545 行位元組相同</span></div>
+            <span class="sub" id="s1ck1">上次:27,545 / 27,545 行位元組相同</span></div>
           <div class="fig"><span class="pill mute">等第 3 步</span></div>
         </div>
         <div class="row">
           <div class="label">每一次替換都能還原
-            <span class="sub">上次:1,284 次替換</span></div>
+            <span class="sub" id="s1ck2">上次:1,284 次替換</span></div>
           <div class="fig"><span class="pill mute">等第 3 步</span></div>
         </div>
         <div class="row">
           <div class="label">代號沒有跟原文撞名
-            <span class="sub">上次:語料裡沒有既存的 PERSON_n 字樣</span></div>
+            <span class="sub" id="s1ck3">上次:語料裡沒有既存的 PERSON_n 字樣</span></div>
           <div class="fig"><span class="pill mute">等第 3 步</span></div>
         </div>
         <div class="row">
           <div class="label">已知實體殘留
-            <span class="sub">回頭搜尋每一個要換掉的實體的原始寫法。搜尋範圍要等你確認完名字才定得下來。</span></div>
+            <span class="sub" id="s1ck4">回頭搜尋每一個要換掉的實體的原始寫法。搜尋範圍要等你確認完名字才定得下來。</span></div>
           <div class="fig"><span class="pill mute">等第 3 步</span></div>
         </div>
       </div>
@@ -936,14 +1050,18 @@
     <div class="disclosure" id="d-sessions">
       <div class="panel">
         <h2 id="sessH2">逐筆</h2>
+        <p class="note" style="margin:10px 0 6px">
+          這裡也可以逐筆改。工具挑掉的那幾筆(✕)你可以要回來,它要送的那幾筆(✓)你可以拿掉。
+          往「送出更多」的方向改,跟 workspace 一樣要打字確認。
+        </p>
         <div class="body sesslist">
-          <div><span>✓</span><span>08-15</span><span class="q">把 passport 的 hero section 重做</span><span class="n"></span></div>
-          <div><span>✓</span><span>08-15</span><span class="q">這個 residual scan 要怎麼寫比較好</span><span class="n"></span></div>
-          <div class="drop"><span>✕</span><span>08-14</span><span class="q">幫我看一下這個月薪水怎麼算</span><span class="why">碰到私密目錄</span></div>
-          <div><span>✓</span><span>08-14</span><span class="q">CI 一直在 flaky,幫我找根因</span><span class="n"></span></div>
-          <div class="drop"><span>✕</span><span>08-13</span><span class="q">幫我改一下這封給房東的信</span><span class="why">碰到私密目錄</span></div>
-          <div><span>✓</span><span>08-13</span><span class="q">把 domain 分類的成本壓下來</span><span class="n"></span></div>
-          <div style="border:0;padding-top:10px;color:var(--ink-3)"><span></span><span></span><span class="q" id="sessMore">… 還有 149 筆</span><span></span></div>
+          <div><span>✓</span><span>08-15</span><span class="q">把 passport 的 hero section 重做</span><span class="why"></span><span class="act2"><button onclick="sessFlip(this,false)">改成不送</button></span></div>
+          <div><span>✓</span><span>08-15</span><span class="q">這個 residual scan 要怎麼寫比較好</span><span class="why"></span><span class="act2"><button onclick="sessFlip(this,false)">改成不送</button></span></div>
+          <div class="drop"><span>✕</span><span>08-14</span><span class="q">幫我看一下這個月薪水怎麼算</span><span class="why">碰到私密目錄</span><span class="act2"><button onclick="sessFlip(this,true)">其實要送</button></span></div>
+          <div><span>✓</span><span>08-14</span><span class="q">CI 一直在 flaky,幫我找根因</span><span class="why"></span><span class="act2"><button onclick="sessFlip(this,false)">改成不送</button></span></div>
+          <div class="drop"><span>✕</span><span>08-13</span><span class="q">幫我改一下這封給房東的信</span><span class="why">碰到私密目錄</span><span class="act2"><button onclick="sessFlip(this,true)">其實要送</button></span></div>
+          <div><span>✓</span><span>08-13</span><span class="q">把 domain 分類的成本壓下來</span><span class="why"></span><span class="act2"><button onclick="sessFlip(this,false)">改成不送</button></span></div>
+          <div style="border:0;padding-top:10px;color:var(--ink-3)"><span></span><span></span><span class="q" id="sessMore">… 還有 149 筆</span><span></span><span class="act2"><button onclick="alert('原型：往下翻完整列表，每一筆都跟上面一樣可以單獨改')">往下翻</button></span></div>
         </div>
       </div>
     </div>
@@ -960,7 +1078,8 @@
   <section class="screen" id="scr2" tabindex="-1">
 
     <p class="note">
-      第 1 頁講的 47 個實體,是直接從 git config 和 git remote 讀出來的,身分是確定的,一定換成代號,不用你確認,也不在這張清單上。
+      第 1 頁講的 47 個實體,是直接從 git config 和 git remote 讀出來的,身分是確定的,一定換成代號,不在這張清單上。
+      「不用你逐一確認」跟「你看不到」是兩件事:第 1 頁那一列的「看這 47 個」會把每一個列出來,代號、幾種寫法、出現次數、從哪個 git 欄位讀到的。
       下面這 8 個不一樣:是<strong>本機跑的模型</strong>從對話裡猜的,過程沒有連網,結果只寫進你自己電腦上的 review.md。
       要你看過的只有這 8 個。
     </p>
@@ -969,8 +1088,13 @@
       勾起來 = 換成代號送出。沒勾 = 原名原封不動寫進交出去的檔案。
     </p>
 
+    <p class="note">
+      模型不確定的那幾個,預設也先勾起來。跟第 1 頁同一個原則:判斷不出來的先保護,你確定它不是人名或公司,再自己取消。
+      一次改一個不會另外問你,改了什麼下面那行會立刻列出來,再點一下就換回來;一次改一整批才會先問,因為那種改法你事後看不出自己動到了哪幾個。
+    </p>
+
     <div class="panel">
-      <h2 id="candH2">候選 · 8 個 · 已勾選 5</h2>
+      <h2 id="candH2">候選 · 8 個 · 已勾選 8</h2>
       <div class="body">
         <div style="padding:8px 0 12px;display:flex;gap:8px;flex-wrap:wrap">
           <button onclick="setAll(true)">全選</button>
@@ -983,9 +1107,9 @@
           <label class="cand"><input type="checkbox" checked><span class="name">Northwind Health<b class="conf hi">高信心 · 出現 11 次</b></span><span class="ctx">…<mark>Northwind Health</mark> 那邊的 schema…</span><span class="n">11</span></label>
           <label class="cand"><input type="checkbox" checked><span class="name">Marta Alvarez<b class="conf hi">高信心 · 出現 6 次</b></span><span class="ctx">…<mark>Marta Alvarez</mark> 說她下週交…</span><span class="n">6</span></label>
           <label class="cand"><input type="checkbox" checked><span class="name">Ridgeline Capital<b class="conf hi">高信心 · 出現 3 次</b></span><span class="ctx">…寄給 <mark>Ridgeline Capital</mark> 的 deck…</span><span class="n">3</span></label>
-          <label class="cand"><input type="checkbox"><span class="name">Good Friday<b class="conf lo">低信心 · 模型猜的,看起來是節日不是人</b></span><span class="ctx">…<mark>Good Friday</mark> 放假所以…</span><span class="n">1</span></label>
-          <label class="cand"><input type="checkbox"><span class="name">Brex Card<b class="conf lo">低信心 · 模型猜的,看起來是產品不是公司</b></span><span class="ctx">…用 <mark>Brex Card</mark> 付掉了…</span><span class="n">3</span></label>
-          <label class="cand"><input type="checkbox"><span class="name">M1019757<b class="conf lo">低信心 · 模型猜的,看起來是料號不是人</b></span><span class="ctx">…換 <mark>M1019757</mark> 這條散熱膏…</span><span class="n">1</span></label>
+          <label class="cand"><input type="checkbox" checked><span class="name">Good Friday<b class="conf lo">低信心 · 模型覺得這是節日不是人,但它不確定,所以預設先換掉</b></span><span class="ctx">…<mark>Good Friday</mark> 放假所以…</span><span class="n">1</span></label>
+          <label class="cand"><input type="checkbox" checked><span class="name">Brex Card<b class="conf lo">低信心 · 模型覺得這是產品不是公司,但它不確定,所以預設先換掉</b></span><span class="ctx">…用 <mark>Brex Card</mark> 付掉了…</span><span class="n">3</span></label>
+          <label class="cand"><input type="checkbox" checked><span class="name">M1019757<b class="conf lo">低信心 · 模型覺得這是料號不是人,但它不確定,所以預設先換掉</b></span><span class="ctx">…換 <mark>M1019757</mark> 這條散熱膏…</span><span class="n">1</span></label>
         </div>
         <p class="note" id="candOut" style="margin:14px 0 0"></p>
       </div>
@@ -1023,6 +1147,10 @@
       <div class="panel">
         <h2>檢查 · 這一份的結果</h2>
         <div class="body">
+          <p class="note" style="margin:10px 0 4px">
+            這四項的範圍不一樣,所以每一列都標了自己的範圍。前三項是對你選進範圍的整批語料驗的,
+            因為替換表和序列化是整批一起做的;最後一項是對這個 zip 的實際內容驗的。
+          </p>
           <div class="row">
             <div class="label">每一行都能原樣重建
               <span class="sub" id="ck1"></span></div>
@@ -1035,7 +1163,7 @@
           </div>
           <div class="row">
             <div class="label">代號沒有跟原文撞名
-              <span class="sub">語料裡沒有既存的 PERSON_n 字樣</span></div>
+              <span class="sub" id="ck3"></span></div>
             <div class="fig"><span class="pill ok">通過</span></div>
           </div>
           <div class="row">
@@ -1229,6 +1357,9 @@
     mark(r);
     paint();
     r.el.scrollIntoView({ block: 'center' });
+    /* insertBefore moved this button's row, which blurs it. The row's own promise
+       is 隨時可以改回來, so the way back has to stay one keystroke away. */
+    btn.focus({ preventScroll: true });
   }
 
   function mirror(prefix, tier) {
@@ -1273,31 +1404,36 @@
 
     T('hIn', inN); T('hUn', unN); T('hOut', outN);
     T('hInWs',  inW  + ' workspaces');
+    /* the selection is not the payload: 153 is what is in scope, 42 is what
+       ships this time, and 153 is also what the recipient ends up holding once
+       this run lands on top of the 114 they already have. Say which is which. */
+    T('hInHold', '送完之後收件人手上一共會有 ' + (PREV_TOTAL + newN) + ' 個');
     T('hUnWs',  unW  + ' workspaces');
     T('hOutWs', outW + ' workspaces');
 
     /* the biggest number on the page is the one that actually leaves */
     T('payloadRun', run);
     T('payloadMath',
-      '(挑中的一共 ' + inN + ' 個,其中 ' + skipN + ' 個上次送過、之後沒動過,這次跳過。)');
+      '(選進範圍的一共 ' + inN + ' 個,其中 ' + skipN + ' 個上次送過、之後沒動過,這次跳過。)');
 
-    T('inSum',  '會交出去 · ' + inW + ' workspaces · ' + inN + ' sessions');
+    T('inSum',  '選進範圍 · ' + inW + ' workspaces · ' + inN + ' sessions');
     T('outSum', '不會交出去 · ' + outW + ' workspaces · ' + outN + ' sessions');
 
     T('groupSum', '這些 session 屬於哪個專案 · 其中 ' + unat + ' 個我們不猜,因為沒有 repo 可判斷');
     T('attrN', attr);
     T('unattrN', unat);
     document.getElementById('groupNote').firstChild.nodeValue =
-      '\n          會送出的 ' + inN + ' 個裡,' + attr + ' 個從 git remote 判定得出專案,' + unat + ' 個判定不出來。\n          ';
+      '\n          選進範圍的 ' + inN + ' 個裡,' + attr + ' 個從 git remote 判定得出專案,' + unat + ' 個判定不出來。\n          ';
 
     T('runN', run);
     T('runLine', '本次送出 ' + run + ' 個 session');
     T('runMath',
       run + ' ＝ ' + newN + ' 個從沒送過 ＋ ' + updN + ' 個送過但之後又有新對話(重送完整版)。' +
       '另外 ' + skipN + ' 個上次送過、之後沒動過,這次跳過。' +
-      newN + ' + ' + updN + ' + ' + skipN + ' = ' + inN + '。');
+      newN + ' + ' + updN + ' + ' + skipN + ' = 選進範圍的 ' + inN + ' 個。');
 
-    T('sessH2', '逐筆 · 會送的 ' + inN + ' 個,加上已經幫你挑掉的 2 個(✕,不會送)');
+    T('sessH2', '逐筆 · 選進範圍的 ' + inN + ' 個,本次送出其中 ' + run +
+      ' 個,加上已經幫你挑掉的 2 個(✕,不會送)');
     T('sessMore', '… 還有 ' + (inN - 4) + ' 筆');
 
     var p = pulled();
@@ -1305,8 +1441,11 @@
     var pf = document.getElementById('pulledFig');
     pf.textContent = p.n + ' 個 session';
     pf.className = 'pill ' + (p.n ? 'warn' : 'ok');
+    /* a warning that is on screen when the count is zero has been read to death
+       by the time it is true. It appears with the thing it is warning about. */
+    document.getElementById('pulledGrave').hidden = p.n === 0;
 
-    /* ---- 會交出去的內容裡: same table as hIn, so it cannot go stale ---- */
+    /* ---- 選進範圍的內容裡: same table as hIn, so it cannot go stale ---- */
     var code = sum('in','code'), img = sum('in','img'), pth = sum('in','path');
     var key  = sum('in','key'),  msg = sum('in','msg'), line = sum('in','line');
     T('cntCode', fmt(code)); bar('barCode', code, 18402, 118);
@@ -1315,9 +1454,16 @@
     T('cntKey',  fmt(key));  bar('barKey',  key,   8,     14);
     T('cntMsg',  fmt(msg));
     T('cntMsgFig', fmt(msg));
+    /* this table counts the selection, which is not the payload. The panel says
+       which one it is counting, in the same words the cards use. */
+    T('contentH2', '選進範圍的內容裡 · ' + inN + ' 個 session');
+    T('contentNote', '這一張算的是選進範圍的 ' + inN + ' 個 session。本次實際送出 ' + run +
+      ' 個,其餘 ' + skipN + ' 個上次送過、之後沒動過,這次跳過。');
 
-    T('entSub', SEEDED_ENTS + ' 個實體從 git config / git remote 讀出來,身分確定,一定換;' +
-      '第 2 步那 8 個候選你勾了 ' + c.on.length + ' 個。同一個人每次都是同一個代號。');
+    T('entSub', SEEDED_ENTS + ' 個實體從整台機器的 git config / git remote 讀出來,身分確定,一定換。' +
+      '這一列跟上面四列不一樣:它是替換表的大小,不是這次送出的次數,所以你挑掉 workspace 它也不會變小 ' +
+      '(名字在哪個 workspace 出現都一樣換)。第 2 步那 8 個候選你勾了 ' + c.on.length +
+      ' 個。同一個人每次都是同一個代號。');
     T('entFig', ents + ' 個換代號');
     var ec = document.getElementById('entClear');
     ec.hidden = c.off.length === 0;
@@ -1340,9 +1486,12 @@
            updN + ' 個之後又有新對話,這次重送完整版' +
            (p.n ? ';' + p.n + ' 個被你這次排除了' : '') + '。' +
            '加上 ' + newN + ' 個從沒送過的,這個檔案裡是 ' + run + ' 個。',
-      ck1: '挑中的 ' + inN + ' 個 session 共 ' + fmt(line) + ' 行,' + fmt(line) + ' 行位元組相同',
-      ck2: fmt(reps) + ' 次替換(git 讀出來的 ' + fmt(SEEDED_OCC) + ' 次 ＋ 你勾選的 ' + c.occ + ' 次)',
-      ck4: '在這次要送出的 ' + run + ' 個 session 裡,回頭搜尋這 ' + ents + ' 個實體的原始寫法',
+      ck1: '範圍:選進範圍的 ' + inN + ' 個 session(比這個 zip 多,序列化是整批一起驗的)。共 ' +
+           fmt(line) + ' 行,' + fmt(line) + ' 行位元組相同',
+      ck2: '範圍:整份替換表,不是這個 zip 裡的次數。' + fmt(reps) + ' 次替換(git 讀出來的 ' +
+           fmt(SEEDED_OCC) + ' 次 ＋ 你勾選的 ' + c.occ + ' 次),每一次都能還原',
+      ck3: '範圍:選進範圍的 ' + inN + ' 個 session。裡面沒有既存的 PERSON_n 字樣',
+      ck4: '範圍:這個 zip 的實際內容,' + run + ' 個 session。回頭搜尋這 ' + ents + ' 個實體的原始寫法',
       ck4b: c.off.length
         ? '你沒勾的 ' + c.off.length + ' 個名字不在搜尋範圍裡:它們本來就是照原文送的,不算殘留。'
         : ''
@@ -1353,6 +1502,7 @@
     T('zipSub',  frozen.sub);
     T('ck1', frozen.ck1);
     T('ck2', frozen.ck2);
+    T('ck3', frozen.ck3);
     T('ck4', frozen.ck4);
     var c4 = document.getElementById('ck4b');
     c4.hidden = frozen.ck4b === '';
@@ -1371,6 +1521,36 @@
     }
     var ob = document.getElementById('openBtn');
     ob.textContent = stale ? '重新產出' : '開啟資料夾';
+
+    /* Step 1 and step 3 are one click apart. Once the checks have run, this
+       panel shows that run's result instead of insisting it has not happened. */
+    var pills = document.querySelectorAll('#s1checks .fig .pill');
+    if (exported) {
+      T('s1ckH2', '檢查 · 這一輪跑完了');
+      T('s1ckNote', '這四項在你按「確定,產出檔案」的時候跑完了,四項都通過。' +
+        '完整結果(含每一項的範圍)在第 3 步。' +
+        (stale ? '注意:你在產出之後又改過選擇,下面是產出當下那一份的結果。' : ''));
+      T('s1ck1', frozen.ck1);
+      T('s1ck2', frozen.ck2);
+      T('s1ck3', frozen.ck3);
+      T('s1ck4', frozen.ck4);
+      for (var pi = 0; pi < pills.length; pi++) {
+        pills[pi].className = 'pill ok';
+        pills[pi].textContent = '通過';
+      }
+    } else {
+      T('s1ckH2', '檢查 · 還沒跑');
+      T('s1ckNote', '這四項要等你在第 2 步把名字確認完才有得跑:要搜尋哪些寫法,取決於你在那一步勾了什麼。' +
+        '跑完的結果會跟檔案一起出現在第 3 步。下面是上次 2026-08-08 匯出時的數字,只能當參考,不是這一份的結論。');
+      T('s1ck1', '上次:27,545 / 27,545 行位元組相同');
+      T('s1ck2', '上次:1,284 次替換');
+      T('s1ck3', '上次:語料裡沒有既存的 PERSON_n 字樣');
+      T('s1ck4', '回頭搜尋每一個要換掉的實體的原始寫法。搜尋範圍要等你確認完名字才定得下來。');
+      for (var pj = 0; pj < pills.length; pj++) {
+        pills[pj].className = 'pill mute';
+        pills[pj].textContent = '等第 3 步';
+      }
+    }
 
     mirror('in', 'in');
     mirror('out', 'out');
@@ -1402,8 +1582,18 @@
   }
 
   /* ---------- prototype stubs: every one quotes live state ---------- */
-  function stubExpand(tier) {
-    alert('原型:展開全部 ' + sum(tier, 'ws') + ' 個 workspace(' + sum(tier, 'n') + ' 個 session)');
+  function stubExpand(btn) {
+    var r = rowById(btn.closest('.ws').id);
+    alert('原型:展開這 ' + r.ws + ' 個 workspace(' + r.n + ' 個 session)');
+  }
+  function stubEntities() {
+    alert('原型:逐筆列出這 ' + SEEDED_ENTS + ' 個,一個一行,代號 · 幾種寫法 · 出現次數 · 從哪裡讀到的\n\n' +
+          'PERSON_03   3 種寫法   988 次   git config user.name / user.email\n' +
+          'ORG_01      2 種寫法   412 次   git remote origin (gitroll-dev)\n' +
+          'PERSON_07   1 種寫法    54 次   git log 共同作者\n' +
+          'ORG_04      2 種寫法    38 次   git remote origin (客戶 org)\n' +
+          '…還有 ' + (SEEDED_ENTS - 4) + ' 個\n\n' +
+          '這些不用你確認(身分是從 git 讀出來的,不是猜的),但看得到。');
   }
   function stubResend() {
     alert('原型:改成整批重送 ' + sum('in', 'n') + ' 個 session');
@@ -1416,6 +1606,18 @@
     alert(p.names.length
       ? '原型:逐筆列出這些已送過、現在被排除的 session\n\n' + p.names.join('\n')
       : '原型:目前沒有任何已送過的 workspace 被你改成不交。');
+  }
+  /* Same asymmetry as the workspace rows: dropping one is a click, putting one
+     back costs a typed token. cli-ux.md §3 calls this list the last escape hatch. */
+  function sessFlip(btn, wasDropped) {
+    var q = btn.closest('div').querySelector('.q').textContent;
+    if (wasDropped) {
+      var typed = prompt('把這一筆改成要送。\n\n' + q +
+        '\n\n它是自動挑掉的(cwd 碰到私密目錄)。要往「送出更多」的方向改,請照抄下面這一行:\n\nsend-anyway');
+      if (typed !== 'send-anyway') return;
+    }
+    alert('原型:' + (wasDropped ? '這一筆改成要送' : '這一筆改成不送') + '\n\n' + q +
+      '\n\n真的版本會寫進 review.md 的 sessions 區,並重算上面每一個數字。');
   }
   function openOrRerun() {
     if (exported && exportedAt !== fingerprint()) {
@@ -1444,8 +1646,10 @@
       s.classList.toggle('done', i !== n && i <= maxStep);
       s.disabled = (i === n) || (i > maxStep);
     }
+    /* preventScroll, or focusing the section scrolls it into view and undoes
+       the line above, landing the reader below the wordmark and the step rail. */
     window.scrollTo({ top: 0, behavior: 'instant' });
-    document.getElementById('scr' + n).focus();
+    document.getElementById('scr' + n).focus({ preventScroll: true });
     paint();
   }
 
@@ -1479,16 +1683,27 @@
     paint();
   }
 
+  /* Reverting is a bulk action too, and it can un-check boxes. Same direction as
+     全不選, so it asks the same way. Per-box clicks stay unguarded on purpose:
+     they are the point of this screen, and each one is one click to undo. */
   function resetCands() {
     var boxes = document.querySelectorAll('#cands input');
-    for (var i = 0; i < boxes.length; i++) boxes[i].checked = boxes[i].defaultChecked;
+    var lose = [];
+    for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].checked && !boxes[i].defaultChecked) {
+        lose.push(boxes[i].parentNode.querySelector('.name').firstChild.nodeValue);
+      }
+    }
+    if (lose.length && !confirm('回到模型的預設。\n\n這 ' + lose.length +
+        ' 個名字會從「換成代號」變回原名寫進交出去的檔案裡:\n\n' + lose.join('\n') + '\n\n確定?')) return;
+    for (var j = 0; j < boxes.length; j++) boxes[j].checked = boxes[j].defaultChecked;
     paint();
   }
 
   document.getElementById('cands').addEventListener('change', paint);
 
   /* one runnable check: the census must equal the sum of the three tiers, and
-     every derived total in 會交出去的內容裡 must equal what was scanned. */
+     every derived total in 選進範圍的內容裡 must equal what was scanned. */
   (function selftest() {
     var s = sum('in', 'n') + sum('out', 'n') + sum('un', 'n');
     var w = sum('in', 'ws') + sum('out', 'ws') + sum('un', 'ws');
@@ -1496,8 +1711,12 @@
       || sum('in','msg')  !== 2104  || sum('in','code') !== 18402
       || sum('in','img')  !== 73    || sum('in','path') !== 26505
       || sum('in','key')  !== 8     || sum('in','line') !== 27545
-      || (SEEDED_OCC + 26) !== 1284
       || (sum('in','sent') + sum('in','upd')) !== PREV_TOTAL;
+    for (var i = 0; i < ROWS.length && !bad; i++) {
+      /* every row's three states must account for all of its sessions, or the
+         run total and the selection total can never agree */
+      if (ROWS[i].nw + ROWS[i].upd + ROWS[i].sent !== ROWS[i].n) bad = true;
+    }
     document.getElementById('meta').textContent = bad
       ? 'STATE MISMATCH: ' + s + ' sessions / ' + w + ' workspaces'
       : s + ' sessions · ' + w + ' workspaces · 818 MB';
