@@ -42,7 +42,12 @@ import {
 import { writeCandidates, readEntities, CANDIDATES_FILENAME } from './entities/tier1.mjs';
 import { buildTable, substituteString } from './substitute/engine.mjs';
 import { substituteRecord, collectStrings } from './substitute/walker.mjs';
-import { newRetentionContext, retainRecord, rewriteUuidsInRecord } from './retain/records.mjs';
+import {
+  newRetentionContext,
+  retainRecord,
+  rewriteUuidsInRecord,
+  RETENTION_TABLE,
+} from './retain/records.mjs';
 import {
   checkSubstitution,
   substitutionRefusal,
@@ -519,7 +524,17 @@ function retainCorpus(
         continue;
       }
       const at = { file: file.path, line: session.records[i].index };
-      if (touchedExcluded && cwdChangeFrom(session.records[i].value) === null) {
+      // Applied only to types retention would otherwise KEEP. Every other
+      // cwd-less type (permission-mode, bridge-session, ai-title,
+      // file-history-*) is dropped by the retention table anyway, and counting
+      // those here reported 9,086 "dropped records" on the real corpus where
+      // the real cost was a fraction of that — a number that overstates its own
+      // damage is as untrustworthy as one that hides it.
+      if (
+        touchedExcluded &&
+        RETENTION_TABLE.topLevel[session.records[i].value?.type] === 'keep' &&
+        cwdChangeFrom(session.records[i].value) === null
+      ) {
         stats.droppedCwdless += 1;
         continue;
       }
