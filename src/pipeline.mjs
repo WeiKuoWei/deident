@@ -419,12 +419,19 @@ function extractProse(sessions) {
  * over a zip whose directory listing names the user — the §F1 failure, one
  * level up from the text.
  */
-function serializeSessions(sessions, table, rewriteUuid) {
+export function serializeSessions(sessions, table, rewriteUuid) {
   const entries = [];
   const parts = [];
   for (const s of sessions) {
     const body = `${s.records.map((r) => JSON.stringify(r)).join('\n')}\n`;
-    const dir = substituteString(s.file.dirName, table).out;
+    // The slug is substituted for entities AND swept for uuids, in that order.
+    // Measured on the real corpus (2026-08-22): a workspace launched from a
+    // scratchpad path carries a session uuid inside its own directory slug
+    // (`...-claude-C--Users-devuser-6b85b649-...-scratchpad-resumetest`). No
+    // entity matches it, so it reached the zip's directory listing verbatim
+    // and I5 correctly reported three unknown uuids. Same reuse as the record
+    // walker, so a slug and a record body cannot disagree.
+    const dir = rewriteUuidsInRecord(substituteString(s.file.dirName, table).out, rewriteUuid);
     const id = rewriteUuid(s.file.sessionId) ?? s.file.sessionId;
     const name = `sessions/${sanitizeEntryName(dir)}/${sanitizeEntryName(id)}.jsonl`;
     entries.push({ name, data: body });
