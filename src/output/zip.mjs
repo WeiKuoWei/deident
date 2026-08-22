@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { deflateRawSync, crc32 } from 'node:zlib';
-import { RefusalError } from '../cli/errors.mjs';
+import { RefusalError, osErrorLine } from '../cli/errors.mjs';
 
 // 1980-01-01 00:00:00, the earliest the DOS format can express. Any real clock
 // value would break I10.
@@ -40,7 +40,7 @@ export function writeZip(entries, outPath) {
     safeUnlink(partPath);
     safeUnlink(outPath);
     throw new RefusalError(`could not write ${outPath}`, {
-      why: [`${err.code}: ${err.message}`, 'Nothing was left behind.'],
+      why: [osErrorLine(err), 'Nothing was left behind.'],
       remedies: [{ label: 'Choose a writable directory', command: 'deident export --out <path>' }],
     });
   }

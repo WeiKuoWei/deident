@@ -45,6 +45,17 @@ export class RefusalError extends DeidentError {
 }
 
 /**
+ * One line for an OS-level failure. A node fs error already carries its code
+ * at the front of `.message`, so prefixing the code again printed
+ * "EPERM: EPERM: operation not permitted" in a refusal body.
+ */
+export function osErrorLine(err) {
+  const code = err && err.code ? err.code : null;
+  const msg = err && err.message ? err.message : String(err);
+  return code && !msg.startsWith(`${code}:`) ? `${code}: ${msg}` : msg;
+}
+
+/**
  * Wrap an unexpected throw so the entry point never prints a traceback.
  * BRIEF §2: a traceback on Ray's machine is a failed delivery.
  */

@@ -10,7 +10,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { RefusalError } from '../cli/errors.mjs';
+import { RefusalError, osErrorLine } from '../cli/errors.mjs';
 import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
 import { safeUnlink } from './zip.mjs';
 import { substituteString } from '../substitute/engine.mjs';
@@ -33,7 +33,7 @@ export function writePreview(state, outPath) {
     safeUnlink(partPath);
     safeUnlink(outPath);
     throw new RefusalError(`could not write ${outPath}`, {
-      why: [`${err.code}: ${err.message}`, 'Nothing was left behind.'],
+      why: [osErrorLine(err), 'Nothing was left behind.'],
       remedies: [{ label: 'Choose a writable directory', command: 'deident export --preview --out <path>' }],
     });
   }
@@ -80,7 +80,7 @@ export function renderPreview(state) {
   push('');
   const flagged = state.entities.filter((e) => e.pseudonym === null);
   if (flagged.length === 0) push('    (none)');
-  for (const e of flagged) push(`    ${e.canonical}  —  ${e.rejected}`);
+  for (const e of flagged) push(`    ${e.canonical}  ${e.rejected}`);
   push('');
 
   push('== checks ==');

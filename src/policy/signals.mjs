@@ -77,7 +77,7 @@ export function proposeTier(group, probeRemote) {
     if (personal !== null) {
       return frozen(
         'unclassified',
-        `git remote ${remote.raw}, but "${personal}" reads like personal data — decide this one yourself`,
+        `git remote ${remote.raw}, but "${personal}" reads like personal data, so decide this one yourself`,
       );
     }
     return frozen('redact', `git remote ${remote.raw} (set "open" yourself if it is public)`);

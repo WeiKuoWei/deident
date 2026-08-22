@@ -51,7 +51,7 @@ export function renderReview(model) {
 
   push('## sessions worth a second look');
   if (model.flaggedSessions.length === 0) {
-    push('# (none — no session touched a deny-listed directory)');
+    push('# (none: no session touched a deny-listed directory)');
   }
   for (const s of model.flaggedSessions) {
     push(`drop   ${s.date}  ${s.workspace.padEnd(20)} cwd touched ${s.reason}`);
@@ -62,7 +62,7 @@ export function renderReview(model) {
   push('# This is a report, not an input: third-party entities are force-replaced');
   push('# with no opt-out (BRIEF §F2), so editing a row here changes nothing.');
   if (model.entities.length === 0) {
-    push('# (none — no cwd was resolved, so nothing could be seeded)');
+    push('# (none: no cwd was resolved, so nothing could be seeded)');
   }
   for (const e of model.entities) {
     if (e.pseudonym === null) {
@@ -80,8 +80,8 @@ export function renderReview(model) {
     );
   }
   push('');
-  push('# Classes swept out of session TEXT — emails, credentials, phone numbers,');
-  push('# platform ids, MCP server names — are not listed above: finding them needs');
+  push('# Classes swept out of session TEXT (emails, credentials, phone numbers,');
+  push('# platform ids, MCP server names) are not listed above: finding them needs');
   push('# the full retention pass, which is what `deident export` does. Occurrence');
   push('# counts and per-class excerpts come from:  deident export --preview');
   push('');
@@ -132,7 +132,7 @@ export function parseReview(text, opts = {}) {
     const [tier, name] = parts;
     if (!TIERS.includes(tier) && tier !== UNCLASSIFIED) {
       if (onProblem !== null) {
-        onProblem(`${REVIEW_FILENAME}: "${tier}" is not a tier — that line was ignored`);
+        onProblem(`${REVIEW_FILENAME}: "${tier}" is not a tier, so that line was ignored`);
         continue;
       }
       throw new RefusalError(`"${tier}" is not a tier`, {
@@ -184,7 +184,7 @@ export function parseSessionDrops(text, opts = {}) {
     const id = parts[parts.length - 1];
     if (!SESSION_DECISIONS.includes(decision)) {
       if (onProblem !== null) {
-        onProblem(`${REVIEW_FILENAME}: "${decision}" is not a session decision — that line was ignored`);
+        onProblem(`${REVIEW_FILENAME}: "${decision}" is not a session decision, so that line was ignored`);
         continue;
       }
       throw new RefusalError(`"${decision}" is not a session decision`, {
@@ -289,11 +289,11 @@ individually; they are never collapsed into a count.
 <table><tr><th>tier</th><th>workspace</th><th>sessions</th><th>directory</th><th>why</th></tr>
 ${ws}</table>
 <h2>entities</h2>
-<input type="search" id="q" placeholder="filter entities — pseudonym, kind, source">
+<input type="search" id="q" placeholder="filter entities: pseudonym, kind, source">
 <table id="ents"><tr><th>pseudonym</th><th>kind</th><th>spellings</th><th>occurrences</th><th>confidence</th><th>source</th></tr>
 ${rows}</table>
-<p class="note">Classes swept out of session text — emails, credentials, phone
-numbers, platform ids, MCP server names — are found by the retention pass, so
+<p class="note">Classes swept out of session text (emails, credentials, phone
+numbers, platform ids, MCP server names) are found by the retention pass, so
 they appear only after <code>deident export</code>. Occurrence counts and a
 before/after excerpt per replacement class come from
 <code>deident export --preview</code>, which writes them to a file beside this one.</p>

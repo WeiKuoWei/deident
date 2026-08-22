@@ -249,13 +249,13 @@ const FIXTURES = [
   // F01 — BRIEF §4.5 row 1. Python \b MISSES this; Node \b happens to hit it.
   // The regression guard is against anyone "simplifying" the lookaround back
   // to \b, which would make behaviour runtime-dependent.
-  ['F01', '因為Dean他他想要 / Jake — Latin entity abutting CJK', () => {
+  ['F01', '因為Dean他他想要 / Jake: Latin entity abutting CJK', () => {
     const t = buildTable([entity('P1', 'person', 'Jake', 'PERSON_1')]);
     assert.equal(substituteString('因為Dean他他想要', t).out, '因為PERSON_1他想要');
   }],
 
   // F02 — BRIEF §4.5 row 2, the other side of the CJK boundary.
-  ['F02', 'Ivy跟小語 / Wei — CJK on the trailing side', () => {
+  ['F02', 'Ivy跟小語 / Wei: CJK on the trailing side', () => {
     const t = buildTable([entity('P1', 'person', 'Wei', 'PERSON_1')]);
     assert.equal(substituteString('Ivy跟小語', t).out, 'PERSON_1跟路易');
   }],
@@ -263,7 +263,7 @@ const FIXTURES = [
   // F03 — BRIEF §4.5 row 3. Both \b implementations MISS 林先生/郭, and the
   // lookaround HITS it — but hitting it is over-matching inside a longer word,
   // so the rule is length >= 2 and FLAG, never substitute.
-  ['F03', '林先生 / 郭 — one-char CJK is flagged, not substituted', () => {
+  ['F03', '林先生 / 郭: one-char CJK is flagged, not substituted', () => {
     const reason = rejectReason('郭');
     assert.ok(reason !== null, 'a single-character CJK entity must be rejected');
     assert.match(reason, /single-character CJK/);
@@ -286,7 +286,7 @@ const FIXTURES = [
 
   // F05 — §F3. 296 bare occurrences in the owner column of ls -l, where
   // longest-prefix path substitution never fires.
-  ['F05', 'ls -l owner column — bare username outside any path', () => {
+  ['F05', 'ls -l owner column: bare username outside any path', () => {
     const t = buildTable([
       entity('W1', 'workspace', `C:${BS}Users${BS}devuser`, 'WORKSPACE_1'),
       entity('P1', 'person', 'devuser', 'PERSON_1'),
@@ -300,7 +300,7 @@ const FIXTURES = [
   }],
 
   // F06 — §4.6 prefix collision. Requires sort-by-length-descending.
-  ['F06', 'gitroll vs gitroll-agentic — prefix collision', () => {
+  ['F06', 'gitroll vs gitroll-agentic: prefix collision', () => {
     const t = buildTable([
       entity('O1', 'org', 'gitroll', 'ORG_1'),
       entity('O2', 'org', 'gitroll-agentic', 'ORG_2'),
@@ -311,7 +311,7 @@ const FIXTURES = [
 
   // F07 — §4.6 three-way nested collision plus the email form. Catches an
   // interval mask that releases a region it already claimed.
-  ['F07', 'devuser / devuser / devuser@gitroll.io — nested collision', () => {
+  ['F07', 'devuser / devuser / devuser@gitroll.io: nested collision', () => {
     const t = buildTable([
       entity('P1', 'person', 'devuser', 'PERSON_1'),
       entity('P2', 'person', 'devuser', 'PERSON_2'),
@@ -3069,7 +3069,7 @@ const FIXTURES = [
     const a = substituteString('A: the operator Wang', pair);
     const b = substituteString('B: the operator Kuo Wang', pair);
     assert.equal(a.spans.some((sp) => sp.absorbed), true, 'the overlap is recorded as absorbed');
-    assert.equal(a.out.slice(3), b.out.slice(3), 'two different inputs, one output — this is the point');
+    assert.equal(a.out.slice(3), b.out.slice(3), 'two different inputs, one output: this is the point');
     // Span-relative reversal still works, which is exactly the distinction the
     // manifest now has to draw.
     assert.equal(reverseString(a.out, a.spans), 'A: the operator Wang');

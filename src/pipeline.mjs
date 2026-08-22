@@ -139,7 +139,7 @@ export async function runReview(flags, env) {
         remedies: [{ label: 'Choose a writable directory', command: 'deident review --html --out <path>' }],
       });
     }
-    report.renderNote(`wrote ${target} — open it in your browser. No server was started.`);
+    report.renderNote(`wrote ${target}. Open it in your browser. No server was started.`);
     return 0;
   }
   // cli-ux §5 specifies both queries and they are part of the slice-1 contract,
@@ -489,8 +489,8 @@ function rememberDecisions(saltDir, decisions, sessionDrops) {
     saveDecisions(saltDir, decisions, sessionDrops);
   } catch (err) {
     report.renderWarning(
-      `could not remember your tier decisions (${err.code ?? 'error'}: ${err.message}) — ` +
-        'the export is written and valid; you will be asked to set tiers again next time',
+      `could not remember your tier decisions (${err.code ?? 'error'}: ${err.message}). ` +
+        'The export is written and valid; you will be asked to set tiers again next time',
     );
   }
 }

@@ -99,7 +99,7 @@ export function humanBytes(bytes) {
 // ---------------------------------------------------------------- usage
 
 export function renderUsage() {
-  say(`deident ${VERSION} — de-identify AI coding-agent session logs
+  say(`deident ${VERSION}: de-identify AI coding-agent session logs
 
   deident scan      survey what is here and propose tiers. Writes review.md only.
   deident review    render review.md as a readable HTML file.
@@ -199,8 +199,9 @@ export function renderManifest(m) {
   say('  Leaving this machine');
   say(`    ${n(m.sessions)} sessions from ${n(m.workspaces)} workspaces`);
   say(`    ${n(m.userMessages)} user messages`);
+  const zeroWidth = Math.max(18, ...m.zeros.map((z) => z.label.length));
   for (const z of m.zeros) {
-    say(`    0 ${pad(z.label, 18)} ${z.suppressed}`);
+    say(`    0 ${pad(z.label, zeroWidth)} ${z.suppressed}`);
   }
   if (m.countOnly && m.countOnly.sessions > 0) {
     say('');
@@ -226,7 +227,7 @@ export function renderManifest(m) {
     // as though the user prose was intact while two classes were at zero.
     const byType = (m.droppedCwdlessByType ?? []).map((t) => `${t.type} (${n(t.count)})`).join(', ');
     say(`    ${n(m.droppedCwdless)} records dropped: they replay text typed inside an excluded`);
-    say(`      directory and carry no cwd of their own${byType ? `  —  ${byType}` : ''}`);
+    say(`      directory and carry no cwd of their own${byType ? `:  ${byType}` : ''}`);
   }
   if (m.absorbedSpans > 0) {
     // BRIEF §4.7(a) presents I2 as the invariant that catches overlap bugs. It
@@ -258,7 +259,7 @@ export function renderManifest(m) {
 
 export function renderWrote(path, bytes, saltPath) {
   say(`  → ${path}    ${humanBytes(bytes)}`);
-  say(`    salt stays at ${saltPath} — do not share it, do not commit it`);
+  say(`    salt stays at ${saltPath}. Do not share it, do not commit it`);
   say('');
 }
 
@@ -327,7 +328,7 @@ export function renderRefusal(err) {
   warn(`  ✗ Refusing to ${refusalVerb}: ${err.reason}`);
   if (err.why.length > 0) {
     warn('');
-    for (const line of err.why) warn(`    ${line}`);
+    for (const line of err.why) warn(line === '' ? '' : `    ${line}`);
   }
   if (err.remedies.length > 0) {
     warn('');
