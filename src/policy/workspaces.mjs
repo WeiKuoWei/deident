@@ -58,12 +58,18 @@ export function classifyWorkspaces(groups, saved = {}, opts = {}) {
     let tier;
     let note;
 
+    let decided = false;
+
     if (denyToken !== null && !includeDenied.has(ws.name)) {
       tier = 'exclude';
       note = `deny-list matched: "${denyToken}"`;
     } else if (Object.hasOwn(saved, ws.name) && TIERS.includes(saved[ws.name])) {
       tier = saved[ws.name];
-      note = denyToken !== null ? `deny-list "${denyToken}" overridden by --include-denied` : ws.cwd;
+      decided = true;
+      note =
+        denyToken !== null
+          ? `deny-list "${denyToken}" overridden by --include-denied`
+          : `${proposal.reason}  ·  you set this`;
     } else {
       tier = denyToken !== null ? 'redact' : proposal.tier;
       note = denyToken !== null ? `deny-list "${denyToken}" overridden by --include-denied` : proposal.reason;
@@ -81,6 +87,7 @@ export function classifyWorkspaces(groups, saved = {}, opts = {}) {
         note,
         denyToken,
         proposed: proposal.tier,
+        decided,
       }),
     );
   }
@@ -166,11 +173,24 @@ export function loadSavedDecisions(saltDir) {
   }
 }
 
+/**
+ * Persist only what the person actually decided, never a bare proposal.
+ *
+ * A proposal is recomputed from the same signals on every run, so writing it
+ * down buys nothing and costs the thing privacy-tiers §3 asks for: a
+ * workspace whose signals change is re-proposed. Saved as a decision, a repo
+ * that later loses its remote would keep exporting on a `redact` nobody chose.
+ *
+ * Keeping a review.md and exporting against it IS deciding every row in it,
+ * so after that first export the file does hold a full set. What this rule
+ * stops is an export with no review.md silently promoting the whole proposal
+ * to a permanent answer.
+ */
 export function saveDecisions(saltDir, decisions) {
   const file = savedDecisionsPath(saltDir);
   const map = {};
   for (const d of decisions) {
-    if (d.tier !== UNCLASSIFIED) map[d.name] = d.tier;
+    if (d.decided && d.tier !== UNCLASSIFIED) map[d.name] = d.tier;
   }
   fs.mkdirSync(saltDir, { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(map, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });

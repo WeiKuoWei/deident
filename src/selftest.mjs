@@ -21,7 +21,14 @@ import { distillToolResult, retainToolUseResult, checkAddedLines } from './retai
 import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord } from './retain/records.mjs';
 import { resolveLineCwd, cwdChangeFrom } from './corpus/cwdtrack.mjs';
 import { allowLine } from './policy/linefilter.mjs';
-import { classifyWorkspaces, matchDenyToken, cwdTierIndex, summarizeTiers } from './policy/workspaces.mjs';
+import {
+  classifyWorkspaces,
+  matchDenyToken,
+  cwdTierIndex,
+  summarizeTiers,
+  saveDecisions,
+  loadSavedDecisions,
+} from './policy/workspaces.mjs';
 import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
 import { proposeTier } from './policy/signals.mjs';
 import { readSession } from './corpus/reader.mjs';
@@ -898,6 +905,18 @@ const FIXTURES = [
     );
     const byTier = Object.fromEntries(summarizeTiers(decisions).map((r) => [r.tier, r.workspaces]));
     assert.deepEqual(byTier, { exclude: 3, redact: 1, unclassified: 1 });
+
+    // A proposal is not a decision and is never written to workspaces.json.
+    // Saved as one, a repo that later lost its remote would keep exporting on
+    // a `redact` nobody chose (privacy-tiers §3: signals change, re-propose).
+    const dir = tmpdir();
+    saveDecisions(dir, decisions);
+    assert.deepEqual(loadSavedDecisions(dir), {});
+    const answered = classifyWorkspaces([g('gitroll')], { gitroll: 'open' }, { propose: (ws) => proposeTier(ws, probe) });
+    assert.equal(answered[0].decided, true);
+    saveDecisions(dir, answered);
+    assert.deepEqual(loadSavedDecisions(dir), { gitroll: 'open' });
+    fs.rmSync(dir, { recursive: true, force: true });
   }],
 
   ['F42', 'a storage directory with no sessions produces no row and no decision', () => {

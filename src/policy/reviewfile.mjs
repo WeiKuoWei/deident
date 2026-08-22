@@ -86,7 +86,7 @@ export function parseReview(text) {
     if (trimmed === '' || trimmed.startsWith('#')) continue;
 
     const parts = trimmed.split(/\s+/);
-    const [tier, dirName] = parts;
+    const [tier, name] = parts;
     if (!TIERS.includes(tier) && tier !== UNCLASSIFIED) {
       throw new RefusalError(`"${tier}" is not a tier`, {
         why: [
@@ -96,8 +96,8 @@ export function parseReview(text) {
         remedies: [{ label: 'Fix the line', command: `notepad ${REVIEW_FILENAME}` }],
       });
     }
-    if (!dirName) continue;
-    if (tier !== UNCLASSIFIED) decisions[dirName] = tier;
+    if (!name) continue;
+    if (tier !== UNCLASSIFIED) decisions[name] = tier;
   }
 
   return Object.freeze(decisions);
