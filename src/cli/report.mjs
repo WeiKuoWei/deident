@@ -151,12 +151,18 @@ export function renderManifest(m) {
   say('    verbatim documents you pasted into your own messages');
   say('    third-party names the semantic pass did not recognise');
   if (m.embedded > 0) {
-    // Honest, not reassuring: these are occurrences of a known entity sitting
-    // inside a longer word, where the boundary rule correctly does not fire
-    // (BRIEF §4.5 row 4 — `ray` inside `array` is a CORRECT non-match). They
-    // are not leaks of that entity, but the reader is told the number rather
-    // than being left to assume the count is zero.
-    say(`    ${n(m.embedded)} known-entity spellings sit inside longer words and were left alone`);
+    // Honest, not reassuring: these are occurrences of a known entity that
+    // abut a word character, where §4.5's boundary rule does not fire.
+    //
+    // `ray` inside `array` is the case the rule exists for and is a CORRECT
+    // non-match. But `_` is in the same character class, so a filename like
+    // `contract_<name>.pdf` is left alone too, and calling that "inside a
+    // longer word" would be the kind of reassuring phrasing this tool is
+    // supposed to avoid. Measured on the real corpus 2026-08-22: filename
+    // separators are the largest single share of this number. Say what the
+    // rule actually did and let the reader judge.
+    say(`    ${n(m.embedded)} known-entity spellings abut a letter, digit or underscore`);
+    say('      (a_name.pdf, name123) and were left alone under the §4.5 boundary rule');
   }
   say('');
 }
