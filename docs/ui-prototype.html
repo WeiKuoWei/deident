@@ -1,66 +1,51 @@
-<!doctype html>
-<title>Deident Export Review</title>
+<title>Deident Contact Sheet</title>
 
 <style>
   :root {
     --paper:      #F5F7FA;
     --surface:    #FFFFFF;
-    --surface-2:  #EDF0F5;
+    --surface-2:  #EBEFF5;
     --ink:        #131824;
     --ink-2:      #4A5468;
-    --ink-3:      #59647A;
+    --ink-3:      #7E8899;
     --rule:       #DCE1EA;
-    --rule-2:     #C4CBD8;
+    --rule-2:     #C2CAD8;
     --accent:     #2F5FD0;
     --accent-ink: #FFFFFF;
     --ok:         #146B52;
-    --ok-bg:      #E3F1EC;
+    --ok-bg:      #E1F0EA;
     --warn:       #8A5D12;
-    --warn-bg:    #F7EEDC;
-    --block:      #131824;
+    --warn-bg:    #F8EEDA;
+    --cut:        #B03A2E;
+    --cut-bg:     #FBE9E7;
+    --mark:       #FFE08A;
 
-    /* Local families only. cli-ux.md §4: the tool makes no network calls, and a
-       privacy page that fetches a font is the wrong optic. Nothing is loaded. */
-    --mono: ui-monospace, "SFMono-Regular", "IBM Plex Mono", Menlo, Consolas, "Cascadia Mono", monospace;
-    --sans: ui-sans-serif, system-ui, "Segoe UI", "IBM Plex Sans", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, "Segoe UI", "Noto Sans TC", "PingFang TC",
+            "Microsoft JhengHei", sans-serif;
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --paper:      #0D1016;
-      --surface:    #151A24;
-      --surface-2:  #1D2431;
-      --ink:        #E7EBF2;
-      --ink-2:      #A3ADBF;
-      --ink-3:      #8B96A8;
-      --rule:       #262E3C;
-      --rule-2:     #37414F;
-      --accent:     #6D96EE;
-      --accent-ink: #0D1016;
-      --ok:         #5FCBA4;
-      --ok-bg:      #12291F;
-      --warn:       #D6A64A;
-      --warn-bg:    #2A2113;
-      --block:      #E7EBF2;
+      --paper: #0C0F15; --surface: #141922; --surface-2: #1C2330;
+      --ink: #E7EBF2; --ink-2: #A5AFC0; --ink-3: #6E7A8D;
+      --rule: #242C39; --rule-2: #36404E;
+      --accent: #7099F0; --accent-ink: #0C0F15;
+      --ok: #5FCBA4; --ok-bg: #10281E;
+      --warn: #D8A84C; --warn-bg: #2A2113;
+      --cut: #E8796A; --cut-bg: #2C1614;
+      --mark: #6B5410;
     }
   }
-
   :root[data-theme="dark"] {
-    --paper:      #0D1016;
-    --surface:    #151A24;
-    --surface-2:  #1D2431;
-    --ink:        #E7EBF2;
-    --ink-2:      #A3ADBF;
-    --ink-3:      #8B96A8;
-    --rule:       #262E3C;
-    --rule-2:     #37414F;
-    --accent:     #6D96EE;
-    --accent-ink: #0D1016;
-    --ok:         #5FCBA4;
-    --ok-bg:      #12291F;
-    --warn:       #D6A64A;
-    --warn-bg:    #2A2113;
-    --block:      #E7EBF2;
+    --paper: #0C0F15; --surface: #141922; --surface-2: #1C2330;
+    --ink: #E7EBF2; --ink-2: #A5AFC0; --ink-3: #6E7A8D;
+    --rule: #242C39; --rule-2: #36404E;
+    --accent: #7099F0; --accent-ink: #0C0F15;
+    --ok: #5FCBA4; --ok-bg: #10281E;
+    --warn: #D8A84C; --warn-bg: #2A2113;
+    --cut: #E8796A; --cut-bg: #2C1614;
+    --mark: #6B5410;
   }
 
   * { box-sizing: border-box; }
@@ -71,1656 +56,508 @@
     color: var(--ink);
     font-family: var(--sans);
     font-size: 15px;
-    line-height: 1.55;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
 
-  .wrap {
-    max-width: 880px;
-    margin: 0 auto;
-    padding: 32px 24px 96px;
-  }
-
-  /* ---------- chrome ---------- */
-  .chrome {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    flex-wrap: wrap;
-    padding-bottom: 14px;
-    border-bottom: 1px solid var(--rule);
-    margin-bottom: 28px;
-  }
-  .brand {
-    font-family: var(--mono);
-    font-weight: 600;
-    font-size: 19px;
-    letter-spacing: -0.02em;
-  }
-  .brand .bar {
-    display: inline-block;
-    width: 34px; height: 11px;
-    background: var(--block);
-    vertical-align: baseline;
-    margin-left: 1px;
-    border-radius: 1px;
-  }
-  .chrome .meta {
-    font-family: var(--mono);
-    font-size: 12.5px;
-    color: var(--ink-3);
-    font-variant-numeric: tabular-nums;
-    margin-left: auto;
-  }
-
-  /* ---------- steps ---------- */
-  .steps {
-    display: flex;
-    gap: 6px;
-    font-family: var(--mono);
-    font-size: 11.5px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    margin-bottom: 26px;
-    flex-wrap: wrap;
-  }
-  .steps button {
-    font: inherit;
-    letter-spacing: inherit;
-    text-transform: inherit;
-    padding: 4px 10px;
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    background: none;
-    color: var(--ink-3);
-    cursor: pointer;
-  }
-  /* A step you cannot go to is not styled as a control at all. */
-  .steps button:disabled {
-    opacity: 1;
-    background: none;
-    border-color: var(--rule);
-    color: var(--ink-3);
-    cursor: default;
-  }
-  .steps button.on, .steps button.on:disabled {
-    border-color: var(--ink);
-    color: var(--ink);
-    font-weight: 600;
-  }
-  .steps button.done {
-    border-color: var(--rule-2);
-    color: var(--ok);
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-
-  /* ---------- top framing ---------- */
-  .preamble {
-    font-size: 14.5px;
-    color: var(--ink);
+  /* ══════════ pinned bar: search is the loudest thing on the page ══════════ */
+  .bar {
+    position: sticky; top: 0; z-index: 20;
     background: var(--surface);
-    border: 1px solid var(--rule-2);
-    border-radius: 4px;
-    padding: 14px 18px;
-    margin: 0 0 18px;
-  }
-  .payload {
-    font-size: 14.5px;
-    color: var(--ink);
-    margin: 0 0 20px;
-    padding: 0 2px;
-  }
-  /* Who receives this and what happens afterwards is the single most consequential
-     paragraph on the page, so it is ruled off like a total, not set as small print.
-     Same weight and same motif as .limits: a heavy rule above, a hairline below. */
-  .who {
-    font-size: 14.5px;
-    color: var(--ink);
-    border-top: 2px solid var(--ink-2);
     border-bottom: 1px solid var(--rule-2);
-    padding: 13px 2px 14px;
-    margin: 0 0 18px;
   }
+  .bar .inner {
+    max-width: 1080px; margin: 0 auto;
+    padding: 12px 20px 10px;
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .seek { display: flex; gap: 9px; align-items: stretch; }
+  .seek input {
+    flex: 1; min-width: 0;
+    font-family: var(--sans); font-size: 15px;
+    padding: 10px 13px;
+    border: 1px solid var(--rule-2); border-radius: 3px;
+    background: var(--paper); color: var(--ink);
+  }
+  .seek input::placeholder { color: var(--ink-3); }
+  .seek input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
 
-  /* ---------- panel ---------- */
-  .panel {
-    background: var(--surface);
-    border: 1px solid var(--rule);
-    border-radius: 4px;
-    margin-bottom: 18px;
-    overflow: hidden;
+  .filters {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    font-family: var(--mono); font-size: 12px;
   }
-  .panel > h2 {
-    margin: 0;
-    padding: 13px 20px;
-    font-family: var(--mono);
-    font-size: 11.5px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-3);
+  .filters select, .filters label.chk {
+    font-family: var(--mono); font-size: 12px;
+    padding: 4px 8px; border: 1px solid var(--rule); border-radius: 2px;
+    background: var(--paper); color: var(--ink-2); cursor: pointer;
+  }
+  .filters label.chk { display: inline-flex; align-items: center; gap: 6px; }
+  .filters label.chk input { accent-color: var(--accent); margin: 0; }
+  .tally {
+    margin-left: auto; color: var(--ink-2);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .tally b { color: var(--ink); font-weight: 600; }
+  .tally .cutn { color: var(--cut); }
+
+  /* ══════════ the list ══════════ */
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px 120px; }
+
+  .lede {
+    font-size: 13.5px; color: var(--ink-2);
+    padding: 14px 2px 12px; margin: 0;
     border-bottom: 1px solid var(--rule);
-    background: var(--surface-2);
   }
-  .panel .body { padding: 6px 20px 16px; }
 
-  /* ---------- ledger rows ---------- */
   .row {
     display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: baseline;
-    gap: 16px;
-    padding: 9px 0;
+    grid-template-columns: 20px 58px 1fr auto auto;
+    gap: 12px; align-items: baseline;
+    padding: 9px 4px;
     border-bottom: 1px solid var(--rule);
-  }
-  .row:last-child { border-bottom: 0; }
-  .row .sub[hidden] { display: none; }
-  .row .label { font-size: 14.5px; }
-  .row .sub {
-    display: block;
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--ink-3);
-    margin-top: 2px;
-  }
-  /* a consequence line, not a footnote: same weight as the label above it */
-  .row .sub.grave {
-    font-family: var(--sans);
-    font-size: 13.5px;
-    color: var(--ink);
-    margin-top: 4px;
-  }
-  .row .fig {
-    font-family: var(--mono);
-    font-variant-numeric: tabular-nums;
-    font-size: 15px;
-    font-weight: 500;
-    white-space: nowrap;
-  }
-  .row .fig.zero { color: var(--ok); }
-
-  /* controls that belong to a ledger row, under the row's own text */
-  .rowacts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-  .rowacts button {
-    font-family: var(--mono); font-size: 11.5px; padding: 3px 9px;
-    border-radius: 2px; letter-spacing: 0.02em;
-  }
-
-  /* ---------- before / after sample ---------- */
-  /* cli-ux.md §4: side-by-side before/after for a sample of every replacement
-     class. Counts alone never made anybody comfortable handing over a log. */
-  .sample { margin: 2px 0 12px; }
-  .sample .pair {
-    display: grid;
-    grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1fr);
-    gap: 6px 14px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--rule);
-    align-items: baseline;
-  }
-  .sample .pair:last-of-type { border-bottom: 0; }
-  .sample .k {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.07em;
-    text-transform: uppercase; color: var(--ink-3);
-  }
-  .sample .b, .sample .a {
-    font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere;
-  }
-  .sample .b { color: var(--ink-2); }
-  .sample .a { color: var(--ink); }
-  .sample .tag {
-    color: var(--ink-3); margin-right: 7px; font-size: 11px; letter-spacing: 0.06em;
-  }
-  .sample mark { background: var(--warn-bg); color: var(--warn); padding: 0 2px; border-radius: 1px; }
-  .sample ins {
-    background: var(--ok-bg); color: var(--ok); text-decoration: none;
-    padding: 0 2px; border-radius: 1px;
-  }
-  @media (max-width: 640px) {
-    .sample .pair { grid-template-columns: minmax(0, 1fr); }
-  }
-
-  /* the redaction motif: a solid block standing for what was removed */
-  .removed {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--ink-3);
-    margin-top: 3px;
-  }
-  .removed i {
-    display: block;
-    height: 9px;
-    background: var(--block);
-    opacity: 0.82;
-    border-radius: 1px;
-  }
-
-  /* ---------- headline counts ---------- */
-  .heads {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 1px;
-    background: var(--rule);
-    border: 1px solid var(--rule);
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 18px;
-  }
-  .head { background: var(--surface); padding: 16px 18px; }
-  .head .k {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-  }
-  .head .v {
-    font-family: var(--mono);
-    font-size: 27px;
-    font-weight: 600;
-    letter-spacing: -0.03em;
-    font-variant-numeric: tabular-nums;
-    margin-top: 4px;
-    line-height: 1.1;
-  }
-  .head .n { font-size: 12.5px; color: var(--ink-2); font-family: var(--mono); }
-  /* the sentence-shaped one: prose, not a figure, so it sets in the text face */
-  .head .n.hold {
-    font-family: var(--sans); font-size: 12.5px; color: var(--ink-3);
-    line-height: 1.45; margin-top: 7px;
-  }
-
-  /* ---------- pills ---------- */
-  .pill {
-    display: inline-block;
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.05em;
-    padding: 2px 7px;
-    border-radius: 2px;
-    vertical-align: 1px;
-  }
-  .pill.ok   { background: var(--ok-bg);   color: var(--ok); }
-  .pill.warn { background: var(--warn-bg); color: var(--warn); }
-  .pill.mute { background: var(--surface-2); color: var(--ink-2); }
-
-  /* ---------- limits ---------- */
-  /* Set as a ledger footnote-of-record, not a card: a heavy rule above and a
-     hairline below, the way a total is ruled off. No rail, no box. */
-  .limits {
-    border-top: 2px solid var(--ink-2);
-    border-bottom: 1px solid var(--rule-2);
-    padding: 15px 2px 17px;
-    margin-bottom: 24px;
-  }
-  .limits h3 {
-    margin: 0 0 9px;
-    font-family: var(--mono);
-    font-size: 11.5px;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--warn);
-    font-weight: 600;
-  }
-  .limits ul {
-    margin: 0; padding: 0; list-style: none;
-    color: var(--ink-2); font-size: 14px;
-    display: flex; flex-direction: column; gap: 6px;
-  }
-  .limits li { padding-left: 22px; position: relative; }
-  /* the redaction block, reused as the marker */
-  .limits li::before {
-    content: "";
-    position: absolute;
-    left: 0; top: 0.62em;
-    width: 13px; height: 8px;
-    background: var(--warn);
-    opacity: 0.72;
-    border-radius: 1px;
-  }
-
-  /* ---------- actions ---------- */
-  .actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-    margin-top: 26px;
-  }
-  button {
-    font-family: var(--sans);
-    font-size: 14.5px;
-    font-weight: 500;
-    padding: 10px 20px;
-    border-radius: 3px;
-    border: 1px solid var(--rule-2);
-    background: var(--surface);
-    color: var(--ink);
     cursor: pointer;
-    transition: background 120ms ease, border-color 120ms ease;
   }
-  button:hover { background: var(--surface-2); }
+  .row:hover { background: var(--surface); }
+  .row .mk { font-family: var(--mono); font-size: 13px; color: var(--ok); }
+  .row.out .mk { color: var(--cut); }
+  .row .dt { font-family: var(--mono); font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .row .q {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 14.5px;
+  }
+  .row.out .q { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .row .rz { font-family: var(--mono); font-size: 11.5px; color: var(--cut); white-space: nowrap; }
+  .row .go {
+    font-family: var(--mono); font-size: 11.5px;
+    padding: 3px 9px; border-radius: 2px;
+    border: 1px solid var(--rule-2); background: var(--surface); color: var(--ink-2);
+    cursor: pointer; white-space: nowrap;
+  }
+  .row .go:hover { background: var(--surface-2); color: var(--ink); }
+  .row.opened { background: var(--surface); }
+  .row .q mark { background: var(--mark); color: var(--ink); padding: 0 1px; }
+
+  /* the expanded transcript, in released form */
+  .tx {
+    border-bottom: 1px solid var(--rule);
+    background: var(--surface);
+    padding: 4px 4px 16px 90px;
+  }
+  .tx .t {
+    display: grid; grid-template-columns: 56px 1fr; gap: 12px;
+    padding: 5px 0; font-size: 14px; align-items: baseline;
+  }
+  .tx .who { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+  .tx .sub { font-family: var(--mono); background: var(--surface-2); padding: 0 4px; border-radius: 2px; font-size: 12.5px; }
+  .tx .tool { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+  .tx .foot {
+    margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--rule);
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-3);
+    display: flex; gap: 16px; flex-wrap: wrap;
+  }
+
+  .more {
+    padding: 14px 4px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-3);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* ══════════ hit banner from the search box ══════════ */
+  .hit {
+    border: 1px solid var(--warn); border-radius: 3px;
+    background: var(--warn-bg); color: var(--warn);
+    padding: 11px 14px; margin: 14px 0 0;
+    font-size: 14px; display: none;
+    align-items: baseline; gap: 12px; flex-wrap: wrap;
+  }
+  .hit.on { display: flex; }
+  .hit b { font-family: var(--mono); }
+  .hit button {
+    font-family: var(--sans); font-size: 13px; padding: 5px 12px;
+    border: 1px solid var(--warn); border-radius: 2px;
+    background: transparent; color: var(--warn); cursor: pointer; margin-left: auto;
+  }
+  .hit button:hover { background: var(--surface); }
+
+  /* ══════════ low-confidence names, per item, never collapsed ══════════ */
+  .sect { margin-top: 40px; }
+  .sect > h2 {
+    margin: 0 0 3px;
+    font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .sect > p { margin: 0 0 12px; font-size: 13.5px; color: var(--ink-2); }
+
+  .cand {
+    display: grid; grid-template-columns: 150px 1fr auto;
+    gap: 14px; align-items: baseline;
+    padding: 10px 4px; border-bottom: 1px solid var(--rule);
+  }
+  .cand .nm { font-family: var(--mono); font-size: 13.5px; font-weight: 500; }
+  .cand .nm small { display: block; font-weight: 400; color: var(--ink-3); font-size: 11.5px; margin-top: 2px; }
+  .cand .ctx { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+  .cand .ctx em { font-style: normal; background: var(--mark); color: var(--ink); padding: 0 2px; border-radius: 1px; }
+  .cand .pick { display: flex; gap: 6px; }
+  .cand .pick button {
+    font-family: var(--mono); font-size: 11.5px; padding: 4px 10px;
+    border: 1px solid var(--rule-2); border-radius: 2px;
+    background: var(--surface); color: var(--ink-2); cursor: pointer; white-space: nowrap;
+  }
+  .cand .pick button:hover { background: var(--surface-2); color: var(--ink); }
+  .cand .pick button.sel {
+    background: var(--ink); border-color: var(--ink); color: var(--paper); font-weight: 600;
+  }
+
+  /* ══════════ attestation ══════════ */
+  .att {
+    margin-top: 44px;
+    border-top: 2px solid var(--ink-2);
+    padding-top: 18px;
+  }
+  .att h2 {
+    margin: 0 0 12px;
+    font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .att dl { margin: 0; display: grid; grid-template-columns: 132px 1fr; gap: 7px 16px; font-size: 14px; }
+  .att dt { font-family: var(--mono); font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+  .att dd { margin: 0; color: var(--ink); }
+  .att dd .q { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+  .att dd.thin { color: var(--warn); }
+  .att .unchecked { color: var(--ink-2); }
+  .att .sign {
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule);
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .att .sign .who { font-size: 14px; }
+  .att .sign .stamp { font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin-left: auto; }
+
   button.primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--accent-ink);
+    font-family: var(--sans); font-size: 15px; font-weight: 500;
+    padding: 11px 22px; border-radius: 3px;
+    background: var(--accent); border: 1px solid var(--accent); color: var(--accent-ink);
+    cursor: pointer;
   }
   button.primary:hover { filter: brightness(1.08); }
-  button.link {
-    border: 0; background: none; padding: 10px 4px;
-    color: var(--accent); text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-  button.link:hover { background: none; filter: brightness(1.15); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  /* No blanket opacity. The disabled primary carries the only text that says how
-     to unblock the flow ("先決定上面那 2 個"), so it has to stay readable; the
-     muted surface and the not-allowed cursor are what mark it as inert. */
-  button:disabled {
-    cursor: not-allowed;
-    background: var(--surface-2); border-color: var(--rule-2); color: var(--ink-2);
-  }
-  button.primary:disabled { background: var(--surface-2); border-color: var(--rule-2); color: var(--ink-2); }
 
-  /* ---------- disclosure ---------- */
-  .disclosure { display: none; }
-  .disclosure.open { display: block; }
-  .sesslist { font-family: var(--mono); font-size: 12.5px; }
-  .sesslist div {
-    display: grid;
-    grid-template-columns: auto 92px minmax(0, 1fr) auto auto;
-    gap: 12px;
-    padding: 7px 0;
-    border-bottom: 1px solid var(--rule);
-    align-items: baseline;
+  .done {
+    display: none; margin-top: 20px;
+    font-family: var(--mono); font-size: 16px; font-weight: 600;
+    padding: 16px 18px; background: var(--surface-2);
+    border: 1px solid var(--rule); border-radius: 3px;
   }
-  .sesslist div:last-child { border-bottom: 0; }
-  .sesslist button {
-    font-family: var(--mono); font-size: 11px; padding: 2px 8px;
-    border-radius: 2px; white-space: nowrap;
-  }
-  .sesslist .q { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sesslist .why { color: var(--warn); font-size: 11.5px; }
-  .drop { color: var(--ink-3); text-decoration: line-through; }
+  .done.on { display: block; }
+  .done span { display: block; font-weight: 400; font-size: 12.5px; color: var(--ink-3); margin-top: 5px; }
 
-  /* Narrow: the question gets its own full-width line. Same reason as the
-     candidate list below: cli-ux.md §3 calls this list the last escape hatch,
-     and an escape hatch truncated to five characters is not one. */
-  @media (max-width: 640px) {
-    .sesslist div { grid-template-columns: auto auto minmax(0, 1fr); row-gap: 3px; }
-    .sesslist .q   { grid-column: 1 / -1; white-space: normal; overflow: visible; }
-    .sesslist .why { grid-column: 1 / -1; }
-    .sesslist .act2 { grid-column: 1 / -1; justify-self: start; }
+  @media (max-width: 620px) {
+    .row { grid-template-columns: 18px 1fr auto; }
+    .row .dt, .row .rz { display: none; }
+    .tx { padding-left: 12px; }
+    .cand { grid-template-columns: 1fr; }
+    .att dl { grid-template-columns: 1fr; gap: 2px 0; }
+    .att dt { padding-top: 8px; }
   }
-
-  /* ---------- candidate chips ---------- */
-  .cands { display: flex; flex-direction: column; }
-  .cand {
-    display: grid;
-    grid-template-columns: 22px minmax(110px, 170px) minmax(0, 1fr) 54px;
-    gap: 12px;
-    align-items: baseline;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--rule);
-    cursor: pointer;
-  }
-  .cand:last-child { border-bottom: 0; }
-  .cand input { margin: 0; accent-color: var(--accent); width: 15px; height: 15px; }
-  .cand .name { font-family: var(--mono); font-weight: 500; font-size: 13.5px; }
-  .cand .ctx {
-    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .cand .n {
-    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
-    text-align: right; font-variant-numeric: tabular-nums;
-  }
-  .cand mark { background: var(--warn-bg); color: var(--warn); padding: 0 2px; border-radius: 1px; }
-  /* cli-ux.md §3: low-confidence entities are listed individually and marked.
-     They never look like the high-confidence ones. */
-  .cand .conf {
-    display: block; font-family: var(--mono); font-size: 11px; font-weight: 400;
-    letter-spacing: 0.03em; margin-top: 2px;
-  }
-  .cand .conf.hi { color: var(--ok); }
-  .cand .conf.lo { color: var(--warn); }
-
-  /* Narrow: the evidence snippet gets its own full-width line. Approving a name
-     with the snippet squeezed to nothing is exactly the review theatre §3 bans. */
-  @media (max-width: 640px) {
-    .cand {
-      grid-template-columns: 22px minmax(0, 1fr) auto;
-      row-gap: 4px;
-    }
-    .cand .name { grid-column: 2; }
-    .cand .n { grid-column: 3; }
-    .cand .ctx {
-      grid-column: 2 / -1;
-      white-space: normal;
-      overflow: visible;
-      line-height: 1.5;
-    }
-  }
-
-  .note {
-    font-size: 13.5px;
-    color: var(--ink-2);
-    margin: 0 0 16px;
-  }
-
-  /* ---------- workspace ledger rows with reason + reversal ---------- */
-  .ws {
-    display: grid;
-    grid-template-columns: 1fr 74px auto;
-    gap: 14px;
-    align-items: baseline;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--rule);
-  }
-  .ws[hidden] { display: none; }
-  .ws:last-child { border-bottom: 0; }
-  .ws > div:first-child { min-width: 0; }
-  .ws .nm { font-family: var(--mono); font-size: 13.5px; font-weight: 500; overflow-wrap: anywhere; }
-  .ws .why { display: block; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
-  .ws .ct {
-    font-family: var(--mono); font-size: 13px; text-align: right;
-    font-variant-numeric: tabular-nums; color: var(--ink-2);
-  }
-  .ws .act { display: flex; gap: 6px; justify-content: flex-end; }
-  .ws button {
-    font-family: var(--mono); font-size: 11.5px; padding: 3px 9px;
-    border-radius: 2px; letter-spacing: 0.02em;
-    white-space: nowrap;
-  }
-  .quiet { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
-
-  /* state of a session relative to what has already been sent */
-  .st {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
-    padding: 1px 6px; border-radius: 2px; margin-left: 7px; white-space: nowrap;
-  }
-  .st.new  { background: var(--ok-bg);   color: var(--ok); }
-  .st.upd  { background: var(--warn-bg); color: var(--warn); }
-  .st.sent { background: var(--surface-2); color: var(--ink-2); }
-
-  /* the blocking group: things only a person can decide */
-  .decide {
-    border-top: 2px solid var(--warn);
-    border-bottom: 1px solid var(--rule-2);
-    padding: 4px 2px 14px;
-    margin-bottom: 24px;
-  }
-  .decide h3 {
-    margin: 14px 0 4px;
-    font-family: var(--mono); font-size: 11.5px; font-weight: 600;
-    letter-spacing: 0.09em; text-transform: uppercase; color: var(--warn);
-  }
-  .decide p.sub { margin: 0 0 8px; font-size: 13px; color: var(--ink-2); }
-  .decide .ws { grid-template-columns: 1fr 74px auto; }
-  /* A decision stays put and stays reversible. Making a row vanish on click
-     gives the reader no way to check what they just did, or undo a misclick. */
-  .ws .act button.sel {
-    background: var(--ink); border-color: var(--ink); color: var(--paper);
-    font-weight: 600;
-  }
-  .ws .act button.sel:hover { background: var(--ink); }
-  .ws.settled .nm::before {
-    content: "\2713\A0";
-    color: var(--ok);
-    font-weight: 600;
-  }
-  .ws .chosen {
-    display: block; font-family: var(--mono); font-size: 11.5px;
-    margin-top: 3px; color: var(--ink-2);
-  }
-  /* the one irreversible thing in the flow gets body weight, next to the click
-     that caused it, not小字 in a panel 700px further down */
-  .ws .chosen.grave {
-    font-family: var(--sans); font-size: 13.5px; color: var(--ink);
-  }
-  /* a full-weight explanation attached to a row, for the cases where the
-     one-line reason is the thing the reader is suspicious about */
-  .ws .expl {
-    display: block; font-size: 13.5px; color: var(--ink);
-    margin-top: 6px; line-height: 1.5;
-  }
-
-  /* Narrow: the action buttons drop onto their own line. The workspace name is a
-     mono identifier that will not shrink, so 1fr + a fixed 74px count + an auto
-     button column pushes the buttons past the right edge of the viewport and
-     gives the whole page a horizontal scrollbar. Same treatment as .sesslist
-     and .cand. Declared after the .decide override so it wins over it too. */
-  @media (max-width: 640px) {
-    .ws, .decide .ws { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
-    .ws .act { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; }
-  }
-
-  /* summary of what THIS run sends, after de-duplication */
-  .thisrun {
-    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
-    border-top: 2px solid var(--ink-2);
-    padding: 15px 2px 0;
-    margin-top: 4px;
-  }
-  .thisrun .big {
-    font-family: var(--mono); font-size: 30px; font-weight: 600;
-    letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
-  }
-  .thisrun .txt { font-size: 13.5px; color: var(--ink-2); flex: 1 1 320px; }
-
-  summary {
-    cursor: pointer; list-style: none;
-    font-family: var(--mono); font-size: 11.5px; font-weight: 600;
-    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2);
-    padding: 13px 20px; border-bottom: 1px solid var(--rule);
-    background: var(--surface-2);
-    display: flex; justify-content: space-between; gap: 12px;
-  }
-  summary::-webkit-details-marker { display: none; }
-  summary:hover { color: var(--ink); }
-  summary .cue { color: var(--accent); letter-spacing: 0.04em; white-space: nowrap; }
-  /* the word and the arrow come from the same rule, so they cannot disagree */
-  details[open] summary .cue::after { content: "\6536\5408 \25B2"; }
-  details:not([open]) summary .cue::after { content: "\5C55\958B \25BC"; }
-  details { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; margin-bottom: 18px; }
-  details > .body { padding: 6px 20px 16px; }
-
-  /* ---------- done ---------- */
-  .done { text-align: left; padding: 8px 0 0; }
-  .done .file {
-    font-family: var(--mono);
-    font-size: 17px;
-    font-weight: 600;
-    padding: 16px 20px;
-    background: var(--surface-2);
-    border: 1px solid var(--rule);
-    border-radius: 3px;
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-    align-items: baseline;
-  }
-  .done .file span { color: var(--ink-3); font-weight: 400; font-size: 13px; }
-  .done .zipsub {
-    font-size: 13px; color: var(--ink-2); margin: 8px 2px 0;
-  }
-  /* the file on disk does not follow your later clicks; say so where the file is */
-  .stale {
-    border-top: 2px solid var(--warn);
-    border-bottom: 1px solid var(--rule-2);
-    padding: 13px 2px 14px;
-    margin: 0 0 16px;
-    font-size: 14px;
-    color: var(--ink);
-  }
-
-  .screen { display: none; }
-  .screen.on { display: block; }
-  .screen:focus { outline: none; }
-
-  .hint {
-    font-family: var(--mono);
-    font-size: 11.5px;
-    color: var(--ink-3);
-    letter-spacing: 0.04em;
-    margin-top: 30px;
-    padding-top: 14px;
-    border-top: 1px dashed var(--rule-2);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    * { transition: none !important; }
-  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
+
+<div class="bar">
+  <div class="inner">
+    <div class="seek">
+      <input id="q" type="search" autocomplete="off"
+             placeholder="搜尋你自己知道、但工具可能不知道的名字　例如:Kaito">
+    </div>
+    <div class="filters">
+      <select id="fws">
+        <option value="">所有 workspace</option>
+        <option>payments-api</option>
+        <option>web-app</option>
+        <option>northwind-integration</option>
+        <option>&lt;home&gt;</option>
+      </select>
+      <select id="fdate">
+        <option value="">所有日期</option>
+        <option>過去 7 天</option>
+        <option>過去 30 天</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="fnew"> 只看上次之後的新對話</label>
+      <div class="tally" id="tally"></div>
+    </div>
+  </div>
+</div>
 
 <div class="wrap">
 
-  <div class="chrome">
-    <div class="brand">deident<span class="bar"></span></div>
-    <div class="meta" id="meta">225 sessions · 31 workspaces · 818 MB</div>
+  <div class="hit" id="hit"></div>
+
+  <p class="lede">
+    下面每一列是一個 session,顯示的是<strong>你當時打的第一句話,已經套用替換</strong>。
+    打勾的會出去,打叉的不會。點任何一列展開它的完整逐字稿,看到的就是對方會看到的樣子。
+  </p>
+
+  <div id="list"></div>
+
+  <div class="sect">
+    <h2>工具不確定的名字 · 8 個</h2>
+    <p>
+      這些不是路徑、不是 email、也不是金鑰,所以自動規則抓不到。
+      模型先判過了,你只要看有沒有判錯。取消替換會被記住,下次不會再問同一個字。
+    </p>
+    <div id="cands"></div>
   </div>
 
-  <div class="steps">
-    <button id="s1" class="on" onclick="go(1)" disabled>1 · 檢查</button>
-    <button id="s2" onclick="go(2)" disabled>2 · 確認名字</button>
-    <button id="s3" onclick="go(3)" disabled>3 · 產出</button>
+  <div class="att">
+    <h2>具結</h2>
+    <dl>
+      <dt>要出去的是</dt>
+      <dd id="a-scope"></dd>
+      <dt>你實際看過</dt>
+      <dd id="a-read"></dd>
+      <dt>自動檢查</dt>
+      <dd>序列化 27,545 / 27,545 行位元組相同 · 1,284 次替換全部可還原 ·
+          代號沒有跟原文撞名 · <b>已知實體殘留 0 命中</b>(共 54 個實體)</dd>
+      <dt>沒有檢查到</dt>
+      <dd class="unchecked">
+        工具不認識的人名。「已知實體殘留 0」的意思是「我們知道的那些沒漏」,
+        不是「沒有東西外洩」。<br>
+        裝置指紋:你裝的 MCP server 名稱、模型使用比例、CLI 版本序列。<br>
+        你自己貼進訊息裡的整份文件。名字換掉了,那段文字還在。
+      </dd>
+    </dl>
+    <div class="sign">
+      <div class="who">簽下去的是你。這份具結會跟檔案一起出去。</div>
+      <div class="stamp" id="stamp"></div>
+    </div>
+    <div class="sign">
+      <button class="primary" id="ship">我看過上面這些,產出檔案</button>
+    </div>
+    <div class="done" id="done">
+      deident-2026-08-22.zip
+      <span id="donemeta"></span>
+    </div>
   </div>
-
-  <!-- ══════════════════════ SCREEN 1 ══════════════════════ -->
-  <section class="screen on" id="scr1" tabindex="-1">
-
-    <p class="preamble">
-      這一頁是預覽,檔案還沒產生。這個工具不連網、不寄信,第 3 步只會在你自己的硬碟上寫出一個 zip。
-      要不要寄、寄給誰、什麼時候寄,都是你自己手動做。
-    </p>
-
-    <div class="heads">
-      <div class="head">
-        <div class="k">選進範圍</div>
-        <div class="v" id="hIn">153</div>
-        <div class="n" id="hInWs">16 workspaces</div>
-        <div class="n hold" id="hInHold"></div>
-      </div>
-      <div class="head">
-        <div class="k">需要你決定</div>
-        <div class="v" id="hUn">8</div>
-        <div class="n" id="hUnWs">2 workspaces</div>
-      </div>
-      <div class="head">
-        <div class="k">不會交出去</div>
-        <div class="v" id="hOut">64</div>
-        <div class="n" id="hOutWs">13 workspaces</div>
-      </div>
-    </div>
-
-    <p class="payload">
-      <strong>這次產出的檔案裡是 <span id="payloadRun">42</span> 個 session。</strong>
-      <span id="payloadMath"></span>
-    </p>
-
-    <p class="who">
-      收件人:GitRoll 內部評測小組。用途:評估 AI coding agent 的使用方式。
-      你把檔案寄出去之後,這個工具就管不到它了:誰能看、留多久、會不會再轉給別人,由收件人那邊決定。
-      要求刪除或撤回,請直接聯絡評測小組,這個工具做不到。
-    </p>
-
-    <p class="payload">
-      每個 session 送的是:你自己打的每一句話原文、Claude 回了什麼、來回幾輪、每輪隔多久。
-      程式碼、檔案路徑、圖片、金鑰不送。
-    </p>
-
-    <!-- ── the blocking group: only a person can settle these ── -->
-    <div class="decide" id="decide">
-      <h3>需要你決定,決定完才能產出</h3>
-      <p class="sub">這些是自動規則判斷不了的。預設留在外面,但預設不算決定。</p>
-
-      <div class="ws" id="dw1"
-           data-id="sketch-ui" data-tier="un" data-kind="decide"
-           data-ws="1" data-n="6" data-new="6" data-upd="0" data-sent="0" data-unattr="6" data-msgs="74" data-code="980" data-img="3" data-path="812" data-key="0" data-lines="1080" data-reason="判斷不出歸屬">
-        <div><span class="nm">sketch-ui</span>
-          <span class="why">上次匯出之後才出現的 workspace。沒有 git remote。</span></div>
-        <div class="ct">6</div>
-        <div class="act">
-          <button onclick="decide('dw1','in')">交出去</button>
-          <button onclick="decide('dw1','out')">不交</button>
-        </div>
-      </div>
-
-      <div class="ws" id="dw2"
-           data-id="infra-scratch" data-tier="un" data-kind="decide"
-           data-ws="1" data-n="2" data-new="2" data-upd="0" data-sent="0" data-unattr="0" data-msgs="21" data-code="260" data-img="0" data-path="190" data-key="0" data-lines="360" data-reason="remote 在你不屬於的 org">
-        <div><span class="nm">infra-scratch</span>
-          <span class="why">remote 指向你不屬於的 org。可能是客戶的東西。</span></div>
-        <div class="ct">2</div>
-        <div class="act">
-          <button onclick="decide('dw2','in')">交出去</button>
-          <button onclick="decide('dw2','out')">不交</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── what actually leaves ── -->
-    <details open id="inDetails">
-      <summary><span id="inSum">選進範圍 · 16 workspaces · 153 sessions</span><span class="cue"></span></summary>
-      <div class="body" id="inBody">
-        <div class="ws" id="i1"
-             data-id="payments-api" data-tier="in"
-             data-ws="1" data-n="59" data-new="20" data-upd="0" data-sent="39" data-unattr="0" data-msgs="812" data-code="7100" data-img="28" data-path="10220" data-key="4" data-lines="10622" data-reason="">
-          <div><span class="nm">payments-api</span><span class="st new">20 新</span><span class="st sent">39 已送過</span>
-            <span class="why">gitroll-dev/payments-api · private · 你所屬的 org。原本 61 筆,其中 2 筆單獨挑掉了(見下面「不會交出去」)。</span></div>
-          <div class="ct">59</div>
-          <div class="act"><button onclick="flip(this)">改成不交</button></div>
-        </div>
-        <div class="ws" id="i2"
-             data-id="web-app" data-tier="in"
-             data-ws="1" data-n="22" data-new="12" data-upd="0" data-sent="10" data-unattr="0" data-msgs="302" data-code="2640" data-img="10" data-path="3810" data-key="1" data-lines="3960" data-reason="">
-          <div><span class="nm">web-app</span><span class="st new">12 新</span><span class="st sent">10 已送過</span>
-            <span class="why">gitroll-dev/web-app · private · 你所屬的 org</span></div>
-          <div class="ct">22</div>
-          <div class="act"><button onclick="flip(this)">改成不交</button></div>
-        </div>
-        <div class="ws" id="i3"
-             data-id="northwind-integration" data-tier="in"
-             data-ws="1" data-n="18" data-new="0" data-upd="3" data-sent="15" data-unattr="0" data-msgs="248" data-code="2160" data-img="9" data-path="3118" data-key="1" data-lines="3241" data-reason="">
-          <div><span class="nm">northwind-integration</span><span class="st sent">15 已送過·沒變動</span><span class="st upd">3 已送過·有新對話</span>
-            <span class="why">remote 在客戶 org 底下 · 已套用較嚴格的替換</span></div>
-          <div class="ct">18</div>
-          <div class="act"><button onclick="flip(this)">改成不交</button></div>
-        </div>
-        <div class="ws" id="i4"
-             data-id="cli-tools" data-tier="in"
-             data-ws="1" data-n="14" data-new="0" data-upd="0" data-sent="14" data-unattr="0" data-msgs="193" data-code="1690" data-img="7" data-path="2425" data-key="2" data-lines="2520" data-reason="">
-          <div><span class="nm">cli-tools</span><span class="st sent">14 已送過</span>
-            <span class="why">公開 repo · 只拿掉金鑰</span></div>
-          <div class="ct">14</div>
-          <div class="act"><button onclick="flip(this)">改成不交</button></div>
-        </div>
-        <div class="ws" id="i5" data-tail="1"
-             data-id="in-rest" data-tier="in" data-kind="agg"
-             data-ws="12" data-n="40" data-new="7" data-upd="0" data-sent="33" data-unattr="24" data-msgs="549" data-code="4812" data-img="19" data-path="6932" data-key="0" data-lines="7202" data-reason="">
-          <div><span class="nm" style="color:var(--ink-3)">… 還有 12 個 workspace</span><span class="st new">7 新</span><span class="st sent">33 已送過</span></div>
-          <div class="ct">40</div>
-          <div class="act"><button onclick="stubExpand(this)">全部展開</button></div>
-        </div>
-        <div class="ws" id="inMirror" hidden>
-          <div><span class="nm">你在上面決定要交出去的</span>
-            <span class="why" id="inMirrorWhy"></span></div>
-          <div class="ct" id="inMirrorCt">0</div>
-          <div class="act"><span class="quiet">在「需要你決定」那一區改</span></div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ── what does not ── -->
-    <details id="outDetails">
-      <summary><span id="outSum">不會交出去 · 13 workspaces · 64 sessions</span><span class="cue"></span></summary>
-      <div class="body" id="outBody">
-        <div class="ws" id="o1"
-             data-id="personal-journal" data-tier="out"
-             data-ws="1" data-n="4" data-new="4" data-upd="0" data-sent="0" data-unattr="0" data-msgs="61" data-code="40" data-img="2" data-path="300" data-key="0" data-lines="700" data-reason="名稱命中私密字樣">
-          <div><span class="nm">personal-journal</span>
-            <span class="why">名稱含 "journal" · 命中私密字樣</span></div>
-          <div class="ct">4</div>
-          <div class="act"><button onclick="flip(this)">其實要交</button></div>
-        </div>
-        <div class="ws" id="o2"
-             data-id="&lt;home&gt;" data-tier="out"
-             data-ws="1" data-n="47" data-new="47" data-upd="0" data-sent="0" data-unattr="47" data-msgs="690" data-code="3900" data-img="41" data-path="8140" data-key="3" data-lines="8460" data-reason="判斷不出歸屬">
-          <div><span class="nm">&lt;home&gt;</span>
-            <span class="why">你的家目錄。不在任何 repo 底下,也不在 projects/ 底下,判斷不出歸屬,所以整包不送。</span></div>
-          <div class="ct">47</div>
-          <div class="act"><button onclick="flip(this)">其實要交</button></div>
-        </div>
-        <div class="ws" id="o3"
-             data-id="acme-payroll-2026" data-tier="out"
-             data-ws="1" data-n="5" data-new="5" data-upd="0" data-sent="0" data-unattr="0" data-msgs="88" data-code="0" data-img="6" data-path="410" data-key="1" data-lines="900" data-reason="名稱命中私密字樣">
-          <div><span class="nm">acme-payroll-2026</span>
-            <span class="why">名稱含 "payroll" · 命中私密字樣</span></div>
-          <div class="ct">5</div>
-          <div class="act"><button onclick="flip(this)">其實要交</button></div>
-        </div>
-        <div class="ws" id="o4"
-             data-id="tax-filing" data-tier="out"
-             data-ws="1" data-n="2" data-new="2" data-upd="0" data-sent="0" data-unattr="0" data-msgs="35" data-code="0" data-img="3" data-path="160" data-key="0" data-lines="360" data-reason="名稱命中私密字樣">
-          <div><span class="nm">tax-filing</span>
-            <span class="why">名稱含 "tax" · 命中私密字樣</span></div>
-          <div class="ct">2</div>
-          <div class="act"><button onclick="flip(this)">其實要交</button></div>
-        </div>
-        <div class="ws" id="o5" data-tail="1"
-             data-id="dropped-sessions" data-tier="out" data-kind="agg"
-             data-ws="0" data-n="2" data-new="2" data-upd="0" data-sent="0" data-unattr="0" data-msgs="29" data-code="210" data-img="1" data-path="380" data-key="0" data-lines="350" data-reason="cwd 碰到私密目錄">
-          <div><span class="nm">單獨挑掉的 session</span>
-            <span class="why">原本在 payments-api 裡,中途 cd 進了私密目錄。這 2 筆已經從 payments-api 扣掉(61 變 59),只算一次。不是一個 workspace,所以不計入上面的 workspace 數。</span></div>
-          <div class="ct">2</div>
-          <div class="act"><button onclick="alert('原型:逐筆列出這 2 筆讓你各自決定')">逐筆看</button></div>
-        </div>
-        <div class="ws" id="o6"
-             data-id="out-rest" data-tier="out" data-kind="agg"
-             data-ws="9" data-n="4" data-new="4" data-upd="0" data-sent="0" data-unattr="0" data-msgs="47" data-code="520" data-img="2" data-path="610" data-key="0" data-lines="720" data-reason="規則排除">
-          <div><span class="nm" style="color:var(--ink-3)">… 還有 9 個 workspace</span></div>
-          <div class="ct">4</div>
-          <div class="act"><button onclick="stubExpand(this)">全部展開</button></div>
-        </div>
-        <div class="ws" id="outMirror" hidden>
-          <div><span class="nm">你在上面決定不交的</span>
-            <span class="why" id="outMirrorWhy"></span></div>
-          <div class="ct" id="outMirrorCt">0</div>
-          <div class="act"><span class="quiet">在「需要你決定」那一區改</span></div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ── grouping: proposed by us, decided by the person who knows ── -->
-    <details>
-      <summary><span id="groupSum">這些 session 屬於哪個專案 · 其中 24 個我們不猜,因為沒有 repo 可判斷</span><span class="cue"></span></summary>
-      <div class="body">
-        <p class="note" style="margin:10px 0 4px" id="groupNote">
-          選進範圍的 153 個裡,129 個從 git remote 判定得出專案,24 個判定不出來。
-          <strong>沒有 repo 的我們不猜</strong>:猜錯了會被寫進送出去的那份檔案,而你事後看不出來是哪一筆猜錯了。
-          標成「未歸屬」是誠實的答案,猜一個不是。你想分就分,不分也可以照樣送出。
-        </p>
-        <div class="ws">
-          <div><span class="nm">payments-api · web-app · cli-tools …</span>
-            <span class="why">從 git remote 判定 · 這個是確定的,不是推測</span></div>
-          <div class="ct" id="attrN">129</div>
-          <div class="act"><span class="quiet" style="color:var(--ok)">已歸屬</span></div>
-        </div>
-        <div class="ws">
-          <div><span class="nm">未歸屬</span>
-            <span class="why">沒有 git remote,磁碟上沒有訊號說得出它屬於哪個專案。</span>
-            <span class="expl">這 24 個所在的 workspace 在 <code>projects/</code> 底下,而且上次匯出時你就決定要送了(決定記在 workspaces.json,這次沿用),所以「送不送」這一層早就定案了,判不出來的只有「屬於哪個專案」這一層。同樣是沒有 git remote 卻待遇不同的另外兩個:sketch-ui 是上次匯出之後才出現的新 workspace,沒有你的決定可以沿用,所以擋在上面問你;&lt;home&gt; 不在任何 repo 底下、也不在 <code>projects/</code> 底下,連 workspace 那一層都沒過,所以整包不送。</span></div>
-          <div class="ct" id="unattrN">24</div>
-          <div class="act"><button onclick="stubGroup()">我來分</button></div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ── incremental: what this particular run adds ── -->
-    <div class="thisrun">
-      <div class="big" id="runN">42</div>
-      <div class="txt">
-        <strong id="runLine">本次送出 42 個 session</strong><br>
-        <span id="runMath"></span>
-        <button class="link" style="padding:0" onclick="stubResend()">改成全部重送</button>
-      </div>
-    </div>
-
-    <div class="panel" style="margin-top:22px">
-      <h2>上次匯出之後的變化</h2>
-      <div class="body">
-        <div class="row">
-          <div class="label">上次匯出
-            <span class="sub">2026-08-08 · 114 sessions · deident-2026-08-08.zip</span></div>
-          <div class="fig">14 天前</div>
-        </div>
-        <div class="row">
-          <div class="label">上次送出過、這次被你排除的:<span id="pulledNames">目前沒有</span>
-            <span class="sub grave" id="pulledGrave" hidden>已經送出去的那一份不會因此消失。要刪必須另外通知收件人。</span></div>
-          <div class="fig">
-            <span id="pulledFig" class="pill ok">0 個 session</span>
-            <button style="padding:4px 10px;font-size:12px" onclick="stubPulled()">看是哪些</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <h2 id="contentH2">選進範圍的內容裡</h2>
-      <div class="body">
-        <p class="note" id="contentNote" style="margin:10px 0 4px"></p>
-        <div class="row">
-          <div class="label">程式碼
-            <div class="removed"><i id="barCode" style="width:118px"></i> <span id="cntCode">18,402</span> 行已計數,只送數字</div>
-          </div>
-          <div class="fig zero">0 行</div>
-        </div>
-        <div class="row">
-          <div class="label">圖片與截圖
-            <div class="removed"><i id="barImg" style="width:46px"></i> <span id="cntImg">73</span> 張換成佔位符</div>
-          </div>
-          <div class="fig zero">0 張</div>
-        </div>
-        <div class="row">
-          <div class="label">檔案路徑
-            <div class="removed"><i id="barPath" style="width:152px"></i> <span id="cntPath">26,505</span> 處已替換</div>
-          </div>
-          <div class="fig zero">0 條</div>
-        </div>
-        <div class="row">
-          <div class="label">金鑰形狀的字串
-            <div class="removed"><i id="barKey" style="width:14px"></i> <span id="cntKey">8</span> 處已替換</div>
-          </div>
-          <div class="fig zero">0 個</div>
-        </div>
-        <div class="row">
-          <div class="label">人名與公司名
-            <span class="sub" id="entSub"></span>
-            <span class="sub grave" id="entClear" hidden></span>
-            <div class="rowacts">
-              <button onclick="stubEntities()">看這 47 個</button>
-              <button onclick="toggle('d-sample', this, '看一段處理後的樣子', '收起範例')">看一段處理後的樣子</button>
-            </div>
-          </div>
-          <div class="fig" id="entFig">52</div>
-        </div>
-
-        <div class="disclosure" id="d-sample">
-          <div class="sample">
-            <p class="note" style="margin:12px 0 2px">
-              左邊是你語料裡的原文,右邊是交出去的檔案裡實際會有的字。每一類替換各一組。
-              同一個人不管出現幾次、有幾種寫法,代號永遠是同一個。
-            </p>
-            <div class="pair"><span class="k">人名</span>
-              <span class="b"><span class="tag">原文</span>…跟 <mark>Marta Alvarez</mark> 約禮拜四,<mark>Marta</mark> 說她下週交…</span>
-              <span class="a"><span class="tag">送出</span>…跟 <ins>PERSON_03</ins> 約禮拜四,<ins>PERSON_03</ins> 說她下週交…</span></div>
-            <div class="pair"><span class="k">公司名</span>
-              <span class="b"><span class="tag">原文</span>…<mark>Northwind Health</mark> 那邊的 schema 又改了,<mark>northwind</mark> 那個 repo…</span>
-              <span class="a"><span class="tag">送出</span>…<ins>ORG_01</ins> 那邊的 schema 又改了,<ins>ORG_01</ins> 那個 repo…</span></div>
-            <div class="pair"><span class="k">檔案路徑</span>
-              <span class="b"><span class="tag">原文</span>幫我看 <mark>C:\Users\devuser\projects\payments-api\src\billing.ts</mark></span>
-              <span class="a"><span class="tag">送出</span>幫我看 <ins>&lt;PATH_412&gt;</ins></span></div>
-            <div class="pair"><span class="k">圖片</span>
-              <span class="b"><span class="tag">原文</span><mark>[貼上截圖 screenshot-2026-08-14.png · 1.2 MB]</mark></span>
-              <span class="a"><span class="tag">送出</span><ins>&lt;IMAGE_07&gt;</ins>,只留「這裡有一張圖」,圖本身不進 zip</span></div>
-            <div class="pair"><span class="k">金鑰</span>
-              <span class="b"><span class="tag">原文</span>export STRIPE_KEY=<mark>sk_live_51QhT2mB9kFwq8xZr</mark></span>
-              <span class="a"><span class="tag">送出</span>export STRIPE_KEY=<ins>&lt;SECRET_03&gt;</ins></span></div>
-            <p class="note" style="margin:12px 0 2px">
-              原型:這五組是寫死的示意。真的版本從你這次選進範圍的語料裡隨機抽,想再看一組就再按一次。
-            </p>
-          </div>
-        </div>
-        <div class="row">
-          <div class="label">Claude 的回覆
-            <span class="sub">整段留著。裡面的程式碼、路徑、圖片、金鑰照上面四列一起抽掉,只留對話。</span></div>
-          <div class="fig">已清理</div>
-        </div>
-        <div class="row">
-          <div class="label">你自己打的字
-            <span class="sub"><span id="cntMsg">2,104</span> 則訊息,原文保留、不做任何處理。</span>
-            <span class="sub grave">收件人讀的就是這些字,並依此評估你怎麼用 AI coding agent。分數怎麼算、給誰看、會不會影響到你,這個工具不知道也管不到,要問 GitRoll 內部評測小組。</span></div>
-          <div class="fig" id="cntMsgFig">2,104</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <h2 id="s1ckH2">檢查 · 還沒跑</h2>
-      <div class="body" id="s1checks">
-        <p class="note" style="margin:10px 0 4px" id="s1ckNote"></p>
-        <div class="row">
-          <div class="label">每一行都能原樣重建
-            <span class="sub" id="s1ck1">上次:27,545 / 27,545 行位元組相同</span></div>
-          <div class="fig"><span class="pill mute">等第 3 步</span></div>
-        </div>
-        <div class="row">
-          <div class="label">每一次替換都能還原
-            <span class="sub" id="s1ck2">上次:1,284 次替換</span></div>
-          <div class="fig"><span class="pill mute">等第 3 步</span></div>
-        </div>
-        <div class="row">
-          <div class="label">代號沒有跟原文撞名
-            <span class="sub" id="s1ck3">上次:語料裡沒有既存的 PERSON_n 字樣</span></div>
-          <div class="fig"><span class="pill mute">等第 3 步</span></div>
-        </div>
-        <div class="row">
-          <div class="label">已知實體殘留
-            <span class="sub" id="s1ck4">回頭搜尋每一個要換掉的實體的原始寫法。搜尋範圍要等你確認完名字才定得下來。</span></div>
-          <div class="fig"><span class="pill mute">等第 3 步</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="limits">
-      <h3>擋不住的東西</h3>
-      <ul>
-        <li>裝置指紋:你裝的 MCP server 名稱、模型使用比例、CLI 版本序列。單獨看都很弱,合起來接近唯一。</li>
-        <li>你自己貼進對話的文件原文。名字被換掉了,但那段文字還在,可以拿去跟原始文件比對。</li>
-        <li>「已知實體殘留 0」的意思是「我們知道的那些沒漏」,不等於「沒有東西外洩」。</li>
-        <li>代號是用你本機的一把 salt 算出來的,salt 留在 <code>~/.deident-private/salt</code>。不要跟 zip 一起寄、不要 commit:拿到 salt 的人可以把代號還原回原名。</li>
-      </ul>
-    </div>
-
-    <div class="disclosure" id="d-sessions">
-      <div class="panel">
-        <h2 id="sessH2">逐筆</h2>
-        <p class="note" style="margin:10px 0 6px">
-          這裡也可以逐筆改。工具挑掉的那幾筆(✕)你可以要回來,它要送的那幾筆(✓)你可以拿掉。
-          往「送出更多」的方向改,跟 workspace 一樣要打字確認。
-        </p>
-        <div class="body sesslist">
-          <div><span>✓</span><span>08-15</span><span class="q">把 passport 的 hero section 重做</span><span class="why"></span><span class="act2"><button onclick="sessFlip(this,false)">改成不送</button></span></div>
-          <div><span>✓</span><span>08-15</span><span class="q">這個 residual scan 要怎麼寫比較好</span><span class="why"></span><span class="act2"><button onclick="sessFlip(this,false)">改成不送</button></span></div>
-          <div class="drop"><span>✕</span><span>08-14</span><span class="q">幫我看一下這個月薪水怎麼算</span><span class="why">碰到私密目錄</span><span class="act2"><button onclick="sessFlip(this,true)">其實要送</button></span></div>
-          <div><span>✓</span><span>08-14</span><span class="q">CI 一直在 flaky,幫我找根因</span><span class="why"></span><span class="act2"><button onclick="sessFlip(this,false)">改成不送</button></span></div>
-          <div class="drop"><span>✕</span><span>08-13</span><span class="q">幫我改一下這封給房東的信</span><span class="why">碰到私密目錄</span><span class="act2"><button onclick="sessFlip(this,true)">其實要送</button></span></div>
-          <div><span>✓</span><span>08-13</span><span class="q">把 domain 分類的成本壓下來</span><span class="why"></span><span class="act2"><button onclick="sessFlip(this,false)">改成不送</button></span></div>
-          <div style="border:0;padding-top:10px;color:var(--ink-3)"><span></span><span></span><span class="q" id="sessMore">… 還有 149 筆</span><span></span><span class="act2"><button onclick="alert('原型：往下翻完整列表，每一筆都跟上面一樣可以單獨改')">往下翻</button></span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="actions">
-      <button class="primary" id="next1" onclick="go(2)" disabled>先決定上面那 2 個</button>
-      <button class="link" onclick="toggle('d-sessions', this, '逐筆看每一個 session', '收起逐筆清單')">逐筆看每一個 session</button>
-    </div>
-
-    <p class="hint">你的決定寫進 <code>~/.deident-private/workspaces.json</code>,下次直接沿用,不會再問。那個檔案是你的,可以自己開來看、自己改、或整個刪掉重來。</p>
-  </section>
-
-  <!-- ══════════════════════ SCREEN 2 ══════════════════════ -->
-  <section class="screen" id="scr2" tabindex="-1">
-
-    <p class="note">
-      第 1 頁講的 47 個實體,是直接從 git config 和 git remote 讀出來的,身分是確定的,一定換成代號,不在這張清單上。
-      「不用你逐一確認」跟「你看不到」是兩件事:第 1 頁那一列的「看這 47 個」會把每一個列出來,代號、幾種寫法、出現次數、從哪個 git 欄位讀到的。
-      下面這 8 個不一樣:是<strong>本機跑的模型</strong>從對話裡猜的,過程沒有連網,結果只寫進你自己電腦上的 review.md。
-      要你看過的只有這 8 個。
-    </p>
-
-    <p class="note" style="color:var(--ink);font-weight:600;font-size:14.5px">
-      勾起來 = 換成代號送出。沒勾 = 原名原封不動寫進交出去的檔案。
-    </p>
-
-    <p class="note">
-      模型不確定的那幾個,預設也先勾起來。跟第 1 頁同一個原則:判斷不出來的先保護,你確定它不是人名或公司,再自己取消。
-      一次改一個不會另外問你,改了什麼下面那行會立刻列出來,再點一下就換回來;一次改一整批才會先問,因為那種改法你事後看不出自己動到了哪幾個。
-    </p>
-
-    <div class="panel">
-      <h2 id="candH2">候選 · 8 個 · 已勾選 8</h2>
-      <div class="body">
-        <div style="padding:8px 0 12px;display:flex;gap:8px;flex-wrap:wrap">
-          <button onclick="setAll(true)">全選</button>
-          <button onclick="setAll(false)">全不選</button>
-          <button onclick="resetCands()">回到模型的預設</button>
-        </div>
-        <div class="cands" id="cands">
-          <label class="cand"><input type="checkbox" checked><span class="name">Paul Kedrosky<b class="conf hi">高信心 · 出現 4 次</b></span><span class="ctx">…看了 <mark>Paul Kedrosky</mark> 那篇講折舊的…</span><span class="n">4</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">Rosa Barnard<b class="conf hi">高信心 · 出現 2 次</b></span><span class="ctx">…跟 <mark>Rosa Barnard</mark> 約禮拜四…</span><span class="n">2</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">Northwind Health<b class="conf hi">高信心 · 出現 11 次</b></span><span class="ctx">…<mark>Northwind Health</mark> 那邊的 schema…</span><span class="n">11</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">Marta Alvarez<b class="conf hi">高信心 · 出現 6 次</b></span><span class="ctx">…<mark>Marta Alvarez</mark> 說她下週交…</span><span class="n">6</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">Ridgeline Capital<b class="conf hi">高信心 · 出現 3 次</b></span><span class="ctx">…寄給 <mark>Ridgeline Capital</mark> 的 deck…</span><span class="n">3</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">Good Friday<b class="conf lo">低信心 · 模型覺得這是節日不是人,但它不確定,所以預設先換掉</b></span><span class="ctx">…<mark>Good Friday</mark> 放假所以…</span><span class="n">1</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">Brex Card<b class="conf lo">低信心 · 模型覺得這是產品不是公司,但它不確定,所以預設先換掉</b></span><span class="ctx">…用 <mark>Brex Card</mark> 付掉了…</span><span class="n">3</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">M1019757<b class="conf lo">低信心 · 模型覺得這是料號不是人,但它不確定,所以預設先換掉</b></span><span class="ctx">…換 <mark>M1019757</mark> 這條散熱膏…</span><span class="n">1</span></label>
-        </div>
-        <p class="note" id="candOut" style="margin:14px 0 0"></p>
-      </div>
-    </div>
-
-    <div class="actions">
-      <button class="primary" onclick="exportNow()">確定,產出檔案</button>
-      <button onclick="go(1)">回上一步</button>
-    </div>
-
-  </section>
-
-  <!-- ══════════════════════ SCREEN 3 ══════════════════════ -->
-  <section class="screen" id="scr3" tabindex="-1">
-
-    <div class="done">
-      <div class="stale" id="zipStale" hidden><strong>這個檔案是舊的。</strong>
-        <span id="zipStaleTxt"></span></div>
-      <div class="file">
-        <span style="color:var(--ink)">deident-2026-08-22.zip</span>
-        <span id="zipMeta">約 14.2 MB · 本次送出 42 個 session</span>
-      </div>
-      <p class="zipsub" id="zipSub"></p>
-      <p class="zipsub">原型:這裡沒有真的在硬碟上寫出檔案。</p>
-
-      <div class="limits" style="margin-top:22px">
-        <h3>交出去之前,先知道這份檔案擋不住什麼</h3>
-        <ul>
-          <li>裝置指紋:你裝的 MCP server 名稱、模型使用比例、CLI 版本序列。合起來接近唯一。</li>
-          <li>你自己貼進對話的文件原文。名字換掉了,那段文字還在,可以拿去跟原始文件比對。</li>
-          <li>「已知實體殘留 0」的意思是「我們知道的那些沒漏」,不等於「沒有東西外洩」。</li>
-        </ul>
-      </div>
-
-      <div class="panel">
-        <h2>檢查 · 這一份的結果</h2>
-        <div class="body">
-          <p class="note" style="margin:10px 0 4px">
-            這四項的範圍不一樣,所以每一列都標了自己的範圍。前三項是對你選進範圍的整批語料驗的,
-            因為替換表和序列化是整批一起做的;最後一項是對這個 zip 的實際內容驗的。
-          </p>
-          <div class="row">
-            <div class="label">每一行都能原樣重建
-              <span class="sub" id="ck1"></span></div>
-            <div class="fig"><span class="pill ok">通過</span></div>
-          </div>
-          <div class="row">
-            <div class="label">每一次替換都能還原
-              <span class="sub" id="ck2"></span></div>
-            <div class="fig"><span class="pill ok">通過</span></div>
-          </div>
-          <div class="row">
-            <div class="label">代號沒有跟原文撞名
-              <span class="sub" id="ck3"></span></div>
-            <div class="fig"><span class="pill ok">通過</span></div>
-          </div>
-          <div class="row">
-            <div class="label">已知實體殘留
-              <span class="sub" id="ck4"></span>
-              <span class="sub grave" id="ck4b" hidden></span></div>
-            <div class="fig"><span class="pill ok">0 命中</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel" style="margin-top:18px">
-        <h2>接下來</h2>
-        <div class="body">
-          <div class="row">
-            <div class="label">把這個檔案交出去
-              <span class="sub">內部測試階段,直接傳給 GitRoll 內部評測小組</span></div>
-            <div class="fig"><button id="openBtn" onclick="openOrRerun()">開啟資料夾</button></div>
-          </div>
-          <div class="row">
-            <div class="label">salt 留在這台電腦,不要跟 zip 一起走
-              <span class="sub grave">代號是用 <code>~/.deident-private/salt</code> 算出來的。拿到 salt 的人可以把代號還原回原名,所以不要一起寄、不要 commit。</span></div>
-            <div class="fig"><span class="pill warn">別外流</span></div>
-          </div>
-          <div class="row">
-            <div class="label">留著原始檔,先別刪
-              <span class="sub">萬一需要重跑,原檔就是唯一的還原來源</span></div>
-            <div class="fig"></div>
-          </div>
-          <div class="row">
-            <div class="label">稽核紀錄
-              <span class="sub">review.md 記下了這次的每一個決定</span></div>
-            <div class="fig"><button onclick="alert('原型:開啟 review.md')">開啟</button></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="actions">
-        <button onclick="restart()">重跑一次</button>
-      </div>
-    </div>
-
-
-  </section>
-
 </div>
 
 <script>
-  /* ─────────────────────────────────────────────────────────────
-     ONE state table. Every number on every screen is derived from
-     it in paint(), so two figures describing the same set cannot
-     drift apart. Row tiers and the eight candidate checkboxes are
-     the only mutable state.
-     ───────────────────────────────────────────────────────────── */
-  var ROWS = [];
-  var els = document.querySelectorAll('.ws[data-n]');
-  for (var i = 0; i < els.length; i++) {
-    var el = els[i];
-    ROWS.push({
-      el:   el,
-      id:   el.getAttribute('data-id'),
-      kind: el.getAttribute('data-kind') || '',
-      ws:   +el.getAttribute('data-ws'),
-      n:    +el.getAttribute('data-n'),
-      nw:   +el.getAttribute('data-new'),
-      upd:  +el.getAttribute('data-upd'),
-      sent: +el.getAttribute('data-sent'),
-      unat: +el.getAttribute('data-unattr'),
-      msg:  +el.getAttribute('data-msgs'),
-      code: +el.getAttribute('data-code'),
-      img:  +el.getAttribute('data-img'),
-      path: +el.getAttribute('data-path'),
-      key:  +el.getAttribute('data-key'),
-      line: +el.getAttribute('data-lines'),
-      why:  el.getAttribute('data-reason') || '',
-      tier: el.getAttribute('data-tier'),
-      /* what the rules proposed. Never mutated, so a reversal can say honestly
-         whether the exclusion was the tool's decision or the reader's own. */
-      auto: el.getAttribute('data-tier')
+/* One state table. Every figure on the page is derived from it, never stored. */
+var SESSIONS = [
+  { id:'s1',  d:'08-14', ws:'payments-api', q:'幫我看一下這個月薪水怎麼算', out:true, reason:'碰到私密目錄', denied:true, days:8,
+    tx:[['你','幫我看一下這個月薪水怎麼算'],['Claude','我讀了 <PATH_88>,先確認幾個欄位…'],['tool','讀了 2 個檔案 · 已清理'],['你','那 <PERSON_07> 那筆呢']] },
+  { id:'s2',  d:'08-13', ws:'<home>', q:'幫我改一下這封給房東的信', out:true, reason:'碰到私密目錄', denied:true, days:9,
+    tx:[['你','幫我改一下這封給房東的信'],['Claude','語氣可以再收一點…']] },
+  { id:'s3',  d:'08-16', ws:'payments-api', q:'這個 residual scan 要怎麼寫比較好', out:false, days:6, isnew:true,
+    tx:[['你','這個 residual scan 要怎麼寫比較好'],['Claude','先在序列化之後的位元組上跑,不要在物件上跑…'],['tool','Bash: node test.mjs · exit 0'],['你','那 <PERSON_03> 說的那個 case 呢']] },
+  { id:'s4',  d:'08-15', ws:'web-app', q:'把 passport 的 hero section 重做', out:false, days:7, isnew:true,
+    tx:[['你','把 passport 的 hero section 重做'],['Claude','七個數字擠在一行,先砍到四個…'],['tool','Edit: <PATH_204> · +164 / -43']] },
+  { id:'s5',  d:'08-14', ws:'payments-api', q:'CI 一直在 flaky,幫我找根因', out:false, days:8, isnew:true,
+    tx:[['你','CI 一直在 flaky,幫我找根因'],['Claude','先看 <PATH_412> 這支測試的 setup…'],['tool','Bash: pytest -x · exit 1'],['你','跟 <PERSON_03> 約禮拜四,<PERSON_03> 說她下週交']] },
+  { id:'s6',  d:'08-12', ws:'northwind-integration', q:'把 domain 分類的成本壓下來', out:false, days:10,
+    tx:[['你','把 domain 分類的成本壓下來'],['Claude','by-turn 換成 by-session,大概三倍…'],['tool','讀了 6 個檔案 · 已清理'],
+        ['你','Kaito 那邊要的是逐月還是逐週']] },
+  { id:'s7',  d:'08-11', ws:'web-app', q:'這個 migration 會不會鎖表', out:false, days:11,
+    tx:[['你','這個 migration 會不會鎖表'],['Claude','會,ALTER 在這個版本是 full rewrite…'],
+        ['你','先跟 Kaito 確認再上']] },
+  { id:'s8',  d:'08-09', ws:'<home>', q:'幫我把這份合約的重點列出來', out:true, reason:'無 repo,不可判斷', denied:true, days:13,
+    tx:[['你','幫我把這份合約的重點列出來'],['Claude','第 4 條的賠償上限…']] },
+];
+var HIDDEN = 153;   /* rows not rendered in this prototype */
+
+var CANDS = [
+  { n:'Paul Kedrosky',    hint:'4 次 · 3 個 session', ctx:'…看了 <em>Paul Kedrosky</em> 那篇講折舊的…',  on:true },
+  { n:'Rosa Barnard',  hint:'2 次 · 1 個 session', ctx:'…跟 <em>Rosa Barnard</em> 約禮拜四…',      on:true },
+  { n:'Northwind Health', hint:'11 次 · 6 個 session',ctx:'…<em>Northwind Health</em> 那邊的 schema…',   on:true },
+  { n:'Marta Alvarez',    hint:'6 次 · 2 個 session', ctx:'…<em>Marta Alvarez</em> 說她下週交…',         on:true },
+  { n:'Ridgeline Capital',hint:'3 次 · 2 個 session', ctx:'…寄給 <em>Ridgeline Capital</em> 的 deck…',   on:true },
+  { n:'Good Friday',      hint:'1 次 · 1 個 session', ctx:'…<em>Good Friday</em> 放假所以…',             on:false },
+  { n:'Brex Card',        hint:'3 次 · 2 個 session', ctx:'…用 <em>Brex Card</em> 付掉了…',              on:false },
+  { n:'M1019757',         hint:'1 次 · 1 個 session', ctx:'…換 <em>M1019757</em> 這條散熱膏…',           on:false },
+];
+
+/* What the reader actually did. The attestation reports this, not a claim. */
+var seen = {}, searches = [], searchHits = 0;
+
+function visible() {
+  var ws = document.getElementById('fws').value;
+  var dr = document.getElementById('fdate').value;
+  var nw = document.getElementById('fnew').checked;
+  var days = dr === '過去 7 天' ? 7 : dr === '過去 30 天' ? 30 : 9999;
+  return SESSIONS.filter(function (s) {
+    if (ws && s.ws !== ws) return false;
+    if (s.days > days) return false;
+    if (nw && !s.isnew) return false;
+    return true;
+  });
+}
+
+function esc(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+function mark(text, term) {
+  if (!term) return esc(text);
+  var i = text.toLowerCase().indexOf(term.toLowerCase());
+  if (i < 0) return esc(text);
+  return esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + term.length)) +
+         '</mark>' + esc(text.slice(i + term.length));
+}
+
+function render() {
+  var term = document.getElementById('q').value.trim();
+  var rows = visible().slice().sort(function (a, b) {
+    if (a.out !== b.out) return a.out ? -1 : 1;   /* worst first */
+    return a.d < b.d ? 1 : -1;
+  });
+
+  var html = '';
+  rows.forEach(function (s) {
+    var op = seen[s.id];
+    html += '<div class="row ' + (s.out ? 'out ' : '') + (op ? 'opened' : '') +
+            '" data-id="' + s.id + '">' +
+      '<div class="mk">' + (s.out ? '✕' : '✓') + '</div>' +
+      '<div class="dt">' + s.d + '</div>' +
+      '<div class="q">' + mark(s.q, term) + '</div>' +
+      '<div class="rz">' + (s.out ? esc(s.reason) : '') + '</div>' +
+      '<button class="go" data-flip="' + s.id + '">' +
+        (s.out ? '其實要送' : '改成不送') + '</button>' +
+      '</div>';
+    if (op) {
+      html += '<div class="tx">';
+      s.tx.forEach(function (t) {
+        if (t[0] === 'tool') {
+          html += '<div class="t"><div class="who"></div><div class="tool">[ ' + esc(t[1]) + ' ]</div></div>';
+        } else {
+          html += '<div class="t"><div class="who">' + esc(t[0]) + '</div><div>' +
+                  esc(t[1]).replace(/&lt;([A-Z_]+\d*)&gt;/g, '<span class="sub">&lt;$1&gt;</span>') +
+                  '</div></div>';
+        }
+      });
+      html += '<div class="foot"><span>' + s.ws + '</span><span>程式碼 0 行(算過 88 行)</span>' +
+              '<span>圖片 0 張</span><span>路徑 0 條(換掉 31 處)</span></div></div>';
+    }
+  });
+
+  if (!term && !document.getElementById('fws').value) {
+    html += '<div class="more">…還有 ' + HIDDEN + ' 列,同樣的形狀,往下捲</div>';
+  }
+  document.getElementById('list').innerHTML = html;
+
+  var vis = visible();
+  var out = vis.filter(function (s) { return s.out; }).length;
+  var extra = document.getElementById('fws').value || term ? 0 : HIDDEN;
+  document.getElementById('tally').innerHTML =
+    '顯示 <b>' + (vis.length + extra) + '</b> 筆 · 選進 <b>' + (vis.length + extra - out) +
+    '</b> · <span class="cutn">不送 ' + out + '</span>';
+  paintAtt();
+}
+
+function renderCands() {
+  document.getElementById('cands').innerHTML = CANDS.map(function (c, i) {
+    return '<div class="cand">' +
+      '<div class="nm">' + esc(c.n) + '<small>' + c.hint + '</small></div>' +
+      '<div class="ctx">' + c.ctx + '</div>' +
+      '<div class="pick">' +
+        '<button data-c="' + i + '" data-v="1" class="' + (c.on ? 'sel' : '') + '">換掉</button>' +
+        '<button data-c="' + i + '" data-v="0" class="' + (c.on ? '' : 'sel') + '">保留原文</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+function paintAtt() {
+  var out = SESSIONS.filter(function (s) { return s.out; }).length;
+  var ship = SESSIONS.length - out + HIDDEN;
+  var repl = CANDS.filter(function (c) { return c.on; }).length + 46;
+  document.getElementById('a-scope').innerHTML =
+    '<span class="q">' + ship + '</span> 個 session,<span class="q">2,178</span> 則你自己打的訊息,' +
+    '<span class="q">' + repl + '</span> 個實體換成代號。程式碼 0 行,圖片 0 張。';
+
+  /* Reports what the reader did, not what they claim. Reading and searching are
+     counted separately, because doing only one of them is still doing one. */
+  var n = Object.keys(seen).length;
+  var el = document.getElementById('a-read');
+  el.className = (n === 0 && !searches.length) ? 'thin' : '';
+  var read = n === 0 ? '沒有打開過任何一個 session 的全文'
+                     : '<span class="q">' + n + '</span> 個 session 的全文';
+  var look = !searches.length ? '沒有搜尋過任何名字'
+    : '搜尋了 <span class="q">' + searches.length + '</span> 個詞' +
+      (searchHits ? '(其中 <span class="q">' + searchHits + '</span> 個有命中,已加入替換)'
+                  : '(都沒有命中)');
+  el.innerHTML = read + ',' + look + '。';
+
+  var d = new Date(2026, 7, 22, 14, 7);
+  document.getElementById('stamp').textContent =
+    d.getFullYear() + '-08-22 14:07 · ' + ship + ' sessions';
+}
+
+/* Excluding is one click. Including something the rules denied costs a typed
+   confirmation, because that direction is the one that leaks. */
+document.getElementById('list').addEventListener('click', function (e) {
+  var f = e.target.closest('[data-flip]');
+  if (f) {
+    e.stopPropagation();
+    var s = SESSIONS.find(function (x) { return x.id === f.dataset.flip; });
+    if (s.out && s.denied) {
+      var t = prompt('把這個 session 改成會送出。\n\n它被排除的理由是:' + s.reason +
+                     '\n\n往「送出更多」的方向改要打字確認,請輸入:送出');
+      if (t !== '送出') return;
+    }
+    s.out = !s.out;
+    render();
+    return;
+  }
+  var r = e.target.closest('.row');
+  if (r) { seen[r.dataset.id] = !seen[r.dataset.id]; render(); }
+});
+
+document.getElementById('cands').addEventListener('click', function (e) {
+  var b = e.target.closest('[data-c]');
+  if (!b) return;
+  CANDS[+b.dataset.c].on = b.dataset.v === '1';
+  renderCands(); paintAtt();
+});
+
+var timer;
+document.getElementById('q').addEventListener('input', function () {
+  clearTimeout(timer);
+  var term = this.value.trim();
+  timer = setTimeout(function () {
+    render();
+    var hit = document.getElementById('hit');
+    if (term.length < 2) { hit.className = 'hit'; return; }
+    var found = SESSIONS.filter(function (s) {
+      return (s.q + ' ' + s.tx.map(function (t) { return t[1]; }).join(' '))
+        .toLowerCase().includes(term.toLowerCase());
     });
-  }
-
-  var PREV_TOTAL  = 114;   /* what the 2026-08-08 export contained */
-  var SEEDED_ENTS = 47;    /* read straight out of git config / git remote */
-  var SEEDED_OCC  = 1258;  /* their occurrences, replaced without asking */
-  var MB_PER      = 0.338; /* prototype: rough zip size per session */
-
-  var exported = false, maxStep = 1, exportedAt = null;
-  /* what the produced file actually contains. Frozen at export time, because a
-     zip on disk does not rewrite itself when you go back and click something. */
-  var frozen = null;
-
-  function sum(tier, key) {
-    var t = 0;
-    for (var i = 0; i < ROWS.length; i++) if (ROWS[i].tier === tier) t += ROWS[i][key];
-    return t;
-  }
-
-  function rowById(domId) {
-    for (var i = 0; i < ROWS.length; i++) if (ROWS[i].el.id === domId) return ROWS[i];
-    return null;
-  }
-
-  function T(id, s) { document.getElementById(id).textContent = s; }
-  function fmt(n) { return n.toLocaleString('en-US'); }
-
-  /* the candidate list is state too, so it derives like everything else */
-  function cands() {
-    var boxes = document.querySelectorAll('#cands input');
-    var on = [], off = [], occ = 0;
-    for (var i = 0; i < boxes.length; i++) {
-      var lab = boxes[i].parentNode;
-      var nm  = lab.querySelector('.name').firstChild.nodeValue;
-      var k   = +lab.querySelector('.n').textContent;
-      if (boxes[i].checked) { on.push(nm); occ += k; } else { off.push(nm); }
-    }
-    return { total: boxes.length, on: on, off: off, occ: occ };
-  }
-
-  /* everything a produced file depends on, in one string */
-  function fingerprint() {
-    var s = [];
-    for (var i = 0; i < ROWS.length; i++) s.push(ROWS[i].id + '=' + ROWS[i].tier);
-    return s.join(',') + '|' + cands().on.join(',');
-  }
-
-  function mark(r) {
-    r.el.classList.add('settled');
-    var m = r.el.querySelector('.chosen');
-    if (!m) {
-      m = document.createElement('span');
-      m.className = 'chosen';
-      r.el.querySelector('.why').parentNode.appendChild(m);
-    }
-    var already = r.sent + r.upd;
-    if (r.tier === 'in') {
-      m.className = 'chosen';
-      m.textContent = '你選了:交出去 · 隨時可以改回來';
-    } else if (already) {
-      /* the only irreversible thing in the whole flow, said next to the click
-         that caused it rather than in a panel further down the page */
-      m.className = 'chosen grave';
-      m.textContent = '你選了:不交。但這個 workspace 的 ' + already +
-        ' 個 session 上次已經送出去了,那一份收不回來,要刪只能另外通知收件人。隨時可以改回來。';
+    if (!found.length) {
+      hit.className = 'hit on';
+      hit.innerHTML = '「<b>' + esc(term) + '</b>」在要送出的內容裡找不到。';
     } else {
-      m.className = 'chosen';
-      m.textContent = '你選了:不交 · 隨時可以改回來';
+      hit.className = 'hit on';
+      hit.innerHTML = '「<b>' + esc(term) + '</b>」在 <b>' + found.length +
+        '</b> 個要送出的 session 裡還在。這是工具不認識的東西。' +
+        '<button id="addent">把它加進替換清單</button>';
+      document.getElementById('addent').onclick = function () {
+        if (searches.indexOf(term) < 0) { searches.push(term); searchHits++; }
+        hit.className = 'hit';
+        document.getElementById('q').value = '';
+        render();
+      };
     }
-  }
+    if (searches.indexOf(term) < 0 && !found.length) searches.push(term);
+  }, 220);
+});
 
-  /* Reversing toward LESS exposure is one click. Reversing toward MORE exposure
-     costs a typed workspace id, wherever it happens: an auto-excluded workspace
-     and a decide row you already settled are the same move, so they go through
-     the same guard. The id is the stable one, never a rendered Chinese label
-     nobody can type without an IME. */
-  function confirmMore(r) {
-    var why = r.auto === 'out'
-      ? r.id + ' 是規則自動排除的(' + r.why + ')。'
-      : r.id + ' 是你自己剛才改成不交的。';
-    var typed = prompt(
-      '把 ' + r.id + ' 改成會交出去。\n\n' + why +
-      '\n要往「送出更多」的方向改,請照抄下面這一行 workspace 代號:\n\n' + r.id);
-    return typed !== null && typed === r.id;
-  }
+['fws', 'fdate', 'fnew'].forEach(function (id) {
+  document.getElementById(id).addEventListener('change', render);
+});
 
-  /* The row stays. The chosen button becomes the selected state and the other
-     one stays live, so a misclick is one more click to fix, not a lost row. */
-  function decide(domId, verdict) {
-    var r = rowById(domId);
-    if (r.tier === verdict) return;
-    if (verdict === 'in' && r.tier === 'out' && !confirmMore(r)) return;
-    r.tier = verdict;
-    var btns = r.el.querySelectorAll('.act button');
-    btns[0].classList.toggle('sel', verdict === 'in');
-    btns[1].classList.toggle('sel', verdict === 'out');
-    mark(r);
-    paint();
-  }
+document.getElementById('ship').addEventListener('click', function () {
+  var n = Object.keys(seen).length;
+  if (n === 0 && !confirm('你一個 session 的全文都沒打開過。\n\n具結書會照實寫「你實際看過 0 個」。要繼續嗎?')) return;
+  var out = SESSIONS.filter(function (s) { return s.out; }).length;
+  document.getElementById('done').className = 'done on';
+  document.getElementById('donemeta').textContent =
+    '約 16.2 MB · ' + (SESSIONS.length - out + HIDDEN) + ' 個 session · 具結書已附在裡面';
+  this.disabled = true;
+  this.textContent = '已產出';
+});
 
-  function flip(btn) {
-    var r = rowById(btn.closest('.ws').id);
-    var dir = r.tier === 'in' ? 'out' : 'in';
-    if (dir === 'in' && !confirmMore(r)) return;
-
-    r.tier = dir;
-    var target = document.getElementById(dir === 'in' ? 'inBody' : 'outBody');
-    target.insertBefore(r.el, target.querySelector('[data-tail]'));
-    document.getElementById(dir === 'in' ? 'inDetails' : 'outDetails').open = true;
-
-    btn.textContent = dir === 'in' ? '改成不交' : '其實要交';
-    mark(r);
-    paint();
-    r.el.scrollIntoView({ block: 'center' });
-    /* insertBefore moved this button's row, which blurs it. The row's own promise
-       is 隨時可以改回來, so the way back has to stay one keystroke away. */
-    btn.focus({ preventScroll: true });
-  }
-
-  function mirror(prefix, tier) {
-    var names = [], n = 0;
-    for (var i = 0; i < ROWS.length; i++) {
-      var r = ROWS[i];
-      if (r.kind === 'decide' && r.tier === tier) { names.push(r.id + '(' + r.n + ')'); n += r.n; }
-    }
-    var row = document.getElementById(prefix + 'Mirror');
-    row.hidden = names.length === 0;
-    document.getElementById(prefix + 'MirrorWhy').textContent = names.join(' · ');
-    document.getElementById(prefix + 'MirrorCt').textContent = n;
-  }
-
-  function pulled() {
-    var names = [], n = 0;
-    for (var i = 0; i < ROWS.length; i++) {
-      var r = ROWS[i];
-      if (r.tier !== 'in' && (r.sent + r.upd) > 0) {
-        names.push(r.id + '(' + (r.sent + r.upd) + ' 個 session)');
-        n += r.sent + r.upd;
-      }
-    }
-    return { names: names, n: n };
-  }
-
-  /* bars keep their original length at the original value, so the motif is a
-     proportion of what was scanned, not decoration */
-  function bar(id, v, v0, w0) {
-    document.getElementById(id).style.width = Math.max(4, Math.round(v / v0 * w0)) + 'px';
-  }
-
-  function paint() {
-    var inN = sum('in', 'n'), outN = sum('out', 'n'), unN = sum('un', 'n');
-    var inW = sum('in', 'ws'), outW = sum('out', 'ws'), unW = sum('un', 'ws');
-    var newN = sum('in', 'nw'), updN = sum('in', 'upd'), skipN = sum('in', 'sent');
-    var run = newN + updN;
-    var unat = sum('in', 'unat'), attr = inN - unat;
-    var c = cands();
-    var ents = SEEDED_ENTS + c.on.length;
-    var reps = SEEDED_OCC + c.occ;
-
-    T('hIn', inN); T('hUn', unN); T('hOut', outN);
-    T('hInWs',  inW  + ' workspaces');
-    /* the selection is not the payload: 153 is what is in scope, 42 is what
-       ships this time, and 153 is also what the recipient ends up holding once
-       this run lands on top of the 114 they already have. Say which is which. */
-    T('hInHold', '送完之後收件人手上一共會有 ' + (PREV_TOTAL + newN) + ' 個');
-    T('hUnWs',  unW  + ' workspaces');
-    T('hOutWs', outW + ' workspaces');
-
-    /* the biggest number on the page is the one that actually leaves */
-    T('payloadRun', run);
-    T('payloadMath',
-      '(選進範圍的一共 ' + inN + ' 個,其中 ' + skipN + ' 個上次送過、之後沒動過,這次跳過。)');
-
-    T('inSum',  '選進範圍 · ' + inW + ' workspaces · ' + inN + ' sessions');
-    T('outSum', '不會交出去 · ' + outW + ' workspaces · ' + outN + ' sessions');
-
-    T('groupSum', '這些 session 屬於哪個專案 · 其中 ' + unat + ' 個我們不猜,因為沒有 repo 可判斷');
-    T('attrN', attr);
-    T('unattrN', unat);
-    document.getElementById('groupNote').firstChild.nodeValue =
-      '\n          選進範圍的 ' + inN + ' 個裡,' + attr + ' 個從 git remote 判定得出專案,' + unat + ' 個判定不出來。\n          ';
-
-    T('runN', run);
-    T('runLine', '本次送出 ' + run + ' 個 session');
-    T('runMath',
-      run + ' ＝ ' + newN + ' 個從沒送過 ＋ ' + updN + ' 個送過但之後又有新對話(重送完整版)。' +
-      '另外 ' + skipN + ' 個上次送過、之後沒動過,這次跳過。' +
-      newN + ' + ' + updN + ' + ' + skipN + ' = 選進範圍的 ' + inN + ' 個。');
-
-    T('sessH2', '逐筆 · 選進範圍的 ' + inN + ' 個,本次送出其中 ' + run +
-      ' 個,加上已經幫你挑掉的 2 個(✕,不會送)');
-    T('sessMore', '… 還有 ' + (inN - 4) + ' 筆');
-
-    var p = pulled();
-    T('pulledNames', p.names.length ? p.names.join('、') : '目前沒有');
-    var pf = document.getElementById('pulledFig');
-    pf.textContent = p.n + ' 個 session';
-    pf.className = 'pill ' + (p.n ? 'warn' : 'ok');
-    /* a warning that is on screen when the count is zero has been read to death
-       by the time it is true. It appears with the thing it is warning about. */
-    document.getElementById('pulledGrave').hidden = p.n === 0;
-
-    /* ---- 選進範圍的內容裡: same table as hIn, so it cannot go stale ---- */
-    var code = sum('in','code'), img = sum('in','img'), pth = sum('in','path');
-    var key  = sum('in','key'),  msg = sum('in','msg'), line = sum('in','line');
-    T('cntCode', fmt(code)); bar('barCode', code, 18402, 118);
-    T('cntImg',  fmt(img));  bar('barImg',  img,   73,    46);
-    T('cntPath', fmt(pth));  bar('barPath', pth,   26505, 152);
-    T('cntKey',  fmt(key));  bar('barKey',  key,   8,     14);
-    T('cntMsg',  fmt(msg));
-    T('cntMsgFig', fmt(msg));
-    /* this table counts the selection, which is not the payload. The panel says
-       which one it is counting, in the same words the cards use. */
-    T('contentH2', '選進範圍的內容裡 · ' + inN + ' 個 session');
-    T('contentNote', '這一張算的是選進範圍的 ' + inN + ' 個 session。本次實際送出 ' + run +
-      ' 個,其餘 ' + skipN + ' 個上次送過、之後沒動過,這次跳過。');
-
-    T('entSub', SEEDED_ENTS + ' 個實體從整台機器的 git config / git remote 讀出來,身分確定,一定換。' +
-      '這一列跟上面四列不一樣:它是替換表的大小,不是這次送出的次數,所以你挑掉 workspace 它也不會變小 ' +
-      '(名字在哪個 workspace 出現都一樣換)。第 2 步那 8 個候選你勾了 ' + c.on.length +
-      ' 個。同一個人每次都是同一個代號。');
-    T('entFig', ents + ' 個換代號');
-    var ec = document.getElementById('entClear');
-    ec.hidden = c.off.length === 0;
-    ec.textContent = c.off.length
-      ? c.off.length + ' 個你沒勾:' + c.off.join('、') + '。這幾個名字會以原文出現在交出去的檔案裡。'
-      : '';
-
-    /* ---- screen 2 ---- */
-    T('candH2', '候選 · ' + c.total + ' 個 · 已勾選 ' + c.on.length);
-    T('candOut', c.off.length
-      ? '沒勾的 ' + c.off.length + ' 個:' + c.off.join('、') + '。這 ' + c.off.length +
-        ' 個名字會原封不動寫進交出去的檔案裡,殘留檢查也不會去搜尋它們。'
-      : '這 ' + c.total + ' 個候選都會換成代號。加上 git 讀出來的 ' + SEEDED_ENTS + ' 個,一共 ' + ents + ' 個。');
-
-    /* ---- screen 3 ---- */
-    var S = {
-      run: run,
-      meta: '約 ' + (run * MB_PER).toFixed(1) + ' MB · 本次送出 ' + run + ' 個 session',
-      sub: '上次送了 ' + PREV_TOTAL + ' 個。其中 ' + skipN + ' 個之後沒動過,這次跳過;' +
-           updN + ' 個之後又有新對話,這次重送完整版' +
-           (p.n ? ';' + p.n + ' 個被你這次排除了' : '') + '。' +
-           '加上 ' + newN + ' 個從沒送過的,這個檔案裡是 ' + run + ' 個。',
-      ck1: '範圍:選進範圍的 ' + inN + ' 個 session(比這個 zip 多,序列化是整批一起驗的)。共 ' +
-           fmt(line) + ' 行,' + fmt(line) + ' 行位元組相同',
-      ck2: '範圍:整份替換表,不是這個 zip 裡的次數。' + fmt(reps) + ' 次替換(git 讀出來的 ' +
-           fmt(SEEDED_OCC) + ' 次 ＋ 你勾選的 ' + c.occ + ' 次),每一次都能還原',
-      ck3: '範圍:選進範圍的 ' + inN + ' 個 session。裡面沒有既存的 PERSON_n 字樣',
-      ck4: '範圍:這個 zip 的實際內容,' + run + ' 個 session。回頭搜尋這 ' + ents + ' 個實體的原始寫法',
-      ck4b: c.off.length
-        ? '你沒勾的 ' + c.off.length + ' 個名字不在搜尋範圍裡:它們本來就是照原文送的,不算殘留。'
-        : ''
-    };
-    if (!exported || frozen === null) frozen = S;
-
-    T('zipMeta', frozen.meta);
-    T('zipSub',  frozen.sub);
-    T('ck1', frozen.ck1);
-    T('ck2', frozen.ck2);
-    T('ck3', frozen.ck3);
-    T('ck4', frozen.ck4);
-    var c4 = document.getElementById('ck4b');
-    c4.hidden = frozen.ck4b === '';
-    c4.textContent = frozen.ck4b;
-
-    /* the zip on disk does not follow later clicks. Say so, and offer the re-run. */
-    var stale = exported && exportedAt !== null && exportedAt !== fingerprint();
-    document.getElementById('zipStale').hidden = !stale;
-    if (stale) {
-      T('zipStaleTxt', '你在產出之後又改過選擇。上面那個檔案還是產出當下的那一份(' + frozen.run +
-        ' 個 session),硬碟上的內容不會跟著你的新選擇變。' +
-        (run === frozen.run
-          ? '你改的東西不影響這次要送的筆數,但送出去的內容不一樣了。'
-          : '照現在的選擇要送的是 ' + run + ' 個。') +
-        '要用新的選擇,必須重新產出一次。');
-    }
-    var ob = document.getElementById('openBtn');
-    ob.textContent = stale ? '重新產出' : '開啟資料夾';
-
-    /* Step 1 and step 3 are one click apart. Once the checks have run, this
-       panel shows that run's result instead of insisting it has not happened. */
-    var pills = document.querySelectorAll('#s1checks .fig .pill');
-    if (exported) {
-      T('s1ckH2', '檢查 · 這一輪跑完了');
-      T('s1ckNote', '這四項在你按「確定,產出檔案」的時候跑完了,四項都通過。' +
-        '完整結果(含每一項的範圍)在第 3 步。' +
-        (stale ? '注意:你在產出之後又改過選擇,下面是產出當下那一份的結果。' : ''));
-      T('s1ck1', frozen.ck1);
-      T('s1ck2', frozen.ck2);
-      T('s1ck3', frozen.ck3);
-      T('s1ck4', frozen.ck4);
-      for (var pi = 0; pi < pills.length; pi++) {
-        pills[pi].className = 'pill ok';
-        pills[pi].textContent = '通過';
-      }
-    } else {
-      T('s1ckH2', '檢查 · 還沒跑');
-      T('s1ckNote', '這四項要等你在第 2 步把名字確認完才有得跑:要搜尋哪些寫法,取決於你在那一步勾了什麼。' +
-        '跑完的結果會跟檔案一起出現在第 3 步。下面是上次 2026-08-08 匯出時的數字,只能當參考,不是這一份的結論。');
-      T('s1ck1', '上次:27,545 / 27,545 行位元組相同');
-      T('s1ck2', '上次:1,284 次替換');
-      T('s1ck3', '上次:語料裡沒有既存的 PERSON_n 字樣');
-      T('s1ck4', '回頭搜尋每一個要換掉的實體的原始寫法。搜尋範圍要等你確認完名字才定得下來。');
-      for (var pj = 0; pj < pills.length; pj++) {
-        pills[pj].className = 'pill mute';
-        pills[pj].textContent = '等第 3 步';
-      }
-    }
-
-    mirror('in', 'in');
-    mirror('out', 'out');
-
-    var open = 0, total = 0;
-    for (var i = 0; i < ROWS.length; i++) {
-      if (ROWS[i].kind !== 'decide') continue;
-      total++;
-      if (ROWS[i].tier === 'un') open++;
-    }
-    var b = document.getElementById('next1');
-    var h = document.querySelector('#decide h3');
-    var hUn = document.getElementById('hUn');
-    if (open === 0) {
-      b.disabled = false;
-      b.textContent = total + ' 個決定完成 · 下一步';
-      h.textContent = '你決定的,隨時可以改';
-      h.style.color = 'var(--ok)';
-      document.getElementById('decide').style.borderTopColor = 'var(--ok)';
-      hUn.style.color = '';
-    } else {
-      b.disabled = true;
-      b.textContent = '先決定上面那 ' + open + ' 個';
-      h.textContent = '需要你決定,決定完才能產出';
-      h.style.color = 'var(--warn)';
-      document.getElementById('decide').style.borderTopColor = 'var(--warn)';
-      hUn.style.color = 'var(--warn)';
-    }
-  }
-
-  /* ---------- prototype stubs: every one quotes live state ---------- */
-  function stubExpand(btn) {
-    var r = rowById(btn.closest('.ws').id);
-    alert('原型:展開這 ' + r.ws + ' 個 workspace(' + r.n + ' 個 session)');
-  }
-  function stubEntities() {
-    alert('原型:逐筆列出這 ' + SEEDED_ENTS + ' 個,一個一行,代號 · 幾種寫法 · 出現次數 · 從哪裡讀到的\n\n' +
-          'PERSON_03   3 種寫法   988 次   git config user.name / user.email\n' +
-          'ORG_01      2 種寫法   412 次   git remote origin (gitroll-dev)\n' +
-          'PERSON_07   1 種寫法    54 次   git log 共同作者\n' +
-          'ORG_04      2 種寫法    38 次   git remote origin (客戶 org)\n' +
-          '…還有 ' + (SEEDED_ENTS - 4) + ' 個\n\n' +
-          '這些不用你確認(身分是從 git 讀出來的,不是猜的),但看得到。');
-  }
-  function stubResend() {
-    alert('原型:改成整批重送 ' + sum('in', 'n') + ' 個 session');
-  }
-  function stubGroup() {
-    alert('原型:列出這 ' + sum('in', 'unat') + ' 個,每個一行摘要,你把它們拖進專案或新建一個。也可以整批標成未歸屬直接送出。');
-  }
-  function stubPulled() {
-    var p = pulled();
-    alert(p.names.length
-      ? '原型:逐筆列出這些已送過、現在被排除的 session\n\n' + p.names.join('\n')
-      : '原型:目前沒有任何已送過的 workspace 被你改成不交。');
-  }
-  /* Same asymmetry as the workspace rows: dropping one is a click, putting one
-     back costs a typed token. cli-ux.md §3 calls this list the last escape hatch. */
-  function sessFlip(btn, wasDropped) {
-    var q = btn.closest('div').querySelector('.q').textContent;
-    if (wasDropped) {
-      var typed = prompt('把這一筆改成要送。\n\n' + q +
-        '\n\n它是自動挑掉的(cwd 碰到私密目錄)。要往「送出更多」的方向改,請照抄下面這一行:\n\nsend-anyway');
-      if (typed !== 'send-anyway') return;
-    }
-    alert('原型:' + (wasDropped ? '這一筆改成要送' : '這一筆改成不送') + '\n\n' + q +
-      '\n\n真的版本會寫進 review.md 的 sessions 區,並重算上面每一個數字。');
-  }
-  function openOrRerun() {
-    if (exported && exportedAt !== fingerprint()) {
-      exportNow();
-      alert('原型:用你現在的選擇重新產出,蓋掉舊的 zip。');
-    } else {
-      alert('原型:開啟檔案所在資料夾');
-    }
-  }
-
-  /* Producing the file is this button, and only this button. Walking back to
-     step 3 with the step chip is navigation, not a new export. */
-  function exportNow() {
-    exported = true;
-    exportedAt = fingerprint();
-    frozen = null;
-    go(3);
-  }
-
-  function go(n) {
-    if (n > maxStep) maxStep = n;
-    for (var i = 1; i <= 3; i++) {
-      document.getElementById('scr' + i).classList.toggle('on', i === n);
-      var s = document.getElementById('s' + i);
-      s.classList.toggle('on', i === n);
-      s.classList.toggle('done', i !== n && i <= maxStep);
-      s.disabled = (i === n) || (i > maxStep);
-    }
-    /* preventScroll, or focusing the section scrolls it into view and undoes
-       the line above, landing the reader below the wordmark and the step rail. */
-    window.scrollTo({ top: 0, behavior: 'instant' });
-    document.getElementById('scr' + n).focus({ preventScroll: true });
-    paint();
-  }
-
-  /* A new run starts at step 1 with steps 2 and 3 unreachable again. Tier and
-     name decisions survive on purpose (cli-ux.md §11: nothing prompts twice). */
-  function restart() {
-    exported = false;
-    exportedAt = null;
-    frozen = null;
-    maxStep = 1;
-    go(1);
-  }
-
-  function toggle(id, btn, closedLabel, openLabel) {
-    var el = document.getElementById(id);
-    var open = el.classList.toggle('open');
-    btn.textContent = open ? openLabel : closedLabel;
-  }
-
-  /* 全選 is the less-exposure direction and stays one click. 全不選 is the
-     largest single more-exposure action on the page, so it is not. */
-  function setAll(v) {
-    var c = cands();
-    if (!v) {
-      if (!c.on.length) return;
-      if (!confirm('取消全部勾選。\n\n這 ' + c.total + ' 個名字會原封不動寫進交出去的檔案裡,' +
-                   '其中 ' + c.on.length + ' 個現在還會被換成代號。\n\n確定?')) return;
-    }
-    var boxes = document.querySelectorAll('#cands input');
-    for (var i = 0; i < boxes.length; i++) boxes[i].checked = v;
-    paint();
-  }
-
-  /* Reverting is a bulk action too, and it can un-check boxes. Same direction as
-     全不選, so it asks the same way. Per-box clicks stay unguarded on purpose:
-     they are the point of this screen, and each one is one click to undo. */
-  function resetCands() {
-    var boxes = document.querySelectorAll('#cands input');
-    var lose = [];
-    for (var i = 0; i < boxes.length; i++) {
-      if (boxes[i].checked && !boxes[i].defaultChecked) {
-        lose.push(boxes[i].parentNode.querySelector('.name').firstChild.nodeValue);
-      }
-    }
-    if (lose.length && !confirm('回到模型的預設。\n\n這 ' + lose.length +
-        ' 個名字會從「換成代號」變回原名寫進交出去的檔案裡:\n\n' + lose.join('\n') + '\n\n確定?')) return;
-    for (var j = 0; j < boxes.length; j++) boxes[j].checked = boxes[j].defaultChecked;
-    paint();
-  }
-
-  document.getElementById('cands').addEventListener('change', paint);
-
-  /* one runnable check: the census must equal the sum of the three tiers, and
-     every derived total in 選進範圍的內容裡 must equal what was scanned. */
-  (function selftest() {
-    var s = sum('in', 'n') + sum('out', 'n') + sum('un', 'n');
-    var w = sum('in', 'ws') + sum('out', 'ws') + sum('un', 'ws');
-    var bad = (s !== 225 || w !== 31)
-      || sum('in','msg')  !== 2104  || sum('in','code') !== 18402
-      || sum('in','img')  !== 73    || sum('in','path') !== 26505
-      || sum('in','key')  !== 8     || sum('in','line') !== 27545
-      || (sum('in','sent') + sum('in','upd')) !== PREV_TOTAL;
-    for (var i = 0; i < ROWS.length && !bad; i++) {
-      /* every row's three states must account for all of its sessions, or the
-         run total and the selection total can never agree */
-      if (ROWS[i].nw + ROWS[i].upd + ROWS[i].sent !== ROWS[i].n) bad = true;
-    }
-    document.getElementById('meta').textContent = bad
-      ? 'STATE MISMATCH: ' + s + ' sessions / ' + w + ' workspaces'
-      : s + ' sessions · ' + w + ' workspaces · 818 MB';
-  })();
-
-  paint();
+renderCands();
+render();
 </script>
