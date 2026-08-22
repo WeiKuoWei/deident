@@ -23,6 +23,8 @@ export async function main(argv, env) {
     return report.renderError(err);
   }
 
+  report.setCommand(opts.command);
+
   try {
     switch (opts.mode) {
       case 'usage':

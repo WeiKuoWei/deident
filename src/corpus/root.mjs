@@ -14,13 +14,23 @@ import { RefusalError } from '../cli/errors.mjs';
  * becomes a parse target (§4.9).
  */
 export function resolveRoot(env, override = null) {
-  const configDir = override ?? env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
+  // `??` does not treat '' as absent, and `path.resolve('')` is the current
+  // directory — so a shell profile that exports CLAUDE_CONFIG_DIR
+  // unconditionally would silently point deident at the cwd, and scan whatever
+  // `projects/` happens to sit there. An empty or whitespace-only value is not
+  // a setting; it falls through to the default.
+  const fromEnv = nonBlank(env.CLAUDE_CONFIG_DIR);
+  const configDir = nonBlank(override) ?? fromEnv ?? path.join(os.homedir(), '.claude');
   return Object.freeze({
     configDir: path.resolve(configDir),
     projectsDir: path.resolve(configDir, 'projects'),
-    currentProjectDirName: env.CLAUDE_CODE_PROJECT_DIR_NAME ?? null,
-    source: override ? '--root' : env.CLAUDE_CONFIG_DIR ? 'CLAUDE_CONFIG_DIR' : 'default',
+    currentProjectDirName: nonBlank(env.CLAUDE_CODE_PROJECT_DIR_NAME),
+    source: nonBlank(override) ? '--root' : fromEnv ? 'CLAUDE_CONFIG_DIR' : 'the default ~/.claude',
   });
+}
+
+function nonBlank(v) {
+  return typeof v === 'string' && v.trim() !== '' ? v : null;
 }
 
 /**

@@ -241,10 +241,21 @@ export function renderTranscript(lines) {
 
 // ---------------------------------------------------------------- failures
 
+// What deident is refusing to DO. cli-ux §1 makes a point of scan and review
+// writing nothing dangerous, so telling the user that `scan` is "refusing to
+// export" contradicts the model the interface is trying to teach.
+const REFUSAL_VERB = Object.freeze({ scan: 'scan', review: 'continue', export: 'export' });
+let refusalVerb = 'continue';
+
+/** Set by the entry point before dispatch, so every refusal names its command. */
+export function setCommand(command) {
+  refusalVerb = REFUSAL_VERB[command] ?? 'continue';
+}
+
 /** cli-ux §8. Exit 1. */
 export function renderRefusal(err) {
   warn('');
-  warn(`  ✗ Refusing to export: ${err.reason}`);
+  warn(`  ✗ Refusing to ${refusalVerb}: ${err.reason}`);
   if (err.why.length > 0) {
     warn('');
     for (const line of err.why) warn(`    ${line}`);

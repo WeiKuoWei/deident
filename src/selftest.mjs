@@ -34,6 +34,8 @@ import {
 import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
 import { proposeTier } from './policy/signals.mjs';
 import { readSession } from './corpus/reader.mjs';
+import { resolveRoot } from './corpus/root.mjs';
+import { setCommand, renderRefusal, captureOutput } from './cli/report.mjs';
 import { namespaceCollisions, assignPseudonyms, pseudonymPattern } from './entities/pseudonym.mjs';
 import { buildZip } from './output/zip.mjs';
 import { parseReview, renderReview } from './policy/reviewfile.mjs';
@@ -1083,6 +1085,41 @@ const FIXTURES = [
     }
     // The default is unchanged, so callers that need raw text still get it.
     assert.equal(readSession(file).records[0].line, JSON.stringify(rows[0]));
+  }],
+
+  // F48 — an empty CLAUDE_CONFIG_DIR is not a setting.
+  //
+  // `??` does not treat '' as absent and `path.resolve('')` is the cwd, so a
+  // shell profile exporting the variable unconditionally silently repointed the
+  // corpus root at the working directory. Harmless while the refusal fires;
+  // not harmless the moment a `projects/` directory exists in the cwd.
+  ['F48', 'a blank CLAUDE_CONFIG_DIR falls through to the default root', () => {
+    const home = os.homedir();
+    for (const blank of ['', '   ']) {
+      const root = resolveRoot({ CLAUDE_CONFIG_DIR: blank });
+      assert.equal(root.configDir, path.resolve(path.join(home, '.claude')));
+      assert.match(root.source, /default/, 'the reported source must not name a variable nobody set');
+    }
+    const set = resolveRoot({ CLAUDE_CONFIG_DIR: path.join(home, 'elsewhere') });
+    assert.equal(set.source, 'CLAUDE_CONFIG_DIR');
+    assert.equal(resolveRoot({}, '  ').source, 'the default ~/.claude', 'a blank --root is not an override');
+  }],
+
+  // F49 — cli-ux §1 makes a point of scan and review writing nothing dangerous.
+  // A refusal raised by `scan` that reads "Refusing to export" contradicts the
+  // model the interface exists to teach.
+  ['F49', 'a refusal names the command it is refusing, not always "export"', () => {
+    const err = new RefusalError('could not write review.md', { why: [], remedies: [] });
+    const seen = {};
+    for (const command of ['scan', 'review', 'export']) {
+      setCommand(command);
+      seen[command] = captureOutput(() => renderRefusal(err));
+    }
+    assert.match(seen.scan, /Refusing to scan:/);
+    assert.match(seen.review, /Refusing to continue:/);
+    assert.match(seen.export, /Refusing to export:/);
+    assert.doesNotMatch(seen.scan, /Refusing to export/);
+    setCommand(null);
   }],
 ];
 

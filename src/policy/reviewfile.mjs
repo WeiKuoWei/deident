@@ -10,6 +10,7 @@
 // is how the review becomes theatre.
 
 import fs from 'node:fs';
+import path from 'node:path';
 import { RefusalError } from '../cli/errors.mjs';
 import { TIERS, UNCLASSIFIED } from './workspaces.mjs';
 
@@ -106,6 +107,7 @@ export function parseReview(text) {
 export function writeReview(model, outPath) {
   const text = renderReview(model);
   try {
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, text, 'utf8');
   } catch (err) {
     throw new RefusalError(`could not write ${outPath}`, {

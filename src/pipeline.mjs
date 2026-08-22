@@ -97,7 +97,18 @@ export async function runReview(flags, env) {
 
   if (flags.html) {
     const target = path.join(outDir, 'review.html');
-    fs.writeFileSync(target, renderReviewHtml(model), 'utf8');
+    // Every other report writer names the file and the fix; this one used to
+    // hand a permissions problem to the generic wrapper, which told the user
+    // their own directory was "a bug in deident" and sent them to file an issue.
+    try {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, renderReviewHtml(model), 'utf8');
+    } catch (err) {
+      throw new RefusalError(`could not write ${target}`, {
+        why: [`${err.code}: ${err.message}`, 'Nothing was written.'],
+        remedies: [{ label: 'Choose a writable directory', command: 'deident review --html --out <path>' }],
+      });
+    }
     report.renderNote(`wrote ${target} — open it in your browser. No server was started.`);
     return 0;
   }

@@ -16,3 +16,9 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# scan/review/export artifacts, which carry raw paths and workspace names.
+review.md
+review.html
+deident-candidates.txt
+deident-entities.json
