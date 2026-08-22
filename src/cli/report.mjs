@@ -191,6 +191,15 @@ export function renderManifest(m) {
     // mechanism.
     say(`    ${n(m.droppedByCwd)} lines dropped: outside an included directory`);
   }
+  if (m.droppedCwdless > 0) {
+    // Records that carry no cwd of their own, in a session that at some point
+    // worked inside a directory this export excludes. They cannot be attributed
+    // to a turn, and §C3 kept these types precisely because they carry user
+    // text found nowhere else — which is what makes guessing them expensive.
+    // Reported rather than dropped quietly, because the cost is real.
+    say(`    ${n(m.droppedCwdless)} records dropped: no cwd of their own, in a session that`);
+    say('      worked inside an excluded directory');
+  }
   if (m.emptiedSessions > 0) {
     // A session that retained nothing used to vanish with no counter at all, so
     // the shipped session count silently disagreed with the count in review.md.

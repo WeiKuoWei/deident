@@ -1710,6 +1710,10 @@ const FIXTURES = [
     assert.match(exported.out, /0 phone numbers\s+1 replaced/);
     // A session that retained nothing is reported rather than vanishing.
     assert.match(exported.out, /1 sessions retained nothing/);
+    // And so is the cost of the cwd-less rule: §C3 kept last-prompt because it
+    // carries user text found nowhere else, so dropping one is not free and is
+    // not reported as free.
+    assert.match(exported.out, /records dropped: no cwd of their own/);
     // The trust block never asserts a number and then contradicts it.
     assert.doesNotMatch(exported.out, /0 dropped by cwd/);
   }],

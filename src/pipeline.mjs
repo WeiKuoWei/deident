@@ -746,6 +746,7 @@ function buildManifest(retained, decisions, serialized, embedded, entities) {
     // Counters, not zeros: a row reading `0 dropped by cwd  3 lines outside an
     // included directory` asserts a number and then contradicts it.
     droppedByCwd: s.droppedByCwd,
+    droppedCwdless: s.droppedCwdless ?? 0,
     emptiedSessions: s.emptiedSessions ?? 0,
     unknownTypes: Object.freeze(
       [...(s.unknownTypes ?? new Map())].map(([type, count]) => Object.freeze({ type, count })),
