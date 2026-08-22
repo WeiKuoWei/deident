@@ -361,6 +361,22 @@ suppressed. Flag it upstream; do not work around it here.
 
 ## 7. Slice plan
 
+**The CLI surface is part of slice 1 and is specified in
+`docs/cli-ux.md`. Read it before writing the entry point and build to it.** The
+tool's job is to make an engineer willing to hand over their session logs, and
+that willingness is produced by the interface, not by the substitution
+algorithm. In particular: three commands where the first two write nothing
+dangerous; `review.md` is both the report and the config, edited as text;
+low-confidence entities are listed individually and never collapsed; the export
+gate prints a "leaving this machine" manifest and a "not protected against"
+block; the residue line says `known-entity residue`, never "safe"; every refusal
+names its reason and its remedy; any non-zero exit leaves no output file behind.
+
+`docs/privacy-tiers.md` describes the four workspace tiers (`exclude` /
+`count-only` / `redact` / `open`) and is **slice 2**. Slice 1 implements the hook
+it plugs into: per-directory opt-in, the deny-list, and per-line `cwd` filtering.
+Slice 1 may treat every included workspace as `redact`.
+
 Vertical slices, each independently verifiable, each its own commit series.
 
 **Slice 1 — the substitution core.** One CLI entry point, depth-0 sessions only,
