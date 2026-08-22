@@ -46,7 +46,6 @@ third category is called out separately below, because it is neither.
 | `count-only` and `open` tiers | Someone declines to share content but wants to be counted. Slice 1 runs on `exclude` and `redact` alone. |
 | Incremental **logic** (new / changed / already sent) | The second export. Cheap once the ledger has entries. |
 | Semantic session grouping | The user asks for it, or Ada reports the granularity is actually broken with an example. Until then `unresolved` is the honest value. |
-| Organisation policy file | The Koch round. |
 | Any non-Claude-Code adapter | Somebody on the team produces a real log in that format to test against. Vendor docs alone are not enough to write a parser. |
 | The subagent and workflow tree | Ada asks for orchestration evidence and says the parent session's `Agent` / `Workflow` records are insufficient. It is 931 MB of machine-to-machine traffic with no human turns. |
 
@@ -69,15 +68,30 @@ Recorded so they are not silently inherited.
 
 ---
 
-## The three open questions
+## Settled
 
-1. **Hand over the zip, or build a receiver?** Recommendation: hand over the
-   zip. Seven manual file transfers once costs less than an endpoint nobody owns,
-   and the endpoint's shape depends on a pipeline that is not designed yet.
-2. **Fonts in the review page.** The audit rounds removed the web font entirely
-   to make the self-contained claim unarguable. The page now renders in whatever
-   the machine has. Embedding the face as a data URI restores the intended
-   typography at a few hundred KB. Owner's call.
-3. **Apprentice autonomy.** Whether a Fellowship participant sets their own
-   tiers or the programme sets them. Affects the organisation policy file, not
-   slice 1.
+**Delivery is a file, not an upload.** Seven manual transfers once cost less than
+an endpoint nobody owns, and the endpoint's shape depends on a pipeline that is
+not designed yet. `push` and the receiver stay on the roadmap.
+
+**The review page uses the machine's own fonts.** The audit rounds removed the
+web font to make the self-contained claim unarguable. Embedding a face as a data
+URI would restore the intended typography at a few hundred KB and was declined.
+
+**The individual decides, always. There is no organisation policy file.**
+A Fellowship participant sets their own tiers exactly as a teammate does; a
+programme cannot pre-decide for them, and nor can an employer. This is the
+"privacy by design" claim taken literally rather than as a slogan, and it removes
+a roadmap item rather than adding one.
+
+Two consequences follow, and neither is optional:
+
+- **Comparability across uploaders can never be fixed by policy.** If everyone
+  chooses for themselves, corpora differ in ways no rule can normalise. The
+  manifest's per-uploader tier counts therefore stop being a nicety and become
+  the only thing standing between a privacy choice and a recipient reading it as
+  a skill gap. Ship them, and make them legible.
+- **`count-only` gets more important, not less.** It is the one tier that lets
+  someone withhold content without shrinking their own denominators. Under a
+  policy regime it was a convenience; under free choice it is the main defence
+  against the conservative person scoring worse for being conservative.
