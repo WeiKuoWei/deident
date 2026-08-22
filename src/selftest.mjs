@@ -27,7 +27,7 @@ import {
   basenameOf,
   buildEntities,
 } from './entities/seed.mjs';
-import { buildTable, substituteString, reverseString, allOccurrences } from './substitute/engine.mjs';
+import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar } from './substitute/engine.mjs';
 import { substituteRecord } from './substitute/walker.mjs';
 import { checkSubstitution, checkSemanticPass, semanticRefusal } from './verify/checks.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from './verify/residual.mjs';
@@ -53,6 +53,7 @@ import {
   namespaceCollisions,
   assignPseudonyms,
   pseudonymPattern,
+  pseudonymScanPattern,
   loadOrCreateSalt,
 } from './entities/pseudonym.mjs';
 import { buildZip } from './output/zip.mjs';
@@ -2436,6 +2437,64 @@ const FIXTURES = [
 
     // And a saved key that matches nothing is reported, never silently dropped.
     assert.deepEqual(orphanedDecisions({ 'c:/gone': 'redact' }, [group]), ['c:/gone']);
+  }],
+
+  // F80 — I3 ran the DECODED-string pattern over RAW serialized lines, where
+  // the `n` of a backslash-n escape is a word character, so its lookbehind
+  // refused to match any pseudonym-shaped token at the start of a line inside
+  // multi-line prose. That is exactly how docs/cli-ux §3's own `PERSON_03 <-`
+  // sample row arrives once a teammate reads the docs in a session.
+  //
+  // The check printed `pseudonym namespace  no pre-existing PERSON_n tokens
+  // ok`, deident minted the same token for a tier-1 person, and the archive
+  // then contained one token meaning two different things — with reversal
+  // permanently ambiguous, which PLAN §2 says this check exists to prevent.
+  ['F80', 'the namespace check sees a token that follows a JSON escape', () => {
+    const scan = pseudonymScanPattern(null);
+    const hits = (line) => {
+      scan.lastIndex = 0;
+      const out = [];
+      let m;
+      while ((m = scan.exec(line)) !== null) if (!leftIsWordChar(line, m.index)) out.push(m[0]);
+      return out;
+    };
+    // The raw serialized forms. Every escape whose last character is a word
+    // char used to hide the token.
+    assert.deepEqual(hits(`Notes:${BS}nPERSON_6194449 is a code name`), ['PERSON_6194449']);
+    assert.deepEqual(hits(`a${BS}tORG_12 b`), ['ORG_12']);
+    assert.deepEqual(hits(`a${BS}u4e2dWORKSPACE_9 b`), ['WORKSPACE_9']);
+    // And the non-match the boundary rule exists for still does not match.
+    assert.deepEqual(hits('MYPERSON_1'), []);
+
+    // End to end: the export refuses and offers the namespace shift.
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    const dir = path.join(root, 'projects', 'ws');
+    const sid = '55555555-5555-4555-8555-555555555555';
+    fs.writeFileSync(
+      path.join(dir, `${sid}.jsonl`),
+      JSON.stringify({
+        type: 'user',
+        uuid: '00000000-0000-4000-8000-000000000905',
+        sessionId: sid,
+        cwd: ['C:', 'Users', 'devuser', 'projects', 'alpha'].join(BS),
+        message: { role: 'user', content: [{ type: 'text', text: `Notes:${NL}PERSON_6194449 is my code name for Bob.` }] },
+      }) + NL,
+      'utf8',
+    );
+
+    runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    const exported = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(exported.code, 1, exported.out);
+    assert.match(exported.out, /already contains? a token in the pseudonym namespace/);
+    assert.match(exported.out, /--namespace X/);
+    assert.equal(fs.readdirSync(out).filter((f) => f.endsWith('.zip')).length, 0, 'nothing may be written');
   }],
 ];
 

@@ -40,9 +40,10 @@ import {
   assignPseudonyms,
   namespaceRefusal,
   pseudonymPattern,
+  pseudonymScanPattern,
 } from './entities/pseudonym.mjs';
 import { writeCandidates, readEntities, CANDIDATES_FILENAME } from './entities/tier1.mjs';
-import { buildTable, substituteString } from './substitute/engine.mjs';
+import { buildTable, substituteString, leftIsWordChar } from './substitute/engine.mjs';
 import { substituteRecord, collectStrings } from './substitute/walker.mjs';
 import {
   newRetentionContext,
@@ -482,7 +483,14 @@ function surveyCorpus(corpus, flags, namespace = null) {
   let badLines = 0;
   let lineCount = 0;
 
-  const pattern = pseudonymPattern(namespace);
+  // I3 reads RAW serialized lines, so it uses the no-lookbehind pattern plus
+  // engine.mjs's escape-tail rule. With the lookbehind, the `n` of a
+  // backslash-n
+  // escape counted as a word character and hid every token at the start of a
+  // line inside multi-line prose — the exact shape cli-ux §3's own sample row
+  // arrives in — while the check printed "no pre-existing PERSON_n tokens ok"
+  // and deident minted the same token for something else in the same archive.
+  const pattern = pseudonymScanPattern(namespace);
 
   for (const file of corpus.files) {
     const session = readSession(file.path, {
@@ -492,11 +500,16 @@ function surveyCorpus(corpus, flags, namespace = null) {
       // here means the raw lines never have to be accumulated.
       inspect: (line, lineNo) => {
         pattern.lastIndex = 0;
-        const m = pattern.exec(line);
-        if (m === null) return;
-        namespaceHitCount += 1;
-        if (namespaceHits.length < EXAMPLES_PER_REPORT) {
-          namespaceHits.push(Object.freeze({ file: file.path, line: lineNo, token: m[0] }));
+        let m;
+        while ((m = pattern.exec(line)) !== null) {
+          // The left boundary, asked of the one implementation that knows a
+          // backslash-n is an escape and not a letter.
+          if (leftIsWordChar(line, m.index)) continue;
+          namespaceHitCount += 1;
+          if (namespaceHits.length < EXAMPLES_PER_REPORT) {
+            namespaceHits.push(Object.freeze({ file: file.path, line: lineNo, token: m[0] }));
+          }
+          return;
         }
       },
     });

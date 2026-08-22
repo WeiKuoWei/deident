@@ -37,10 +37,36 @@ const KIND_TO_PREFIX = Object.freeze({
   phone: 'PHONE',
 });
 
-/** Pseudonym tokens, optionally namespace-shifted: `X_PERSON_1`. */
+/**
+ * Pseudonym tokens as they appear in a DECODED string, with the same boundary
+ * rule the substituter uses.
+ *
+ * Not usable on raw serialized lines: see pseudonymScanPattern.
+ */
 export function pseudonymPattern(namespace = null) {
   const prefix = namespace ? `${escapeRe(namespace)}_` : '';
   return new RegExp(`(?<![A-Za-z0-9_])${prefix}(?:${NAMESPACE_PREFIXES.join('|')})_\\d+(?![A-Za-z0-9_])`, 'gu');
+}
+
+/**
+ * The same tokens, with NO left lookbehind, for scanning RAW serialized lines.
+ *
+ * I3 ran pseudonymPattern() over the raw text of each line, where the `n` of a
+ * `\\n` escape is a word character — so the lookbehind refused to match a token
+ * at the start of any line inside multi-line prose, which is exactly the shape
+ * docs/cli-ux §3's own `PERSON_03  <- ...` sample row arrives in once a
+ * teammate pastes the docs into a session. Every escape whose last character is
+ * a word char hides one: \\n, \\r, \\t, \\b, \\f, \\uXXXX. The check printed
+ * `pseudonym namespace  no pre-existing PERSON_n tokens  ok` and deident then
+ * minted the same token for a different thing, in the same archive.
+ *
+ * The caller applies engine.mjs's leftIsWordChar, which is the ONE
+ * implementation of the escape-tail rule both the substituter and the residual
+ * scan already read.
+ */
+export function pseudonymScanPattern(namespace = null) {
+  const prefix = namespace ? `${escapeRe(namespace)}_` : '';
+  return new RegExp(`${prefix}(?:${NAMESPACE_PREFIXES.join('|')})_\\d+(?![A-Za-z0-9_])`, 'gu');
 }
 
 function escapeRe(s) {
