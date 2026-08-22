@@ -97,6 +97,32 @@ It renders side-by-side before/after for a sample of every replacement class, an
 lets the reader search. That is the visualisation that makes someone comfortable;
 the writing side stays in a text file they control.
 
+### Layout reference, with one hard constraint
+
+https://vibeprompts.dev is a prompt library that emits Tailwind markup. Three of
+its fifteen categories are relevant here and are worth reading for layout ideas:
+**Dashboards** (data tables, admin panels), **Stats Bars** (metrics, progress
+indicators) and **Onboarding** (setup wizards, checklists — the scan → review →
+export flow is exactly a three-step checklist). The rest are marketing-page
+sections and do not apply.
+
+**Do not take the markup literally.** The page must be a single self-contained
+file: no CDN `<script>`, no external stylesheet, no remote font, no image URL.
+Two reasons, and the second is the one that matters:
+
+1. The tool makes no network calls, by design.
+2. A page that renders somebody's redacted session log while fetching a script
+   from a third-party CDN is the wrong optic for a privacy tool, even though the
+   data itself never leaves. The first person who opens devtools and sees an
+   outbound request stops trusting the whole thing, and they are right to.
+
+So: borrow the layout, write the CSS inline, keep the file standalone. Any prompt
+output that arrives with `class="..."` Tailwind utilities has to be translated,
+not pasted.
+
+Accordions from that library are usable for high-confidence classes only.
+Low-confidence entities are never collapsed (§3).
+
 ## 5. Every number is traceable back to evidence
 
 A count nobody can drill into is a count nobody believes.
