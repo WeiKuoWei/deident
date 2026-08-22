@@ -499,6 +499,7 @@ function retainCorpus(
     sessions: 0,
     emptiedSessions: 0,
     droppedCwdless: 0,
+    unreadableRecords: 0,
     unknownTypes: new Map(),
     workspaces: new Set(),
   };
@@ -574,7 +575,11 @@ function retainCorpus(
         // Every walker here is recursive. Pathological nesting is a property of
         // the input, so it is a read error naming the line (exit 3), never
         // "a bug in deident" (exit 1).
-        if (err instanceof RangeError) throw nestingError(at.file, at.line, err);
+        if (err instanceof RangeError) {
+          if (!flags.skipUnreadable) throw nestingError(at.file, at.line, err);
+          stats.unreadableRecords += 1;
+          continue;
+        }
         if (flags.skipUnknownTypes && err instanceof RefusalError && err.detail && err.detail.unknown) {
           const key = err.detail.unknown;
           stats.unknownTypes.set(key, (stats.unknownTypes.get(key) ?? 0) + 1);
@@ -586,6 +591,10 @@ function retainCorpus(
         try {
           records.push(rewriteUuidsInRecord(result.record, ctx.rewriteUuid));
         } catch (err) {
+          if (err instanceof RangeError && flags.skipUnreadable) {
+            stats.unreadableRecords += 1;
+            continue;
+          }
           if (err instanceof RangeError) throw nestingError(at.file, at.line, err);
           throw err;
         }

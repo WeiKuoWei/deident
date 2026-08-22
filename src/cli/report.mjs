@@ -309,7 +309,11 @@ export function renderReadError(err) {
     warn(`      ${d.parserMessage}`);
   }
   warn('');
-  warn(`    ${d.likelyCause ?? 'The file may still be being written.'} Skip the file with --skip-unreadable.`);
+  // The remedy is named by the error, because a remedy that cannot work is
+  // worse than none (cli-ux §8). This line used to append "Skip the file with
+  // --skip-unreadable" to EVERY read error, including one the flag could not
+  // suppress at all.
+  warn(`    ${d.likelyCause ?? 'The file may still be being written.'} ${d.remedy ?? 'Skip the file with --skip-unreadable.'}`);
   warn('');
 }
 

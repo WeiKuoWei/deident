@@ -47,7 +47,7 @@ import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/g
 import { proposeTier, personalDataShape } from './policy/signals.mjs';
 import { readSession } from './corpus/reader.mjs';
 import { resolveRoot } from './corpus/root.mjs';
-import { setCommand, renderRefusal, captureOutput } from './cli/report.mjs';
+import { setCommand, renderRefusal, renderReadError, captureOutput } from './cli/report.mjs';
 import {
   namespaceCollisions,
   assignPseudonyms,
@@ -2202,6 +2202,48 @@ const FIXTURES = [
     };
     walkDir(root);
     assert.deepEqual(offenders, [], 'push(...arr) is an argument-stack overflow on corpus-sized input');
+  }],
+
+  // F74 — the deep-nesting refusal told the user to run --skip-unreadable, and
+  // --skip-unreadable produced the identical exit 3, because the RangeError
+  // branch ran BEFORE the skip branch. A remedy that cannot work is worse than
+  // none (cli-ux §8), and there was no other route past the file.
+  ['F74', '--skip-unreadable actually skips a record nested too deeply', () => {
+    const dir = tmpdir();
+    const file = path.join(dir, 'deep.jsonl');
+    const depth = 6000;
+    const nested = '{"n":'.repeat(depth) + '1' + '}'.repeat(depth);
+    fs.writeFileSync(
+      file,
+      [
+        '{"type":"user","uuid":"a","sessionId":"s","message":{"role":"user","content":[{"type":"text","text":"kept"}]}}',
+        `{"type":"user","uuid":"b","sessionId":"s","message":{"role":"user","content":[]},"toolUseResult":${nested}}`,
+      ].join(NL) + NL,
+      'utf8',
+    );
+
+    const skipped = readSession(file, { skipUnreadable: true });
+    assert.equal(skipped.records.length, 1, 'the readable record survives');
+    assert.equal(skipped.badLines.length, 1, 'and the unreadable one is counted, not fatal');
+
+    // Without the flag it is still exit 3, and it names a remedy that works.
+    let caught = null;
+    try {
+      readSession(file);
+    } catch (err) {
+      caught = err;
+    }
+    assert.ok(caught instanceof ReadError);
+    assert.match(caught.detail.remedy, /--skip-unreadable/);
+    const printed = captureOutput(() => renderReadError(caught));
+    assert.equal((printed.match(/--skip-unreadable/g) ?? []).length, 1, 'named once, not twice');
+
+    // And an error the flag cannot help names its own remedy instead.
+    const other = new ReadError('could not open x', {
+      detail: { file: 'x', line: null, parserMessage: 'EACCES', likelyCause: 'Permission denied.', remedy: 'Fix the permissions.' },
+    });
+    assert.match(captureOutput(() => renderReadError(other)), /Fix the permissions\./);
+    assert.ok(!captureOutput(() => renderReadError(other)).includes('--skip-unreadable'));
   }],
 ];
 

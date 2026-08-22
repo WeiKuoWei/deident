@@ -85,7 +85,13 @@ export function readSession(filePath, opts = {}) {
       // Pathologically nested JSON exhausts the JS stack rather than failing to
       // parse. That is a property of the INPUT, so it is a read error naming
       // the file and the line (exit 3), not "a bug in deident" (exit 1).
-      if (err instanceof RangeError) throw nestingError(filePath, lineNo, err);
+      //
+      // The `skip` test comes FIRST. It used to come second, so the refusal
+      // told the user to run --skip-unreadable and running it produced the
+      // identical exit 3: a remedy that cannot work is worse than none
+      // (cli-ux §8). A record nobody can parse is a record nobody can export,
+      // so skipping it is exactly what the flag means.
+      if (err instanceof RangeError && !skip) throw nestingError(filePath, lineNo, err);
       if (!skip) {
         throw new ReadError('unparseable line', {
           detail: {
@@ -110,6 +116,13 @@ export function readSession(filePath, opts = {}) {
         roundTripFailures.push(Object.freeze({ file: filePath, line: lineNo }));
       }
     } catch (err) {
+      // Same rule as the parse above: a record too deep to re-serialize is a
+      // record too deep to export, so --skip-unreadable skips it rather than
+      // offering a remedy that does nothing.
+      if (err instanceof RangeError && skip) {
+        badLines.push(Object.freeze({ line: lineNo, message: err.message }));
+        continue;
+      }
       if (err instanceof RangeError) throw nestingError(filePath, lineNo, err);
       throw err;
     }
@@ -144,6 +157,7 @@ export function nestingError(filePath, lineNo, err) {
       parserMessage: err && err.message ? err.message : 'stack exhausted',
       likelyCause:
         'This record nests JSON thousands of levels deep, which exhausts the stack every walker in deident uses.',
+      remedy: 'Skip the record with --skip-unreadable.',
     },
   });
 }
