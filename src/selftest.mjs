@@ -2168,6 +2168,41 @@ const FIXTURES = [
     );
     assert.ok(!only.keep || (only.record.message.content ?? []).length === 0, 'nothing authored means nothing kept');
   }],
+
+  // F73 — `array.push(...items)` passes one ARGUMENT per element, so a
+  // corpus-sized array overflows the argument stack.
+  //
+  // Measured 2026-08-22: 100,000 spans is fine, 125,000 throws RangeError
+  // "Maximum call stack size exceeded". A 762 KB session file holding one user
+  // message of `'devuser '.repeat(130000)` reached it through walker.mjs, and the
+  // same shape reached `deident scan` through roundTripFailures — surfacing as
+  // "internal error … This is a bug in deident", with no remedy at all.
+  ['F73', 'a corpus-sized array never reaches push(...spread)', () => {
+    const t = buildTable([entity('P1', 'person', 'devuser', 'PERSON_1')]);
+    const many = 'devuser '.repeat(150_000);
+    const r = substituteRecord({ message: { content: [{ type: 'text', text: many }] } }, t);
+    assert.equal(r.record.message.content[0].text.includes('devuser'), false);
+    assert.equal(r.strings[0].spans.length, 150_000);
+
+    // The other four sites cannot be reached without building a corpus that
+    // large, so they are pinned by shape: no module may spread into push.
+    const root = fileURLToPath(new URL('.', import.meta.url));
+    const offenders = [];
+    const walkDir = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walkDir(p);
+        else if (e.name.endsWith('.mjs') && e.name !== 'selftest.mjs') {
+          for (const line of fs.readFileSync(p, 'utf8').split(NL)) {
+            const code = line.trim();
+            if (/\.push\(\.\.\./.test(code) && !code.startsWith('//') && !code.startsWith('*')) offenders.push(`${e.name}: ${code}`);
+          }
+        }
+      }
+    };
+    walkDir(root);
+    assert.deepEqual(offenders, [], 'push(...arr) is an argument-stack overflow on corpus-sized input');
+  }],
 ];
 
 export function selftest() {

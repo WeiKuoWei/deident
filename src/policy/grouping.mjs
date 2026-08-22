@@ -106,7 +106,7 @@ export function assignNames(groups) {
     const next = [];
     for (const [candidate, members] of byName) {
       if (members.length === 1 && !taken.has(candidate)) claim(members[0], candidate);
-      else next.push(...members);
+      else for (const m of members) next.push(m); // never push(...members): argument-stack overflow
     }
     pending = next;
   }

@@ -108,7 +108,9 @@ export function resolveCorpus(env, override = null) {
     }
 
     wsFiles.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-    files.push(...wsFiles);
+    // A loop, not `push(...arr)`: a workspace directory with enough session
+    // files would blow the argument stack before anything could be reported.
+    for (const f of wsFiles) files.push(f);
     bytes += wsBytes;
     workspaceDirs.push(
       Object.freeze({

@@ -13,15 +13,22 @@ import { substituteString } from './engine.mjs';
 /**
  * @param {*} record  a parsed JSON value
  * @param {object} table
- * @returns {{record: *, spans: object[], strings: Array<{path:string, before:string, after:string, spans:object[]}>}}
+ * @returns {{record: *, strings: Array<{path:string, before:string, after:string, spans:object[]}>}}
  *   `strings` carries every string that changed, for the substitution
  *   invariant (I2). Unchanged strings are not recorded: they cannot fail it.
+ *
+ * There is no flat `spans` array. It used to be accumulated here with
+ * `allSpans.push(...spans)` and no caller ever read it: the pipeline uses
+ * `record` and `strings` only. Spreading an array into `push` passes every
+ * element as an argument, so one decoded string holding ~125,000 entity spans
+ * — a 762 KB session file is enough — overflowed the argument stack and the
+ * whole export died with "Maximum call stack size exceeded" reported as
+ * "a bug in deident". Every span is still carried, per string, in `strings`.
  */
 export function substituteRecord(record, table) {
   const changed = [];
-  const allSpans = [];
-  const out = walk(record, table, '', changed, allSpans);
-  return { record: out, spans: allSpans, strings: changed };
+  const out = walk(record, table, '', changed);
+  return { record: out, strings: changed };
 }
 
 // Substitution runs to a FIXPOINT, not once.
@@ -40,14 +47,13 @@ export function substituteRecord(record, table) {
 // I2 is proved per pass exactly as it is for tier 0 versus tier 1.
 const MAX_PASSES = 3;
 
-function walk(value, table, keyPath, changed, allSpans) {
+function walk(value, table, keyPath, changed) {
   if (typeof value === 'string') {
     let current = value;
     for (let pass = 0; pass < MAX_PASSES; pass += 1) {
       const { out, spans } = substituteString(current, table, pass === 0 ? undefined : table.repassGuard);
       if (spans.length === 0) break;
       changed.push(Object.freeze({ path: keyPath, before: current, after: out, spans }));
-      allSpans.push(...spans);
       current = out;
     }
     return current;
@@ -57,7 +63,7 @@ function walk(value, table, keyPath, changed, allSpans) {
     let mutated = false;
     const next = new Array(value.length);
     for (let i = 0; i < value.length; i += 1) {
-      next[i] = walk(value[i], table, `${keyPath}[${i}]`, changed, allSpans);
+      next[i] = walk(value[i], table, `${keyPath}[${i}]`, changed);
       if (next[i] !== value[i]) mutated = true;
     }
     return mutated ? next : value;
@@ -72,11 +78,10 @@ function walk(value, table, keyPath, changed, allSpans) {
         const r = substituteString(nextKey, table, pass === 0 ? undefined : table.repassGuard);
         if (r.spans.length === 0) break;
         changed.push(Object.freeze({ path: `${keyPath}.<key>`, before: nextKey, after: r.out, spans: r.spans }));
-        allSpans.push(...r.spans);
         nextKey = r.out;
         mutated = true;
       }
-      const nextValue = walk(v, table, `${keyPath}.${k}`, changed, allSpans);
+      const nextValue = walk(v, table, `${keyPath}.${k}`, changed);
       if (nextValue !== v) mutated = true;
       next[nextKey] = nextValue;
     }

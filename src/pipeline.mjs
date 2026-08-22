@@ -445,7 +445,11 @@ function surveyCorpus(corpus, flags, namespace = null) {
     const cwds = resolveLineCwd(session.records);
     lineCount += session.records.length;
     badLines += session.badLines.length;
-    roundTripFailures.push(...session.roundTripFailures);
+    // A loop, not `push(...arr)`. Spreading passes one argument per element,
+    // so a file with ~125,000 failing lines throws RangeError before any check
+    // can report it — and it throws inside `scan`, the command cli-ux §1 sells
+    // as the one that writes nothing dangerous.
+    for (const f of session.roundTripFailures) roundTripFailures.push(f);
     if (session.badLines.length > 0) {
       warnings.push(`${file.path}: ${session.badLines.length} unreadable line(s) skipped`);
     }
@@ -663,7 +667,8 @@ function substituteAll(sessions, table) {
     for (const rec of s.records) {
       const r = substituteRecord(rec, table);
       records.push(r.record);
-      strings.push(...r.strings);
+      // See surveyCorpus: one record can hold ~125,000 changed strings.
+      for (const changed of r.strings) strings.push(changed);
     }
     out.push(Object.freeze({ file: s.file, workspace: s.workspace, records: Object.freeze(records) }));
   }
