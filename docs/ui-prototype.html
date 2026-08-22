@@ -319,6 +319,11 @@
   }
   button.link:hover { background: none; filter: brightness(1.15); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button:disabled {
+    opacity: 0.45; cursor: not-allowed;
+    background: var(--surface-2); border-color: var(--rule); color: var(--ink-3);
+  }
+  button.primary:disabled { background: var(--surface-2); border-color: var(--rule); color: var(--ink-3); }
 
   /* ---------- disclosure ---------- */
   .disclosure { display: none; }
@@ -366,6 +371,89 @@
     color: var(--ink-2);
     margin: 0 0 16px;
   }
+
+  /* ---------- workspace ledger rows with reason + reversal ---------- */
+  .ws {
+    display: grid;
+    grid-template-columns: 1fr 74px auto;
+    gap: 14px;
+    align-items: baseline;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .ws:last-child { border-bottom: 0; }
+  .ws .nm { font-family: var(--mono); font-size: 13.5px; font-weight: 500; }
+  .ws .why { display: block; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+  .ws .ct {
+    font-family: var(--mono); font-size: 13px; text-align: right;
+    font-variant-numeric: tabular-nums; color: var(--ink-2);
+  }
+  .ws .act { display: flex; gap: 6px; justify-content: flex-end; }
+  .ws button {
+    font-family: var(--mono); font-size: 11.5px; padding: 3px 9px;
+    border-radius: 2px; letter-spacing: 0.02em;
+  }
+
+  /* state of a session relative to what has already been sent */
+  .st {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+    padding: 1px 6px; border-radius: 2px; margin-left: 7px; white-space: nowrap;
+  }
+  .st.new  { background: var(--ok-bg);   color: var(--ok); }
+  .st.upd  { background: var(--warn-bg); color: var(--warn); }
+  .st.sent { background: var(--surface-2); color: var(--ink-3); }
+
+  /* the blocking group: things only a person can decide */
+  .decide {
+    border-top: 2px solid var(--warn);
+    border-bottom: 1px solid var(--rule-2);
+    padding: 4px 2px 14px;
+    margin-bottom: 24px;
+  }
+  .decide h3 {
+    margin: 14px 0 4px;
+    font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--warn);
+  }
+  .decide p.sub { margin: 0 0 8px; font-size: 13px; color: var(--ink-2); }
+  .decide .ws { grid-template-columns: 1fr 74px auto; }
+  .decided { opacity: 0.5; }
+  .decided .act { display: none; }
+  .verdict {
+    font-family: var(--mono); font-size: 11.5px;
+    padding: 3px 9px; border-radius: 2px;
+  }
+  .verdict.in  { background: var(--warn-bg); color: var(--warn); }
+  .verdict.out { background: var(--surface-2); color: var(--ink-3); }
+
+  /* summary of what THIS run sends, after de-duplication */
+  .thisrun {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    border-top: 2px solid var(--ink-2);
+    padding: 15px 2px 0;
+    margin-top: 4px;
+  }
+  .thisrun .big {
+    font-family: var(--mono); font-size: 30px; font-weight: 600;
+    letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
+  }
+  .thisrun .txt { font-size: 13.5px; color: var(--ink-2); }
+
+  summary {
+    cursor: pointer; list-style: none;
+    font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);
+    padding: 13px 20px; border-bottom: 1px solid var(--rule);
+    background: var(--surface-2);
+    display: flex; justify-content: space-between; gap: 12px;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary:hover { color: var(--ink); }
+  summary .cue { color: var(--accent); letter-spacing: 0.04em; }
+  details[open] summary .cue::after { content: " ▲"; }
+  details:not([open]) summary .cue::after { content: " ▼"; }
+  details { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; margin-bottom: 18px; }
+  details > .body { padding: 6px 20px 16px; }
 
   /* ---------- done ---------- */
   .done { text-align: left; padding: 8px 0 0; }
@@ -422,53 +510,148 @@
     <div class="heads">
       <div class="head">
         <div class="k">會交出去</div>
-        <div class="v">161</div>
-        <div class="n">sessions · 16 workspaces</div>
+        <div class="v" id="hIn">161</div>
+        <div class="n">16 workspaces</div>
       </div>
       <div class="head">
-        <div class="k">已排除</div>
-        <div class="v">64</div>
-        <div class="n">sessions · 15 workspaces</div>
+        <div class="k">需要你決定</div>
+        <div class="v" id="hUn" style="color:var(--warn)">8</div>
+        <div class="n">2 workspaces</div>
       </div>
       <div class="head">
-        <div class="k">檢查</div>
-        <div class="v" style="color:var(--ok)">全數通過</div>
-        <div class="n">4 項</div>
+        <div class="k">不會交出去</div>
+        <div class="v" id="hOut">64</div>
+        <div class="n">15 workspaces</div>
       </div>
     </div>
 
-    <div class="panel">
-      <h2>已排除 — 不會離開這台電腦</h2>
+    <!-- ── the blocking group: only a person can settle these ── -->
+    <div class="decide" id="decide">
+      <h3>需要你決定 — 決定完才能產出</h3>
+      <p class="sub">這些是自動規則判斷不了的。預設留在外面,但預設不算決定。</p>
+
+      <div class="ws" id="dw1">
+        <div><span class="nm">sketch-ui</span>
+          <span class="why">上次匯出之後才出現的 workspace。沒有 git remote。</span></div>
+        <div class="ct">6</div>
+        <div class="act">
+          <button onclick="decide('dw1','in')">交出去</button>
+          <button onclick="decide('dw1','out')">不交</button>
+        </div>
+      </div>
+
+      <div class="ws" id="dw2">
+        <div><span class="nm">infra-scratch</span>
+          <span class="why">remote 指向你不屬於的 org。可能是客戶的東西。</span></div>
+        <div class="ct">2</div>
+        <div class="act">
+          <button onclick="decide('dw2','in')">交出去</button>
+          <button onclick="decide('dw2','out')">不交</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── what actually leaves ── -->
+    <details open>
+      <summary><span>會交出去 · 16 workspaces · 161 sessions</span><span class="cue">收合</span></summary>
+      <div class="body">
+        <div class="ws">
+          <div><span class="nm">payments-api</span><span class="st new">42 新</span><span class="st sent">19 已送過</span>
+            <span class="why">gitroll-dev/payments-api · private · 你所屬的 org</span></div>
+          <div class="ct">61</div>
+          <div class="act"><button onclick="flip(this,'out')">改成不交</button></div>
+        </div>
+        <div class="ws">
+          <div><span class="nm">web-app</span><span class="st new">22 新</span>
+            <span class="why">gitroll-dev/web-app · private · 你所屬的 org</span></div>
+          <div class="ct">22</div>
+          <div class="act"><button onclick="flip(this,'out')">改成不交</button></div>
+        </div>
+        <div class="ws">
+          <div><span class="nm">northwind-integration</span><span class="st upd">3 有更新</span><span class="st sent">15 已送過</span>
+            <span class="why">remote 在客戶 org 底下 · 已套用較嚴格的替換</span></div>
+          <div class="ct">18</div>
+          <div class="act"><button onclick="flip(this,'out')">改成不交</button></div>
+        </div>
+        <div class="ws">
+          <div><span class="nm">cli-tools</span><span class="st sent">14 已送過</span>
+            <span class="why">公開 repo · 只拿掉金鑰</span></div>
+          <div class="ct">14</div>
+          <div class="act"><button onclick="flip(this,'out')">改成不交</button></div>
+        </div>
+        <div class="ws" style="color:var(--ink-3)">
+          <div><span class="nm">… 還有 12 個 workspace</span></div>
+          <div class="ct">46</div>
+          <div class="act"><button onclick="alert('原型:展開全部 16 個')">全部展開</button></div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── what does not ── -->
+    <details>
+      <summary><span>不會交出去 · 15 workspaces · 64 sessions</span><span class="cue">展開</span></summary>
+      <div class="body">
+        <div class="ws">
+          <div><span class="nm">personal-journal</span>
+            <span class="why">名稱含 "journal" · 命中私密字樣</span></div>
+          <div class="ct">4</div>
+          <div class="act"><button onclick="flip(this,'in')">其實要交</button></div>
+        </div>
+        <div class="ws">
+          <div><span class="nm">家目錄</span>
+            <span class="why">不在任何 repo 底下,無法判斷歸屬</span></div>
+          <div class="ct">47</div>
+          <div class="act"><button onclick="flip(this,'in')">其實要交</button></div>
+        </div>
+        <div class="ws">
+          <div><span class="nm">acme-payroll-2026</span>
+            <span class="why">名稱含 "payroll" · 命中私密字樣</span></div>
+          <div class="ct">5</div>
+          <div class="act"><button onclick="flip(this,'in')">其實要交</button></div>
+        </div>
+        <div class="ws">
+          <div><span class="nm">tax-filing</span>
+            <span class="why">名稱含 "tax" · 命中私密字樣</span></div>
+          <div class="ct">2</div>
+          <div class="act"><button onclick="flip(this,'in')">其實要交</button></div>
+        </div>
+        <div class="ws">
+          <div><span class="nm">單獨挑掉的 session</span>
+            <span class="why">在 payments-api 裡,但中途 cd 進了私密目錄</span></div>
+          <div class="ct">2</div>
+          <div class="act"><button onclick="alert('原型:逐筆列出這 2 筆讓你各自決定')">逐筆看</button></div>
+        </div>
+        <div class="ws" style="color:var(--ink-3)">
+          <div><span class="nm">… 還有 10 個 workspace</span></div>
+          <div class="ct">4</div>
+          <div class="act"><button onclick="alert('原型:展開全部 15 個')">全部展開</button></div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── incremental: what this particular run adds ── -->
+    <div class="thisrun">
+      <div class="big" id="runN">47</div>
+      <div class="txt">
+        <strong>本次實際送出 47 個 session</strong><br>
+        會交出去的 161 個裡面,有 111 個上次已經送過而且沒有變動,這次跳過;
+        3 個上次送過但之後又有新對話,會重送完整版。
+        <button class="link" style="padding:0" onclick="alert('原型:改成整批重送 161 個')">改成全部重送</button>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:22px">
+      <h2>上次匯出之後的變化</h2>
       <div class="body">
         <div class="row">
-          <div class="label">personal-journal
-            <span class="sub">名稱命中私密字樣</span></div>
-          <div class="fig">4</div>
+          <div class="label">上次匯出
+            <span class="sub">2026-08-08 · 114 sessions · deident-2026-08-08.zip</span></div>
+          <div class="fig">14 天前</div>
         </div>
         <div class="row">
-          <div class="label">家目錄
-            <span class="sub">不在任何 repo 底下,無法判斷歸屬</span></div>
-          <div class="fig">47</div>
-        </div>
-        <div class="row">
-          <div class="label">acme-payroll-2026
-            <span class="sub">名稱命中私密字樣</span></div>
-          <div class="fig">5</div>
-        </div>
-        <div class="row">
-          <div class="label">tax-filing
-            <span class="sub">名稱命中私密字樣</span></div>
-          <div class="fig">2</div>
-        </div>
-        <div class="row">
-          <div class="label">sketch-ui · infra-scratch
-            <span class="sub">新的 workspace,預設不交</span></div>
-          <div class="fig">6</div>
-        </div>
-        <div class="row">
-          <div class="label" style="color:var(--ink-2)">單獨挑掉的 session
-            <span class="sub">中途進入私密目錄</span></div>
-          <div class="fig">2</div>
+          <div class="label">已送過、現在被你改成不交的
+            <span class="sub">送出去的東西收不回來。收資料的人要另外告知才會刪。</span></div>
+          <div class="fig"><span class="pill warn">1 個</span></div>
         </div>
       </div>
     </div>
@@ -564,12 +747,11 @@
     </div>
 
     <div class="actions">
-      <button class="primary" onclick="go(2)">看起來沒問題,繼續</button>
+      <button class="primary" id="next1" onclick="go(2)" disabled>先決定上面那 2 個</button>
       <button class="link" onclick="toggle('d-sessions', this, '逐筆看會送出什麼', '收起逐筆清單')">逐筆看會送出什麼</button>
-      <button class="link" onclick="alert('原型:這裡會讓你把 sketch-ui / infra-scratch 加回來。')">把排除的加回來</button>
     </div>
 
-    <p class="hint">按下按鈕之前,什麼都還沒有離開這台電腦。</p>
+    <p class="hint">按下按鈕之前,什麼都還沒有離開這台電腦。你在這裡做的每個決定都會被記住,下次不會再問。</p>
   </section>
 
   <!-- ══════════════════════ SCREEN 2 ══════════════════════ -->
@@ -577,7 +759,8 @@
 
     <p class="note">
       這些看起來像人名或公司名,但不在自動偵測範圍裡(不是路徑、不是 email、不是金鑰)。
-      勾起來的會被換成代號。<strong>Claude 已經先幫你判斷過,你只要掃一眼。</strong>
+      勾起來的會換成代號。<strong>Claude 已經先幫你判斷過,你只要掃一眼。</strong>
+      取消勾選就是誤判的修正方式,而且會被記住 —— 下次不會再問同一個字。
     </p>
 
     <div class="panel">
@@ -649,6 +832,55 @@
 </div>
 
 <script>
+  /* Undecided workspaces block the export. Deciding is one click, and the
+     decision is remembered, so this list shrinks to nothing on later runs. */
+  var pending = 2, inCount = 161, outCount = 64, unCount = 8, runCount = 47;
+  var SESS = { dw1: 6, dw2: 2 };
+
+  function decide(id, verdict) {
+    var row = document.getElementById(id);
+    if (row.classList.contains('decided')) return;
+    row.classList.add('decided');
+    var n = SESS[id];
+    var tag = document.createElement('span');
+    tag.className = 'verdict ' + verdict;
+    tag.textContent = verdict === 'in' ? '會交出去' : '不會交出去';
+    row.appendChild(tag);
+
+    unCount -= n;
+    if (verdict === 'in') { inCount += n; runCount += n; } else { outCount += n; }
+    pending -= 1;
+    paint();
+  }
+
+  /* Reversing toward LESS exposure is one click. Reversing toward MORE exposure
+     needs a typed confirmation — the asymmetry is deliberate. */
+  function flip(btn, dir) {
+    if (dir === 'in') {
+      var name = btn.closest('.ws').querySelector('.nm').textContent.trim();
+      var typed = prompt('把「' + name + '」改成會交出去。\n\n這個 workspace 是自動排除的。要往「送出更多」的方向改,請打字確認:\n\n輸入 ' + name);
+      if (typed !== name) return;
+      alert('原型:已改成會交出去,而且會被記住。');
+    } else {
+      alert('原型:已改成不交,而且會被記住。');
+    }
+  }
+
+  function paint() {
+    document.getElementById('hIn').textContent = inCount;
+    document.getElementById('hUn').textContent = unCount;
+    document.getElementById('hOut').textContent = outCount;
+    document.getElementById('runN').textContent = runCount;
+    var b = document.getElementById('next1');
+    if (pending === 0) {
+      b.disabled = false;
+      b.textContent = '看起來沒問題,繼續';
+      document.getElementById('decide').style.display = 'none';
+    } else {
+      b.textContent = '先決定上面那 ' + pending + ' 個';
+    }
+  }
+
   function go(n) {
     for (var i = 1; i <= 3; i++) {
       document.getElementById('scr' + i).classList.toggle('on', i === n);
