@@ -88,8 +88,10 @@ counts are targets; 800 is the hard ceiling.
 
 | File | Lines | Public function | Responsibility |
 |---|---:|---|---|
-| `src/policy/workspaces.mjs` | ~260 | `classifyWorkspaces(corpus, saved, opts)` | Assign each workspace a tier. Deny-list seeds (`private`, `identity`, `payroll`, `redacted-name`), default of `unclassified`, persisted decisions from `~/.deident-private/workspaces.json`. Opt-in only, never opt-out (§4.11). |
-| `src/policy/linefilter.mjs` | ~140 | `allowLine(cwd, tiers)` | The per-line gate. A record whose effective `cwd` matches a deny token or an `exclude` workspace is dropped **even inside an included workspace** (§4.8: 11 cwds in one file, one of them `\private`). |
+| `src/policy/grouping.mjs` | ~130 | `groupSessions(sessions)` | A workspace is the directory a session actually worked in: the dominant per-line `cwd`, not the storage slug it was launched from (§4.9). Names each group from its own path and keeps the resolved `cwd` for the review row. |
+| `src/policy/signals.mjs` | ~90 | `proposeTier(group, probe)` | The privacy-tiers §3 proposal: deny-list to `exclude`, a git remote to `redact`, no remote to `exclude`. `open` is never proposed, because repository visibility is not on disk and BRIEF §2 forbids the call that would answer it. |
+| `src/policy/workspaces.mjs` | ~260 | `classifyWorkspaces(groups, saved, opts)` | Assign each workspace a tier: deny-list first, then a saved decision from `~/.deident-private/workspaces.json`, then the proposal. `unclassified` is the residue for a workspace with no readable signal, never the default. Opt-in only, never opt-out (§4.11). |
+| `src/policy/linefilter.mjs` | ~140 | `allowLine(cwd, policy)` | The per-line gate. A record is resolved to its **most specific** workspace by longest path prefix and takes that workspace's tier, so it is dropped **even inside an included workspace** (§4.8: 11 cwds in one file, one of them `\private`). Longest-first matters: the excluded home directory prefixes every workspace on the machine. |
 | `src/policy/reviewfile.mjs` | ~300 | `renderReview(model)`, `parseReview(text)` | `review.md` is both report and config, so the two directions round-trip. Low-confidence entities are individual rows and are never collapsed into a count (§F6). |
 
 ### Entities
@@ -140,7 +142,8 @@ surface.
  2  readSession (per file)   corpus/reader.mjs      + serialization invariant, per line
  3  namespace collision      verify/checks.mjs      BEFORE any pseudonym is minted
  4  resolveLineCwd           corpus/cwdtrack.mjs    consumes relocated / worktree-state
- 5  classifyWorkspaces       policy/workspaces.mjs  + review.md round-trip
+ 5  groupSessions +          policy/grouping.mjs    + policy/signals.mjs,
+    classifyWorkspaces       policy/workspaces.mjs    then review.md round-trip
  6  allowLine                policy/linefilter.mjs  per-line cwd gate
  7  retainRecord             retain/records.mjs     + distillToolResult + timestamp quantise
  8  seedEntities             entities/seed.mjs      + expandVariants
