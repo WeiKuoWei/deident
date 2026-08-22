@@ -184,11 +184,11 @@ export function runAllChecks(state) {
     state.substitution,
     Object.freeze({
       name: 'pseudonym namespace',
-      ok: state.namespaceHits.length === 0,
+      ok: (state.namespaceHitCount ?? state.namespaceHits.length) === 0,
       detail:
         state.namespaceHits.length === 0
           ? `no pre-existing ${state.namespace ? `${state.namespace}_` : ''}PERSON_n tokens`
-          : `${state.namespaceHits.length} pre-existing tokens`,
+          : `${state.namespaceHitCount ?? state.namespaceHits.length} pre-existing tokens`,
     }),
     state.residue,
     state.semantic,

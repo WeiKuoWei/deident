@@ -43,6 +43,7 @@ import { serializeSessions } from './pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
 
 const BS = String.fromCharCode(92); // a single backslash, written without escapes
+const NL = String.fromCharCode(10);
 
 // ---------------------------------------------------------------- helpers
 
@@ -1052,6 +1053,36 @@ const FIXTURES = [
     const clean = path.join(dir, 'clean.jsonl');
     fs.writeFileSync(clean, Buffer.concat([head, Buffer.from([0xe4, 0xbd, 0xa0, 0xe5, 0xa5, 0xbd]), tail]));
     assert.equal(readSession(clean).roundTripFailures.length, 0);
+  }],
+
+  // F47 — the corpus is read one file at a time, and a file's raw line text is
+  // released once it has been checked.
+  //
+  // Holding the raw text, the parsed value AND a second array of raw lines for
+  // the whole corpus needed 2.5-3.0 GB of old space on the real 833 MB corpus
+  // and aborted the process with a V8 heap-limit FATAL ERROR. A heap-limit
+  // abort is a process-level abort: no catch runs, no refusal is printed, and
+  // the user is told nothing at all.
+  ['F47', 'the reader can release raw line text and still run the namespace probe', () => {
+    const dir = tmpdir();
+    const file = path.join(dir, 'raw.jsonl');
+    const rows = [
+      { type: 'user', uuid: 'a', sessionId: 's', message: { role: 'user', content: [] } },
+      { type: 'mode', sessionId: 's', mode: 'plan' },
+    ];
+    fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join(NL) + NL, 'utf8');
+
+    const seen = [];
+    const session = readSession(file, { keepRaw: false, inspect: (line, no) => seen.push([no, line]) });
+    assert.equal(session.records.length, 2);
+    assert.equal(seen.length, 2, 'inspect must see every parsed line');
+    assert.equal(seen[0][1], JSON.stringify(rows[0]), 'inspect receives the raw text');
+    for (const rec of session.records) {
+      assert.equal(rec.line, undefined, 'raw line text must not be retained when keepRaw is false');
+      assert.ok(rec.value !== undefined, 'the parsed value is still there');
+    }
+    // The default is unchanged, so callers that need raw text still get it.
+    assert.equal(readSession(file).records[0].line, JSON.stringify(rows[0]));
   }],
 ];
 

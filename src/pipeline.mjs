@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto';
 import * as report from './cli/report.mjs';
 import { RefusalError } from './cli/errors.mjs';
 import { resolveCorpus, corpusDateRange } from './corpus/root.mjs';
-import { readSession, roundTripRefusal } from './corpus/reader.mjs';
+import { readSession, roundTripRefusal, nestingError } from './corpus/reader.mjs';
 import { resolveLineCwd } from './corpus/cwdtrack.mjs';
 import {
   classifyWorkspaces,
@@ -36,7 +36,6 @@ import {
   loadOrCreateSalt,
   defaultSaltDir,
   assignPseudonyms,
-  namespaceCollisions,
   namespaceRefusal,
   pseudonymPattern,
 } from './entities/pseudonym.mjs';
@@ -56,6 +55,7 @@ import {
 } from './verify/checks.mjs';
 import { writeZip, safeUnlink } from './output/zip.mjs';
 import { writePreview } from './output/preview.mjs';
+import { EXAMPLES_PER_REPORT } from './retain/constants.mjs';
 
 // ------------------------------------------------------------------- scan
 
@@ -64,7 +64,7 @@ export async function runScan(flags, env) {
   const saltDir = flags.saltDir ?? defaultSaltDir(env);
   const corpus = resolveCorpus(env, flags.root);
 
-  const loaded = loadCorpus(corpus, flags);
+  const loaded = surveyCorpus(corpus, flags);
   const { decisions, workspaceOf } = classify(loaded, loadSavedDecisions(saltDir), flags);
 
   const model = buildReviewModel(decisions, loaded, workspaceOf, [], nowStamp());
@@ -90,7 +90,7 @@ export async function runReview(flags, env) {
   const outDir = path.resolve(flags.out ?? process.cwd());
   const saltDir = flags.saltDir ?? defaultSaltDir(env);
   const corpus = resolveCorpus(env, flags.root);
-  const loaded = loadCorpus(corpus, flags);
+  const loaded = surveyCorpus(corpus, flags);
   const saved = { ...loadSavedDecisions(saltDir), ...readReview(path.join(outDir, REVIEW_FILENAME)) };
   const { decisions, workspaceOf } = classify(loaded, saved, flags);
   const model = buildReviewModel(decisions, loaded, workspaceOf, [], nowStamp());
@@ -128,14 +128,17 @@ export async function runExport(flags, env) {
   const corpus = resolveCorpus(env, flags.root);
 
   //  2  read every file, checking I1 on untouched input
-  const loaded = loadCorpus(corpus, flags);
+  //     3 rides along with 2, because it is the only step that reads raw line
+  //     text and accumulating the corpus's raw lines to run it separately is
+  //     what put the process over the V8 heap limit.
+  const loaded = surveyCorpus(corpus, flags, flags.namespace);
   if (loaded.roundTripFailures.length > 0) throw roundTripRefusal(loaded.roundTripFailures);
 
   //  3  namespace collision — BEFORE any pseudonym is minted (PLAN §2)
-  const namespaceHits = namespaceCollisions(loaded.rawLines, flags.namespace);
-  if (namespaceHits.length > 0) throw namespaceRefusal(namespaceHits, flags.namespace);
+  const namespaceHits = loaded.namespaceHits;
+  if (loaded.namespaceHitCount > 0) throw namespaceRefusal(namespaceHits, flags.namespace, loaded.namespaceHitCount);
 
-  //  5  workspace tiers (4 ran inside loadCorpus, per file)
+  //  5  workspace tiers (4 ran inside surveyCorpus, per file)
   const saved = { ...loadSavedDecisions(saltDir), ...readReview(path.join(outDir, REVIEW_FILENAME)) };
   const { decisions, workspaceOf } = classify(loaded, saved, flags);
   if (!flags.skipUnclassified) {
@@ -156,7 +159,7 @@ export async function runExport(flags, env) {
   //  6 + 7  per-line cwd gate, then retention
   const salt = loadOrCreateSalt(saltDir);
   const rewriteUuid = makeUuidRewriter(salt);
-  const retained = retainCorpus(loaded, workspaceOf, exportable, cwdTierIndex(decisions), rewriteUuid);
+  const retained = retainCorpus(loaded, workspaceOf, exportable, cwdTierIndex(decisions), rewriteUuid, flags);
 
   //  8  seed entities from PRE-substitution values (PLAN §2). Run seeding
   //     after substitution and these values are already pseudonyms: seeding
@@ -217,6 +220,7 @@ export async function runExport(flags, env) {
     linesRead: loaded.lineCount,
     roundTripFailures: loaded.roundTripFailures,
     namespaceHits,
+    namespaceHitCount: loaded.namespaceHitCount,
     namespace: flags.namespace,
     substitution,
     residue,
@@ -269,40 +273,68 @@ export async function runExport(flags, env) {
 
 // ------------------------------------------------------------------ steps
 
-/** Steps 2 and 4, per file. */
-function loadCorpus(corpus, flags) {
+/**
+ * Steps 2, 3 and 4, one file at a time.
+ *
+ * The parsed records of a file are NOT kept. Measured on Ray's 833 MB corpus
+ * (2026-08-22): holding the raw text, the parsed value and a second array of
+ * raw lines for the whole corpus needed between 2.5 and 3.0 GB of old space and
+ * aborted the process with a V8 heap-limit FATAL ERROR — which no try/catch can
+ * catch, so the user got no refusal and no explanation at all. Each file is
+ * read, reduced to what later steps actually need (its per-line cwd values and
+ * a few counters), and released. `retainCorpus` re-reads the files it needs.
+ * Two reads of a file are cheap; the whole corpus resident at once is not.
+ */
+function surveyCorpus(corpus, flags, namespace = null) {
   const sessions = [];
-  const rawLines = [];
   const roundTripFailures = [];
   const warnings = [];
+  const namespaceHits = [];
+  let namespaceHitCount = 0;
   let badLines = 0;
   let lineCount = 0;
 
+  const pattern = pseudonymPattern(namespace);
+
   for (const file of corpus.files) {
-    const session = readSession(file.path, { skipUnreadable: flags.skipUnreadable });
+    const session = readSession(file.path, {
+      skipUnreadable: flags.skipUnreadable,
+      keepRaw: false,
+      // Step 3 reads raw line text, and it is the only step that does. Doing it
+      // here means the raw lines never have to be accumulated.
+      inspect: (line, lineNo) => {
+        pattern.lastIndex = 0;
+        const m = pattern.exec(line);
+        if (m === null) return;
+        namespaceHitCount += 1;
+        if (namespaceHits.length < EXAMPLES_PER_REPORT) {
+          namespaceHits.push(Object.freeze({ file: file.path, line: lineNo, token: m[0] }));
+        }
+      },
+    });
     const cwds = resolveLineCwd(session.records);
     lineCount += session.records.length;
     badLines += session.badLines.length;
     roundTripFailures.push(...session.roundTripFailures);
-    for (const rec of session.records) rawLines.push({ file: file.path, line: rec.index, text: rec.line });
     if (session.badLines.length > 0) {
       warnings.push(`${file.path}: ${session.badLines.length} unreadable line(s) skipped`);
     }
-    sessions.push(Object.freeze({ file, session, cwds }));
+    sessions.push(Object.freeze({ file, cwds }));
   }
 
   return Object.freeze({
     sessions: Object.freeze(sessions),
-    rawLines,
     roundTripFailures: Object.freeze(roundTripFailures),
     warnings: Object.freeze(warnings),
+    namespaceHits: Object.freeze(namespaceHits),
+    namespaceHitCount,
     badLines,
     lineCount,
   });
 }
 
-/** Steps 6 and 7. */
-function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid) {
+/** Steps 6 and 7, re-reading one file at a time (see surveyCorpus). */
+function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid, flags) {
   const out = [];
   const cwds = [];
   const stats = {
@@ -321,9 +353,12 @@ function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid) {
     workspaces: new Set(),
   };
 
-  for (const { file, session, cwds: lineCwds } of loaded.sessions) {
+  for (const { file, cwds: lineCwds } of loaded.sessions) {
     const workspace = workspaceOf.get(file.path);
     if (workspace === undefined || !exportable.has(workspace.key)) continue;
+    // Re-read rather than hold: the survey pass released this file's records
+    // precisely so the whole corpus is never resident at once.
+    const session = readSession(file.path, { skipUnreadable: flags.skipUnreadable, keepRaw: false });
     const ctx = newRetentionContext(rewriteUuid);
     const records = [];
 
@@ -333,12 +368,24 @@ function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid) {
         stats.droppedByCwd += 1;
         continue;
       }
-      const result = retainRecord(session.records[i].value, ctx, {
-        file: file.path,
-        line: session.records[i].index,
-      });
+      const at = { file: file.path, line: session.records[i].index };
+      let result;
+      try {
+        result = retainRecord(session.records[i].value, ctx, at);
+      } catch (err) {
+        // Every walker here is recursive. Pathological nesting is a property of
+        // the input, so it is a read error naming the line (exit 3), never
+        // "a bug in deident" (exit 1).
+        if (err instanceof RangeError) throw nestingError(at.file, at.line, err);
+        throw err;
+      }
       if (result.keep) {
-        records.push(rewriteUuidsInRecord(result.record, ctx.rewriteUuid));
+        try {
+          records.push(rewriteUuidsInRecord(result.record, ctx.rewriteUuid));
+        } catch (err) {
+          if (err instanceof RangeError) throw nestingError(at.file, at.line, err);
+          throw err;
+        }
         if (lineCwds[i]) cwds.push(lineCwds[i]);
       }
     }

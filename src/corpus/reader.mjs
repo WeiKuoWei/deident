@@ -14,12 +14,20 @@ const REPLACEMENT_CHAR = String.fromCharCode(0xfffd);
 
 /**
  * @param {string} filePath
- * @param {{skipUnreadable?: boolean}} opts
+ * @param {{skipUnreadable?: boolean, keepRaw?: boolean, inspect?: Function}} opts
+ *   keepRaw: false drops each record's raw line text once it has been checked.
+ *     The raw text is as large as the file itself, and the export pass has no
+ *     use for it — holding it is a second copy of the corpus for nothing.
+ *   inspect(line, lineNo): called with the raw text of every parsed line, so a
+ *     caller that needs to look at raw lines (the namespace collision check)
+ *     can do so without the reader accumulating them.
  * @returns {Readonly<{path, records, badLines, bytes, lineCount, roundTripFailures}>}
- *   records: [{index, line, value}] in file order, 1-based `index`.
+ *   records: [{index, line?, value}] in file order, 1-based `index`.
  */
 export function readSession(filePath, opts = {}) {
   const skip = opts.skipUnreadable === true;
+  const keepRaw = opts.keepRaw !== false;
+  const inspect = typeof opts.inspect === 'function' ? opts.inspect : null;
 
   let buf;
   try {
@@ -74,6 +82,10 @@ export function readSession(filePath, opts = {}) {
     try {
       value = JSON.parse(line);
     } catch (err) {
+      // Pathologically nested JSON exhausts the JS stack rather than failing to
+      // parse. That is a property of the INPUT, so it is a read error naming
+      // the file and the line (exit 3), not "a bug in deident" (exit 1).
+      if (err instanceof RangeError) throw nestingError(filePath, lineNo, err);
       if (!skip) {
         throw new ReadError('unparseable line', {
           detail: {
@@ -93,11 +105,17 @@ export function readSession(filePath, opts = {}) {
 
     // I1. Recorded rather than thrown here so the caller can report every
     // failing line at once; runAllChecks turns a non-empty list into a refusal.
-    if (JSON.stringify(value) !== line) {
-      roundTripFailures.push(Object.freeze({ file: filePath, line: lineNo }));
+    try {
+      if (JSON.stringify(value) !== line) {
+        roundTripFailures.push(Object.freeze({ file: filePath, line: lineNo }));
+      }
+    } catch (err) {
+      if (err instanceof RangeError) throw nestingError(filePath, lineNo, err);
+      throw err;
     }
 
-    records.push(Object.freeze({ index: lineNo, line, value }));
+    if (inspect !== null) inspect(line, lineNo);
+    records.push(Object.freeze(keepRaw ? { index: lineNo, line, value } : { index: lineNo, value }));
   }
 
   return Object.freeze({
@@ -107,6 +125,26 @@ export function readSession(filePath, opts = {}) {
     roundTripFailures: Object.freeze(roundTripFailures),
     bytes,
     lineCount: records.length + badLines.length,
+  });
+}
+
+/**
+ * A record nested deeply enough to exhaust the JS stack.
+ *
+ * Every walker in the pipeline is recursive, so this is a property of the
+ * input and belongs in the same shape as an unparseable line: exit 3, the file
+ * and the line named. Reported as "a bug in deident" it sends the user to file
+ * an issue about their own data.
+ */
+export function nestingError(filePath, lineNo, err) {
+  return new ReadError('a record is nested too deeply to process', {
+    detail: {
+      file: filePath,
+      line: lineNo,
+      parserMessage: err && err.message ? err.message : 'stack exhausted',
+      likelyCause:
+        'This record nests JSON thousands of levels deep, which exhausts the stack every walker in deident uses.',
+    },
   });
 }
 

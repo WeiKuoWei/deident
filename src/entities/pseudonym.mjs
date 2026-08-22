@@ -203,11 +203,13 @@ export function namespaceCollisions(lines, namespace = null) {
   return Object.freeze(hits);
 }
 
-export function namespaceRefusal(hits, namespace) {
+export function namespaceRefusal(hits, namespace, total = null) {
   const files = [...new Set(hits.map((h) => h.file))];
   const suggestion = namespace ? `${namespace}Z` : 'X';
+  // `hits` is a bounded sample; `total` is how many lines actually matched.
+  const count = total === null ? hits.length : total;
   return new RefusalError(
-    `${hits.length} input line${hits.length === 1 ? ' already contains' : 's already contain'} a token in the pseudonym namespace`,
+    `${count} input line${count === 1 ? ' already contains' : 's already contain'} a token in the pseudonym namespace`,
     {
       why: [
         `for example ${hits[0].token}, in ${files.length} file${files.length === 1 ? '' : 's'}`,
@@ -217,7 +219,7 @@ export function namespaceRefusal(hits, namespace) {
         'and reversal would be permanently ambiguous. Shifting the namespace is free.',
       ],
       remedies: [{ label: 'Shift the namespace', command: `deident export --namespace ${suggestion}` }],
-      detail: { hits: hits.length, files: files.length },
+      detail: { hits: count, files: files.length },
     },
   );
 }
