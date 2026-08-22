@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
@@ -27,7 +27,7 @@ import {
 } from './entities/seed.mjs';
 import { buildTable, substituteString, reverseString, allOccurrences } from './substitute/engine.mjs';
 import { substituteRecord } from './substitute/walker.mjs';
-import { checkSubstitution } from './verify/checks.mjs';
+import { checkSubstitution, checkSemanticPass, semanticRefusal } from './verify/checks.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from './verify/residual.mjs';
 import { distillToolResult, retainToolUseResult, checkAddedLines } from './retain/toolresult.mjs';
 import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord } from './retain/records.mjs';
@@ -91,18 +91,20 @@ function tmpdir() {
 
 const ENTRY = fileURLToPath(new URL('../deident.mjs', import.meta.url));
 
-/** Run the real CLI in a child process. Returns {code, out}. */
+/**
+ * Run the real CLI in a child process. Returns {code, out}.
+ *
+ * Both streams are captured and concatenated. Warnings go to stderr and
+ * refusals go to stderr, so a harness that reads stdout alone cannot see the
+ * difference between "warned and carried on" and "said nothing".
+ */
 function runCli(args) {
-  try {
-    const out = execFileSync(process.execPath, [ENTRY, ...args], {
-      encoding: 'utf8',
-      timeout: 120_000,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    return { code: 0, out };
-  } catch (err) {
-    return { code: err.status ?? 1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
-  }
+  const r = spawnSync(process.execPath, [ENTRY, ...args], {
+    encoding: 'utf8',
+    timeout: 120_000,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
 /**
@@ -1886,6 +1888,93 @@ const FIXTURES = [
     assert.equal(caught.detail.file, file);
     assert.equal(caught.detail.line, 1);
     assert.match(caught.detail.likelyCause, /nests JSON/);
+  }],
+
+  // F67 — the export's write ordering and its one deliberate exception.
+  //
+  // Three separate ways a run reported the opposite of what it did:
+  //   - saveDecisions was the only writer with no try/catch and it ran AFTER
+  //     writeZip and after the success line, so an unwritable salt directory
+  //     printed `-> deident-export.zip  515 B` and then `internal error ...
+  //     Nothing was written.` with exit 1 and the finished zip still on disk.
+  //   - deident-candidates.txt was written on EVERY export attempt, ahead of
+  //     the substitution invariant and the residual scan, so a run that refused
+  //     for an unrelated reason left un-de-identified third-party prose behind.
+  //   - review --html had no mkdir, so a missing output directory arrived as
+  //     "a bug in deident".
+  ['F67', 'a written export stays written, and nothing else is written beside it', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    const args = [
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ];
+
+    // A successful export writes the zip and NOT the candidates file: that file
+    // holds prose the semantic pass has not seen, so it exists only on the
+    // refusal that asks for one.
+    const ok = runCli(args);
+    assert.equal(ok.code, 0, ok.out);
+    assert.equal(fs.existsSync(path.join(out, 'deident-candidates.txt')), false, 'no candidates file on success');
+
+    // Now make the tier memo unwritable by putting a directory where its file
+    // goes. The export must still succeed, warn, and leave the zip in place.
+    fs.rmSync(path.join(out, fs.readdirSync(out).find((f) => f.endsWith('.zip'))));
+    // Readable so the run can still load tiers, unwritable so only the SAVE
+    // fails. On Windows chmod maps to the read-only attribute, which is exactly
+    // the failure a real user hits with a locked or synced directory.
+    const memo = path.join(saltDir, 'workspaces.json');
+    fs.writeFileSync(memo, '{}', 'utf8');
+    fs.chmodSync(memo, 0o444);
+    const blocked = runCli(args);
+    assert.equal(blocked.code, 0, `a lost tier memo is not a failed export: ${blocked.out}`);
+    assert.match(blocked.out, /could not remember your tier decisions/);
+    assert.equal(fs.readdirSync(out).filter((f) => f.endsWith('.zip')).length, 1, 'the archive stays');
+    assert.doesNotMatch(blocked.out, /Nothing was written/, 'the report must not contradict the archive on disk');
+    fs.chmodSync(memo, 0o666);
+
+    // review --html into a directory that does not exist yet.
+    const deep = path.join(root, 'nested', 'deeper');
+    const html = runCli(['review', '--html', '--root', root, '--out', deep, '--salt-dir', saltDir]);
+    assert.equal(html.code, 0, html.out);
+    assert.ok(fs.existsSync(path.join(deep, 'review.html')));
+
+    // And where the path cannot be a directory at all, it is a named refusal
+    // with a remedy, not an internal error.
+    const blocking = path.join(root, 'a-file');
+    fs.writeFileSync(blocking, 'not a directory', 'utf8');
+    const refused = runCli(['review', '--html', '--root', root, '--out', blocking, '--salt-dir', saltDir]);
+    assert.equal(refused.code, 1);
+    assert.match(refused.out, /could not write/);
+    assert.match(refused.out, /--out <path>/);
+    assert.doesNotMatch(refused.out, /bug in deident/);
+  }],
+
+  // F68 — an empty entity list satisfied I6: `semantic pass  --entities
+  // empty.json · 0 entities  ok` printed beside a real zip. tier1.mjs's own
+  // header says an empty list "passes I6 while delivering nothing", and it is
+  // exactly the file a failed or interrupted discovery run leaves behind.
+  ['F68', 'an empty entity list is not a semantic pass', () => {
+    const empty = checkSemanticPass({ ran: true, source: '--entities empty.json', entities: [] });
+    assert.equal(empty.ok, false, 'zero entities is indistinguishable from not running');
+    assert.equal(empty.why, 'empty');
+    assert.match(semanticRefusal('cands.txt', empty.why).reason, /empty/);
+
+    const absent = checkSemanticPass(null);
+    assert.equal(absent.ok, false);
+    assert.equal(absent.why, 'absent');
+    assert.match(semanticRefusal('cands.txt', absent.why).reason, /has not run/);
+
+    const real = checkSemanticPass({
+      ran: true,
+      source: '--entities e.json',
+      entities: [{ id: 'T1', canonical: 'Ada Wang' }],
+    });
+    assert.equal(real.ok, true);
   }],
 ];
 
