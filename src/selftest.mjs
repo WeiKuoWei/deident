@@ -34,7 +34,7 @@ import { substituteRecord } from './substitute/walker.mjs';
 import { checkSubstitution, checkSemanticPass, semanticRefusal } from './verify/checks.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from './verify/residual.mjs';
 import { distillToolResult, retainToolUseResult, checkAddedLines } from './retain/toolresult.mjs';
-import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord } from './retain/records.mjs';
+import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason } from './retain/records.mjs';
 import { resolveLineCwd, cwdChangeFrom } from './corpus/cwdtrack.mjs';
 import { allowLine } from './policy/linefilter.mjs';
 import {
@@ -2638,6 +2638,87 @@ const FIXTURES = [
     // ordinary spelling still obeys §4.5, so `ray` inside `array` is untouched.
     const strict = buildTable([entity('P9', 'person', 'ray', 'PERSON_9')]);
     assert.equal(substituteString('array index', strict).out, 'array index');
+  }],
+
+  // F83 — the deny-list filtered where the agent WAS, never what it TOUCHED.
+  //
+  // BRIEF §4.11 says per-directory opt-in, never opt-out, and privacy-tiers §4
+  // claims three levels of granularity make that sufficient. All three read
+  // the cwd, so a Read, an Edit or a directory listing of a deny-listed path
+  // from an ALLOWED cwd was invisible to every one of them. Measured on a real
+  // export: `…\private\vendor-search\SCORECARD.md` x17,
+  // `…\private\NEW-ACCOUNTANT-BRIEF.md` x36, `backpay-calc.mjs` x5 — the
+  // parent got a WORKSPACE pseudonym and the subpath below it did not — and a
+  // `[LINE]…txt` naming the counselling counterparty arrived in a directory
+  // listing run from the home directory.
+  ['F83', 'a deny-listed path is withheld whoever touched it, from wherever', () => {
+    const denied = ['C:', 'w', 'ops-handover', 'private', 'vendor-search', 'SCORECARD.md'].join(BS);
+    assert.equal(deniedReason(denied), 'a deny-listed directory');
+    assert.equal(deniedReason('projects/private-archive/organized/2025-09.txt'), 'private-archive');
+    // The token has to be inside a path SEGMENT, or ordinary prose trips it.
+    assert.equal(deniedReason('the files are at /home and private things'), null);
+    assert.equal(deniedReason('run the august-payroll.mjs script'), null);
+    assert.equal(deniedReason('C:/w/deident/src/policy/reviewfile.mjs'), null);
+
+    const ctx = newRetentionContext((u) => u);
+    const at = { file: 'a', line: 1 };
+    // A tool ASKED to touch it: the parameters go, the tool name stays,
+    // because "an Edit happened" is scoring evidence and carries no path.
+    const use = retainRecord(
+      {
+        type: 'assistant',
+        uuid: 'u1',
+        sessionId: 's',
+        cwd: 'C:' + BS + 'w',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: denied, old_string: 'a', new_string: 'b' } }],
+        },
+      },
+      ctx,
+      at,
+    );
+    const block = use.record.message.content[0];
+    assert.equal(block.name, 'Edit', 'the tool name survives');
+    assert.equal(JSON.stringify(block.input).includes('SCORECARD'), false, 'the path does not');
+    assert.equal(JSON.stringify(block.input).includes('vendor-search'), false, 'nor the subdirectory');
+    assert.match(block.input.redacted, /withheld by deident/);
+    // The marker must not name the token: one of them is a person.
+    assert.equal(/redacted-name|payroll|private|identity/i.test(block.input.redacted), false);
+    assert.equal(ctx.stats.deniedBlocks, 1);
+
+    // A directory listing that ENUMERATES one, from an allowed cwd.
+    const listing = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u2',
+        sessionId: 's',
+        cwd: 'C:' + BS + 'w',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: `Mode  Name${NL}-a---  ${denied}${NL}-a---  ok.md` }],
+        },
+      },
+      ctx,
+      at,
+    );
+    assert.equal(listing.record.message.content[0].content.includes('SCORECARD'), false);
+    assert.equal(ctx.stats.deniedBlocks, 2);
+
+    // And an ordinary tool call in the same session is untouched.
+    const fine = retainRecord(
+      {
+        type: 'assistant',
+        uuid: 'u3',
+        sessionId: 's',
+        cwd: 'C:' + BS + 'w',
+        message: { role: 'assistant', content: [{ type: 'tool_use', id: 't2', name: 'Read', input: { file_path: 'C:/w/src/index.mjs' } }] },
+      },
+      ctx,
+      at,
+    );
+    assert.equal(fine.record.message.content[0].input.file_path, 'C:/w/src/index.mjs');
+    assert.equal(ctx.stats.deniedBlocks, 2);
   }],
 ];
 

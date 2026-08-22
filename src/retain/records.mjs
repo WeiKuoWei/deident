@@ -18,6 +18,8 @@ import {
   TIMESTAMP_QUANTUM_MS,
   CODE_VALUED_TOOL_PARAMS,
   DENIED_CONTENT,
+  DENIED_PATH_RE,
+  DENIED_PATH_REASON,
   DENIED_MARKER,
   INJECTED_SPANS,
 } from './constants.mjs';
@@ -280,13 +282,31 @@ function retainBlock(block, ctx) {
         ? { type: 'thinking', thinking: block.thinking }
         : null;
 
-    case 'tool_use':
+    case 'tool_use': {
+      // What the tool was ASKED to touch. `Read`, `Edit`, `Write` and
+      // `SendUserFile` all carry the path as a parameter, and every one of
+      // them ran from an ordinary cwd while naming a deny-listed file. The
+      // tool NAME survives, because "an Edit happened" is scoring evidence and
+      // carries no path.
+      const why = deniedToolUse(block.input);
+      if (why !== null) {
+        ctx.stats.deniedBlocks += 1;
+        const bytes = Buffer.byteLength(JSON.stringify(block.input ?? null), 'utf8');
+        ctx.stats.deniedBytes += bytes;
+        return {
+          type: 'tool_use',
+          id: ctx.rewriteUuid(block.id),
+          name: block.name ?? null,
+          input: { redacted: DENIED_MARKER(bytes, why) },
+        };
+      }
       return {
         type: 'tool_use',
         id: ctx.rewriteUuid(block.id),
         name: block.name ?? null,
         input: stripCodeParams(block.input, ctx),
       };
+    }
 
     case 'tool_result': {
       const denied = denyToolResult(block.content, ctx);
@@ -315,6 +335,19 @@ function retainBlock(block, ctx) {
     default:
       return null;
   }
+}
+
+/**
+ * The first denied path named by any string in a tool's parameters, or null.
+ * Keys as well as values: a file-history map is keyed by absolute filename.
+ */
+function deniedToolUse(input) {
+  if (input === null || typeof input !== 'object') return deniedReason(input);
+  for (const [k, v] of Object.entries(input)) {
+    const why = deniedReason(k) ?? (typeof v === 'string' ? deniedReason(v) : deniedToolUse(v));
+    if (why !== null) return why;
+  }
+  return null;
 }
 
 /** BRIEF §3: code content is never exported, only counted. */
@@ -350,6 +383,11 @@ export function deniedReason(text) {
     const m = re.exec(text);
     if (m !== null) return m[0].trim();
   }
+  // The deny-list applied to the cwd only, so a Read, an Edit or a directory
+  // listing of a deny-listed path from an ALLOWED directory was invisible to
+  // all three levels of privacy-tiers §4. The reason is generic on purpose:
+  // one of the deny tokens is a person's name and this string ships.
+  if (DENIED_PATH_RE.test(text)) return DENIED_PATH_REASON;
   return null;
 }
 

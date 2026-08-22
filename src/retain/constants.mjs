@@ -84,6 +84,42 @@ export const DENIED_CONTENT = Object.freeze([
   /(credentials|profile)[.]json/i,
 ]);
 
+/**
+ * A deny-listed directory named ANYWHERE in a value, not only as the cwd.
+ *
+ * BRIEF §4.11 says per-directory opt-in, never opt-out, and privacy-tiers §4
+ * claims three levels of granularity make the deny-list sufficient. All three
+ * test where the agent WAS, never what it TOUCHED, so a Read, an Edit or a
+ * directory listing of a deny-listed path from an allowed cwd was invisible to
+ * every one of them. Measured on a real export: files under
+ * `…ops-handover\\private\\` were named 17, 36 and 5 times
+ * (`vendor-search\\SCORECARD.md`, `NEW-ACCOUNTANT-BRIEF.md`,
+ * `backpay-calc.mjs`) — the parent got a WORKSPACE pseudonym and the subpath
+ * below it did not — and a `[LINE]…txt` from the counselling archive was named
+ * by a directory listing run from an included directory.
+ *
+ * The token has to sit inside a path SEGMENT: a separator, then segment
+ * characters (no spaces, no quotes), then the token. That is what keeps it off
+ * the sentence "at /home and private things".
+ */
+const DENY_PATH_TOKENS = ['private', 'identity', 'payroll', 'redacted-name'];
+export const DENIED_PATH_RE = new RegExp(
+  '[\\\\/][^\\\\/\\s"' + String.fromCharCode(39) + '`]{0,60}?(?:' +
+    DENY_PATH_TOKENS.join('|') +
+    ')',
+  'i',
+);
+
+/**
+ * The reason string a denied PATH puts in the export.
+ *
+ * Deliberately generic: the deny tokens themselves are `private`, `payroll`,
+ * `identity` and `redacted-name`, and the last of those is a person. review.md says
+ * which token matched because review.md is local; the marker inside the
+ * archive is read by the recipient.
+ */
+export const DENIED_PATH_REASON = 'a deny-listed directory';
+
 /** What replaces a denied block. Counted, never silent. */
 export const DENIED_MARKER = (bytes, why) =>
   `[${bytes} bytes withheld by deident: ${why}]`;
