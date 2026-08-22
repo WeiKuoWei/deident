@@ -219,8 +219,8 @@ export function renderManifest(m) {
     // supposed to avoid. Measured on the real corpus 2026-08-22: filename
     // separators are the largest single share of this number. Say what the
     // rule actually did and let the reader judge.
-    say(`    ${n(m.embedded)} known-entity spellings abut a letter, digit or underscore`);
-    say('      (a_name.pdf, name123) and were left alone under the §4.5 boundary rule');
+    say(`    ${n(m.embedded)} known-entity spellings abut an ordinary letter or digit`);
+    say('      (<name>son, <org>123) and were left alone under the §4.5 boundary rule');
   }
   say('');
 }

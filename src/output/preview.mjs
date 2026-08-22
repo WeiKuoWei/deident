@@ -92,6 +92,14 @@ export function renderPreview(state) {
   push(`    ${state.manifest.sessions} sessions from ${state.manifest.workspaces} workspaces`);
   push(`    ${state.manifest.userMessages} user messages`);
   for (const z of state.manifest.zeros) push(`    0 ${z.label.padEnd(18)} ${z.suppressed}`);
+  // Counters, not zeros — the same distinction the terminal manifest makes, so
+  // the two trust surfaces cannot disagree about what was dropped.
+  if (state.manifest.droppedByCwd > 0) {
+    push(`    ${state.manifest.droppedByCwd} lines dropped: outside an included directory`);
+  }
+  if (state.manifest.emptiedSessions > 0) {
+    push(`    ${state.manifest.emptiedSessions} sessions retained nothing and are not in the archive`);
+  }
   push('');
   push('== NOT protected against ==');
   push('');
