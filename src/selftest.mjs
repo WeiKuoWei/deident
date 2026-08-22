@@ -42,6 +42,7 @@ import {
   summarizeTiers,
   saveDecisions,
   loadSavedDecisions,
+  orphanedDecisions,
 } from './policy/workspaces.mjs';
 import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
 import { proposeTier, personalDataShape } from './policy/signals.mjs';
@@ -1146,11 +1147,14 @@ const FIXTURES = [
     // a `redact` nobody chose (privacy-tiers §3: signals change, re-propose).
     const dir = tmpdir();
     saveDecisions(dir, decisions);
-    assert.deepEqual(loadSavedDecisions(dir), {});
+    assert.deepEqual(loadSavedDecisions(dir).workspaces, {});
     const answered = classifyWorkspaces([g('gitroll')], { gitroll: 'open' }, { propose: (ws) => proposeTier(ws, probe) });
     assert.equal(answered[0].decided, true);
-    saveDecisions(dir, answered);
-    assert.deepEqual(loadSavedDecisions(dir), { gitroll: 'open' });
+    saveDecisions(dir, answered, new Set(['aaaa-bbbb']));
+    // Keyed by the workspace's normalised cwd, not by its display label: the
+    // label moves when a NEIGHBOURING workspace appears (F79).
+    assert.deepEqual(loadSavedDecisions(dir).workspaces, { [answered[0].key]: 'open' });
+    assert.deepEqual([...loadSavedDecisions(dir).sessionDrops], ['aaaa-bbbb']);
     fs.rmSync(dir, { recursive: true, force: true });
   }],
 
@@ -2373,6 +2377,65 @@ const FIXTURES = [
     const made = loadOrCreateSalt(fresh);
     assert.match(made, /^[0-9a-f]{64}$/);
     assert.equal(loadOrCreateSalt(fresh), made, 'the salt is stable across runs (I10)');
+  }],
+
+  // F79 — a tier the person typed has to be durable and has to survive a
+  // neighbouring workspace appearing.
+  //
+  // Two separate holes, both ending with an excluded workspace in the zip and
+  // every gate green:
+  //   1. saveDecisions persisted only rows where `decided` was already true,
+  //      which was only set when a saved decision had already matched — so a
+  //      tier typed for the FIRST time was never written down. --out defaults
+  //      to the current directory, so `scan` / `cd elsewhere` / `export`
+  //      applied the proposal to nine remote-bearing workspaces with no flags.
+  //   2. the key was the display label, and assignNames() escalates `proj` to
+  //      `parent/proj` the moment a second `proj` appears.
+  ['F79', 'a typed tier is durable and survives a workspace being renamed', () => {
+    const root = tmpdir();
+    const scanned = path.join(root, 'a');
+    const elsewhere = path.join(root, 'b');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    const args = (out) => [
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ];
+
+    assert.equal(runCli(['scan', '--root', root, '--out', scanned, '--salt-dir', saltDir]).code, 0);
+    setTier(path.join(scanned, 'review.md'), 'alpha', 'exclude');
+
+    // An export that can find neither a review file nor a memory has nothing
+    // to reuse, and must not fall through to its own proposal.
+    const blind = runCli(args(elsewhere));
+    assert.equal(blind.code, 1, blind.out);
+    assert.match(blind.out, /no tier decisions/);
+    assert.equal(fs.existsSync(elsewhere) && fs.readdirSync(elsewhere).some((f) => f.endsWith('.zip')), false);
+
+    // Exporting against the review the person edited records the decision...
+    const refused = runCli(args(scanned));
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.out, /no workspace is set to an exportable tier/);
+    const saved = JSON.parse(fs.readFileSync(path.join(saltDir, 'workspaces.json'), 'utf8'));
+    assert.equal(Object.values(saved.workspaces).includes('exclude'), true, `the typed tier was not saved: ${JSON.stringify(saved)}`);
+    assert.ok(Object.keys(saved.workspaces).every((k) => k.includes('/')), 'keyed by path, not by label');
+
+    // ...and the memory is what a run with a different --out then reuses.
+    const again = runCli(args(elsewhere));
+    assert.equal(again.code, 1, again.out);
+    assert.match(again.out, /no workspace is set to an exportable tier/);
+
+    // The label is not the key: rename the workspace and the decision holds.
+    const group = { key: 'c:/users/devuser/projects/alpha', name: 'alpha', cwd: 'C:/Users/devuser/projects/alpha', normCwd: 'c:/users/devuser/projects/alpha', sessionCount: 1, bytes: 1, denyToken: null, unresolved: false, isHome: false };
+    const renamed = { ...group, name: 'projects/alpha' };
+    const decide = (ws) => classifyWorkspaces([ws], { byKey: { [group.key]: 'exclude' }, byName: {} }, {
+      propose: () => ({ tier: 'redact', reason: 'a remote' }),
+    })[0];
+    assert.equal(decide(group).tier, 'exclude');
+    assert.equal(decide(renamed).tier, 'exclude', 'a renamed row must not revert to the proposal');
+
+    // And a saved key that matches nothing is reported, never silently dropped.
+    assert.deepEqual(orphanedDecisions({ 'c:/gone': 'redact' }, [group]), ['c:/gone']);
   }],
 ];
 

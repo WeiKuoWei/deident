@@ -52,6 +52,24 @@ export function classifyWorkspaces(groups, saved = {}, opts = {}) {
   const propose = opts.propose ?? (() => Object.freeze({ tier: UNCLASSIFIED, reason: 'no signals were read' }));
   const decisions = [];
 
+  // A decision is keyed by the workspace's normalised cwd, not by its display
+  // label. The label is derived from whatever OTHER workspaces exist in the
+  // same run: assignNames() escalates `proj` to `deident-attack/proj` the
+  // moment a second `proj` appears, and claim() suffixes `~2`. Measured on the
+  // attack corpus: adding one unrelated workspace renamed the row, the saved
+  // entry no longer matched, classifyWorkspaces fell through to the proposal,
+  // and a workspace the user had set to `exclude` shipped with every gate
+  // green. privacy-tiers §3 says a workspace whose signals change reverts to
+  // unclassified; nothing says a workspace whose NEIGHBOUR changes reverts to
+  // the proposal.
+  //
+  // review.md is still edited by name, because a name is what a person can
+  // recognise, so the name map wins where both answer: it is the edit the user
+  // just made, and the key map is the memory of an older one.
+  const byName = normalizeSaved(saved.byName ?? (saved.byKey === undefined ? saved : {}));
+  const byKey = normalizeSaved(saved.byKey ?? {});
+  const savedTier = (ws) => byName[ws.name] ?? byKey[ws.key] ?? null;
+
   for (const ws of groups) {
     const denyToken = ws.denyToken ?? null;
     const proposal = propose(ws);
@@ -60,11 +78,20 @@ export function classifyWorkspaces(groups, saved = {}, opts = {}) {
 
     let decided = false;
 
+    const remembered = savedTier(ws);
     if (denyToken !== null && !includeDenied.has(ws.name)) {
       tier = 'exclude';
       note = `deny-list matched: "${denyToken}"`;
-    } else if (Object.hasOwn(saved, ws.name) && TIERS.includes(saved[ws.name])) {
-      tier = saved[ws.name];
+    } else if (remembered !== null) {
+      tier = remembered;
+      // A tier the person typed is a DECISION and is persisted, whether it
+      // arrived from review.md this run or from workspaces.json two runs ago.
+      // `decided` used to be set only when a saved decision already matched,
+      // so the first time somebody typed a tier it was never written down —
+      // and `export` with a different --out than `scan` wrote to silently
+      // applied the proposal instead. cwd: --out defaults to the current
+      // directory, so `scan` / `cd elsewhere` / `export` reproduced it with no
+      // flags at all.
       decided = true;
       note =
         denyToken !== null
@@ -147,14 +174,29 @@ export function savedDecisionsPath(saltDir) {
   return path.join(saltDir, 'workspaces.json');
 }
 
-/** Missing or corrupt file yields {} — a lost decision re-asks, never guesses. */
+/** Tier words only, so a hand-edited file cannot inject a tier that is not one. */
+function normalizeSaved(map) {
+  const clean = {};
+  for (const [k, v] of Object.entries(map ?? {})) {
+    if (typeof v === 'string' && TIERS.includes(v)) clean[k] = v;
+  }
+  return clean;
+}
+
+/**
+ * Saved decisions, or empty ones. A lost decision re-asks, never guesses.
+ *
+ * @returns {Readonly<{workspaces: object, sessionDrops: ReadonlySet<string>}>}
+ *   `workspaces` is keyed by normalised cwd for anything written by a version
+ *   that knew about keys, and by display name for the v1 flat form.
+ */
 export function loadSavedDecisions(saltDir) {
   const file = savedDecisionsPath(saltDir);
   let text;
   try {
     text = fs.readFileSync(file, 'utf8');
   } catch (err) {
-    if (err.code === 'ENOENT') return Object.freeze({});
+    if (err.code === 'ENOENT') return EMPTY_SAVED;
     throw new RefusalError(`could not read saved workspace decisions at ${file}`, {
       why: [`${err.code}: ${err.message}`, 'deident will not guess tiers it cannot read.'],
       remedies: [{ label: 'Fix or remove the file', command: `del "${file}"` }],
@@ -162,16 +204,21 @@ export function loadSavedDecisions(saltDir) {
   }
   try {
     const parsed = JSON.parse(text);
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return Object.freeze({});
-    const clean = {};
-    for (const [k, v] of Object.entries(parsed)) {
-      if (typeof v === 'string' && TIERS.includes(v)) clean[k] = v;
-    }
-    return Object.freeze(clean);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return EMPTY_SAVED;
+    // v1 was a flat {name: tier} map. It is still read, keyed by name, so an
+    // upgrade does not silently forget every decision on the machine.
+    const raw = parsed.version === undefined ? parsed : (parsed.workspaces ?? {});
+    const drops = Array.isArray(parsed.sessionDrops) ? parsed.sessionDrops.filter((v) => typeof v === 'string') : [];
+    return Object.freeze({
+      workspaces: Object.freeze(normalizeSaved(raw)),
+      sessionDrops: Object.freeze(new Set(drops)),
+    });
   } catch {
-    return Object.freeze({});
+    return EMPTY_SAVED;
   }
 }
+
+const EMPTY_SAVED = Object.freeze({ workspaces: Object.freeze({}), sessionDrops: Object.freeze(new Set()) });
 
 /**
  * Persist only what the person actually decided, never a bare proposal.
@@ -186,15 +233,38 @@ export function loadSavedDecisions(saltDir) {
  * stops is an export with no review.md silently promoting the whole proposal
  * to a permanent answer.
  */
-export function saveDecisions(saltDir, decisions) {
+export function saveDecisions(saltDir, decisions, sessionDrops = new Set()) {
   const file = savedDecisionsPath(saltDir);
-  const map = {};
+  const workspaces = {};
   for (const d of decisions) {
-    if (d.decided && d.tier !== UNCLASSIFIED) map[d.name] = d.tier;
+    // Keyed by the normalised cwd, which does not move when a neighbouring
+    // workspace appears. `key` is exactly that for every resolved group.
+    if (d.decided && d.tier !== UNCLASSIFIED) workspaces[d.key] = d.tier;
   }
+  // Per-session `drop` rows lived only in the review.md the run happened to
+  // read, so a run with a different --out silently un-dropped every one of
+  // them. privacy-tiers 4 level 3 calls this the last look; a last look that
+  // does not persist is not one.
+  const body = { version: 2, workspaces, sessionDrops: [...sessionDrops].sort() };
   fs.mkdirSync(saltDir, { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(map, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  fs.writeFileSync(file, `${JSON.stringify(body, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
   return file;
+}
+
+/**
+ * Saved decisions that match no workspace in this run.
+ *
+ * Reported rather than dropped: an orphan means either a directory went away
+ * or a key stopped matching, and the second is how a typed `exclude` silently
+ * became the proposal again.
+ */
+export function orphanedDecisions(saved, groups) {
+  const live = new Set();
+  for (const g of groups) {
+    live.add(g.key);
+    if (g.name !== undefined) live.add(g.name);
+  }
+  return Object.freeze(Object.keys(saved ?? {}).filter((k) => !live.has(k)));
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   summarizeTiers,
   loadSavedDecisions,
   saveDecisions,
+  orphanedDecisions,
   unclassifiedRefusal,
   exportableTiers,
   cwdTierIndex,
@@ -79,7 +80,8 @@ export async function runScan(flags, env) {
   const reviewPath = path.join(outDir, REVIEW_FILENAME);
   const reviewProblems = [];
   const lenient = { onProblem: (why) => reviewProblems.push(why) };
-  const saved = { ...loadSavedDecisions(saltDir), ...readReview(reviewPath, lenient) };
+  const remembered = loadSavedDecisions(saltDir);
+  const saved = { byKey: remembered.workspaces, byName: readReview(reviewPath, lenient) };
   const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
 
   const model = buildReviewModel(
@@ -112,7 +114,8 @@ export async function runReview(flags, env) {
   const reviewPath = path.join(outDir, REVIEW_FILENAME);
   const problems = [];
   const lenient = { onProblem: (why) => problems.push(why) };
-  const saved = { ...loadSavedDecisions(saltDir), ...readReview(reviewPath, lenient) };
+  const remembered = loadSavedDecisions(saltDir);
+  const saved = { byKey: remembered.workspaces, byName: readReview(reviewPath, lenient) };
   const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
   const model = buildReviewModel(
     decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe),
@@ -179,8 +182,46 @@ export async function runExport(flags, env) {
   if (loaded.namespaceHitCount > 0) throw namespaceRefusal(namespaceHits, flags.namespace, loaded.namespaceHitCount);
 
   //  5  workspace tiers (4 ran inside surveyCorpus, per file)
-  const saved = { ...loadSavedDecisions(saltDir), ...readReview(path.join(outDir, REVIEW_FILENAME)) };
+  const reviewPath = path.join(outDir, REVIEW_FILENAME);
+  const remembered = loadSavedDecisions(saltDir);
+  const reviewTiers = readReview(reviewPath);
+  // cli-ux §11 and privacy-tiers §3: "tier decisions live in
+  // ~/.deident-private/workspaces.json and are reused". An export that can
+  // find neither the review file nor a remembered decision has nothing to
+  // reuse, and falling through to the proposal is how nine remote-bearing
+  // workspaces got exported on a bare `deident export` — including one the
+  // person had set to `exclude` in a review.md this run never looked at,
+  // because --out defaults to the current directory.
+  if (Object.keys(reviewTiers).length === 0 && Object.keys(remembered.workspaces).length === 0) {
+    throw new RefusalError(`no tier decisions: ${reviewPath} does not exist and none are remembered`, {
+      why: [
+        'deident will not apply its own proposal as if you had agreed to it.',
+        'Per-directory opt-in means the opt-in has to have happened somewhere.',
+      ],
+      remedies: [
+        { label: 'Decide first', command: `deident scan --out ${outDir}   # then edit ${REVIEW_FILENAME}` },
+        { label: 'Or point at the review you edited', command: 'deident export --out <the directory scan wrote to>' },
+      ],
+    });
+  }
+  const saved = { byKey: remembered.workspaces, byName: reviewTiers };
   const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
+  for (const orphan of orphanedDecisions(remembered.workspaces, decisions)) {
+    report.renderWarning(
+      `a remembered tier for "${orphan}" matches no workspace in this run and was not applied`,
+    );
+  }
+  // Remembered HERE, not after the zip is written.
+  //
+  // A decision typed into review.md used to be persisted only by a run that
+  // also produced a successful export, so the sequence "set a tier, watch the
+  // export refuse for an unrelated reason, run it again elsewhere" lost the
+  // tier. workspaces.json is memory, not output: cli-ux §10's "no output file
+  // behind" is about the zip, and forgetting what the person told you is the
+  // failure that ends with an excluded workspace shipping.
+  const sessionDrops = new Set([...remembered.sessionDrops, ...readSessionDrops(reviewPath)]);
+  rememberDecisions(saltDir, decisions, sessionDrops);
+
   if (!flags.skipUnclassified) {
     const refusal = unclassifiedRefusal(decisions);
     if (refusal !== null) throw refusal;
@@ -199,7 +240,6 @@ export async function runExport(flags, env) {
   //  6 + 7  per-line cwd gate, then retention
   const salt = loadOrCreateSalt(saltDir);
   const rewriteUuid = makeUuidRewriter(salt);
-  const sessionDrops = readSessionDrops(path.join(outDir, REVIEW_FILENAME));
   const retained = retainCorpus(
     loaded,
     workspaceOf,
@@ -362,7 +402,6 @@ export async function runExport(flags, env) {
       path.join(outDir, `deident-preview-${today()}.diff`),
     );
     report.renderWrote(written.path, written.bytes, path.join(saltDir, 'salt'));
-    rememberDecisions(saltDir, decisions);
     return 0;
   }
 
@@ -381,7 +420,6 @@ export async function runExport(flags, env) {
     safeUnlink(zipPath);
     throw err;
   }
-  rememberDecisions(saltDir, decisions);
   return 0;
 }
 
@@ -410,9 +448,9 @@ function writeExportMap(entries, outPath) {
   }
 }
 
-function rememberDecisions(saltDir, decisions) {
+function rememberDecisions(saltDir, decisions, sessionDrops) {
   try {
-    saveDecisions(saltDir, decisions);
+    saveDecisions(saltDir, decisions, sessionDrops);
   } catch (err) {
     report.renderWarning(
       `could not remember your tier decisions (${err.code ?? 'error'}: ${err.message}) — ` +
