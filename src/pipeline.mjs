@@ -481,6 +481,9 @@ function retainCorpus(
     dropped: 0,
     droppedByCwd: 0,
     droppedBySession: 0,
+    injectedBytesDropped: 0,
+    deniedBlocks: 0,
+    deniedBytes: 0,
     userMessages: 0,
     assistantMessages: 0,
     images: 0,
@@ -774,6 +777,8 @@ function buildManifest(retained, decisions, serialized, embedded, entities) {
       { label: 'images', suppressed: `${num(s.images)} replaced with placeholders` },
       { label: 'code parameters', suppressed: `${num(s.codeParamsDropped)} replaced with counts` },
       { label: 'held back by hand', suppressed: `${num(s.droppedBySession ?? 0)} sessions dropped in review.md` },
+      { label: 'denied file content', suppressed: `${num(s.deniedBlocks ?? 0)} blocks, ${num(s.deniedBytes ?? 0)} bytes withheld` },
+      { label: 'harness injections', suppressed: `${num(s.injectedBytesDropped ?? 0)} bytes of injected context stripped` },
       { label: 'documents', suppressed: `${num(s.documents)} pasted documents replaced` },
       // cli-ux §6 prints this row. It printed nothing at all while a live
       // 93-character token was in the archive.

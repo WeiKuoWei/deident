@@ -17,6 +17,9 @@ import {
   KEEP_THINKING_BLOCKS,
   TIMESTAMP_QUANTUM_MS,
   CODE_VALUED_TOOL_PARAMS,
+  DENIED_CONTENT,
+  DENIED_MARKER,
+  INJECTED_SPANS,
 } from './constants.mjs';
 
 // PLAN §3.1. DROP-AFTER-USE types are consumed by cwdtrack at step 4 and
@@ -126,6 +129,9 @@ export function newRetentionContext(rewriteUuid) {
       codeParamsDropped: 0,
       toolResultBytesOmitted: 0,
       dedupedPrompts: 0,
+      injectedBytesDropped: 0,
+      deniedBlocks: 0,
+      deniedBytes: 0,
     },
   };
 }
@@ -262,10 +268,11 @@ function retainBlocks(blocks, ctx, where) {
 
 function retainBlock(block, ctx) {
   switch (block.type) {
-    case 'text':
-      return typeof block.text === 'string' && block.text.length > 0
-        ? { type: 'text', text: block.text }
-        : null;
+    case 'text': {
+      if (typeof block.text !== 'string' || block.text.length === 0) return null;
+      const text = stripInjected(block.text, ctx);
+      return text.length > 0 ? { type: 'text', text } : null;
+    }
 
     case 'thinking':
       if (!KEEP_THINKING_BLOCKS) return null;
@@ -282,6 +289,16 @@ function retainBlock(block, ctx) {
       };
 
     case 'tool_result': {
+      const denied = denyToolResult(block.content, ctx);
+      if (denied !== null) {
+        return prune({
+          type: 'tool_result',
+          tool_use_id: ctx.rewriteUuid(block.tool_use_id),
+          is_error: block.is_error === true ? true : null,
+          content: denied,
+          redacted_omitted_bytes: null,
+        });
+      }
       const { text, omitted } = capToolResult(block.content, ctx);
       return prune({
         type: 'tool_result',
@@ -325,6 +342,52 @@ function byteLength(v) {
   return typeof v === 'string' ? Buffer.byteLength(v, 'utf8') : null;
 }
 
+/** The first DENIED_CONTENT pattern this text trips, or null. */
+export function deniedReason(text) {
+  if (typeof text !== 'string' || text.length === 0) return null;
+  for (const re of DENIED_CONTENT) {
+    re.lastIndex = 0;
+    const m = re.exec(text);
+    if (m !== null) return m[0].trim();
+  }
+  return null;
+}
+
+/**
+ * Remove the harness's own injected spans from authored text.
+ *
+ * These carry the owner's memory index and local command output into sessions
+ * that never mentioned either, and nobody wrote them, so nothing authored is
+ * lost. Counted so the manifest can say how much went.
+ */
+function stripInjected(text, ctx) {
+  let out = text;
+  for (const re of INJECTED_SPANS) {
+    re.lastIndex = 0;
+    out = out.replace(re, '');
+  }
+  if (out.length !== text.length) {
+    ctx.stats.injectedBytesDropped += Buffer.byteLength(text, 'utf8') - Buffer.byteLength(out, 'utf8');
+  }
+  return out.trim();
+}
+
+/**
+ * A tool result that read a denied file leaves as a count, not as its content.
+ *
+ * The whole result goes, not the matching line: a file listing is denied by
+ * one entry in it, and half a private file is still a private file.
+ */
+function denyToolResult(content, ctx) {
+  const text = flattenContent(content);
+  const why = deniedReason(text);
+  if (why === null) return null;
+  ctx.stats.deniedBlocks += 1;
+  const bytes = Buffer.byteLength(text, 'utf8');
+  ctx.stats.deniedBytes += bytes;
+  return DENIED_MARKER(bytes, why);
+}
+
 /**
  * Head + tail cap. §6 open question 1 is unresolved, so the caps in
  * constants.mjs are generous and the omission is stated in the record rather
@@ -365,6 +428,18 @@ function retainAttachment(rec, ctx, where) {
   if (ATTACHMENT_DROP.includes(subtype)) return null;
   if (!ATTACHMENT_KEEP.includes(subtype)) {
     throw unknown(`attachment sub-type "${subtype}"`, where, `attachment ${subtype}`);
+  }
+
+  // An attachment names the file it came from, so the denial is exact here.
+  const named = att.filename ?? att.file?.filePath ?? null;
+  const why = deniedReason(named) ?? deniedReason(att.snippet ?? att.content ?? att.file?.content ?? '');
+  if (why !== null) {
+    ctx.stats.deniedBlocks += 1;
+    ctx.stats.deniedBytes += Buffer.byteLength(
+      String(att.snippet ?? att.content ?? att.file?.content ?? ''),
+      'utf8',
+    );
+    return null;
   }
 
   const body =

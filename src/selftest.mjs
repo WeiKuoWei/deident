@@ -2062,6 +2062,112 @@ const FIXTURES = [
     const second = substituteString('X_ORG_725 stays', selfEating, selfEating.repassGuard);
     assert.equal(second.out, 'X_ORG_725 stays');
   }],
+  // F72 - the unit of denial is a block, not a session.
+  //
+  // Measured on the 2026-08-22 corpus: dropping every session that carried an
+  // injected memory index or a dictation hint file took the archive from 35
+  // sessions to 17, and not one of those sessions was ABOUT the private
+  // matter. The private thing arrived as an attachment or a tool result the
+  // user never asked for, inside an hour of unrelated engineering.
+  ['F72', 'a denied file is withheld block by block, and its session survives', () => {
+    const ctx = newRetentionContext((u) => u);
+    const at = { file: 'a', line: 1 };
+
+    // 1. A tool result that read a denied file leaves as a byte count.
+    const tr = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u1',
+        sessionId: 's',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 't1', content: 'MEMORY.md line one' + NL + 'and two' },
+          ],
+        },
+      },
+      ctx,
+      at,
+    );
+    assert.ok(tr.keep, 'the record itself survives');
+    const block = tr.record.message.content[0];
+    assert.match(block.content, /withheld by deident/, 'the denied content is replaced');
+    assert.ok(!block.content.includes('line one'), 'and none of it survives');
+    assert.equal(ctx.stats.deniedBlocks, 1);
+
+    // 2. A clean tool result in the same session is untouched.
+    const clean = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u2',
+        sessionId: 's',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't2', content: 'ordinary build output' }],
+        },
+      },
+      ctx,
+      at,
+    );
+    assert.equal(clean.record.message.content[0].content, 'ordinary build output');
+    assert.equal(ctx.stats.deniedBlocks, 1, 'a clean block is not counted as denied');
+
+    // 3. An attachment naming a denied file is dropped whole.
+    const att = retainRecord(
+      {
+        type: 'attachment',
+        uuid: 'u3',
+        sessionId: 's',
+        attachment: { type: 'edited_text_file', filename: 'C:\\memory' + String.fromCharCode(92) + 'MEMORY.md', snippet: 'private index' },
+      },
+      ctx,
+      at,
+    );
+    assert.equal(att.keep, false, 'the attachment does not survive');
+    assert.equal(ctx.stats.deniedBlocks, 2);
+
+    // 4. Harness-injected spans are stripped, authored text either side stays.
+    const before = ctx.stats.injectedBytesDropped;
+    const txt = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u4',
+        sessionId: 's',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'fix the parser <system-reminder>recalled: the salary file lives at ...</system-reminder> please',
+            },
+          ],
+        },
+      },
+      ctx,
+      at,
+    );
+    const kept = txt.record.message.content[0].text;
+    assert.ok(kept.startsWith('fix the parser'), 'authored text before the span stays');
+    assert.ok(kept.endsWith('please'), 'and after it');
+    assert.ok(!kept.includes('salary'), 'the injected span is gone');
+    assert.ok(ctx.stats.injectedBytesDropped > before, 'and what went is counted');
+
+    // 5. A message that was ONLY an injection retains nothing.
+    const only = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u5',
+        sessionId: 's',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: '<system-reminder>all of it</system-reminder>' }],
+        },
+      },
+      ctx,
+      at,
+    );
+    assert.ok(!only.keep || (only.record.message.content ?? []).length === 0, 'nothing authored means nothing kept');
+  }],
 ];
 
 export function selftest() {

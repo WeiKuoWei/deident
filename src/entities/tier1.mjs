@@ -27,7 +27,14 @@ import { residualScan, entityExamples } from '../verify/residual.mjs';
 export const CANDIDATES_FILENAME = 'deident-candidates.txt';
 export const ENTITIES_FILENAME = 'deident-entities.json';
 
-const VALID_KINDS = Object.freeze(['person', 'org', 'client', 'workspace', 'machine']);
+// 'secret' is here so the semantic pass can name a VALUE, not only an identity.
+// Reviewing the 2026-08-22 archive, most of what a reader had to remove was a
+// balance, a rate, a meeting id or a sentence stating a figure — none of which
+// is a person, an org or a machine. Without a kind for it the choice was to
+// mislabel it or to drop the whole session, and dropping sessions is what
+// took that archive from 35 to 17. It also makes the manifest's `secrets`
+// row mean something, since that row counts this kind.
+const VALID_KINDS = Object.freeze(['person', 'org', 'client', 'workspace', 'machine', 'secret']);
 
 const HEADER = `# deident tier-1 candidates
 #

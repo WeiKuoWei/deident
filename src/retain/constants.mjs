@@ -58,3 +58,46 @@ export const EXAMPLES_PER_REPORT = 5;
 
 /** Characters of tier-0-cleaned prose written to the candidates file. */
 export const CANDIDATE_EXCERPT_CHARS = 400;
+
+/**
+ * Content that must not leave even when the session around it may.
+ *
+ * privacy-tiers 4 assumed the unit of decision is a session. It is not. This
+ * machine's harness injects the owner's memory index, dictation hint list and
+ * personal-data files into unrelated sessions as attachments and tool results,
+ * so a per-session decision has to throw away an hour of clean engineering to
+ * remove four lines it never asked for. Measured on the 2026-08-22 export:
+ * dropping every session that carried one of these took the archive from 35
+ * sessions to 17, and not one of those sessions was ABOUT the private matter.
+ *
+ * So the block is dropped and the session stays. Matched against a file path,
+ * a filename, or the first part of a tool result's own text.
+ */
+export const DENIED_CONTENT = Object.freeze([
+  /(^|[^a-z])MEMORY[.]md/i,
+  /(reference|feedback|project|user)_[a-z0-9_]+[.]md/i,
+  /[.](identity|investment|deident)-private/i,
+  /shim-(hint[.]txt|dict[.]json)/i,
+  /Spokenly[/\\]History/i,
+  /private-archive|daily-logs/i,
+  /[/\\]i94[/\\]/i,
+  /(credentials|profile)[.]json/i,
+]);
+
+/** What replaces a denied block. Counted, never silent. */
+export const DENIED_MARKER = (bytes, why) =>
+  `[${bytes} bytes withheld by deident: ${why}]`;
+
+/**
+ * Harness-injected spans inside an otherwise authored message.
+ *
+ * None of this was typed by the user or written by the model: the harness
+ * splices it in at send time, and it is where the memory index, the recalled
+ * memories and local command output ride into a session that has nothing to
+ * do with them. Removing it loses no authored content.
+ */
+export const INJECTED_SPANS = Object.freeze([
+  /<system-reminder>[^]*?<[/]system-reminder>/g,
+  /<local-command-stdout>[^]*?<[/]local-command-stdout>/g,
+  /<local-command-stderr>[^]*?<[/]local-command-stderr>/g,
+]);
