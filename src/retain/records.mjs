@@ -136,11 +136,11 @@ export function newRetentionContext(rewriteUuid) {
  */
 export function retainRecord(rec, ctx, where) {
   if (rec === null || typeof rec !== 'object' || Array.isArray(rec)) {
-    throw unknown('a record that is not a JSON object', where);
+    throw unknown('a record that is not a JSON object', where, 'a non-object record');
   }
 
   const decision = TOP_LEVEL[rec.type];
-  if (decision === undefined) throw unknown(`top-level record type "${rec.type}"`, where);
+  if (decision === undefined) throw unknown(`top-level record type "${rec.type}"`, where, `type ${rec.type}`);
   if (decision !== 'keep') {
     ctx.stats.dropped += 1;
     return DROPPED;
@@ -246,7 +246,7 @@ function retainBlocks(blocks, ctx, where) {
   for (const block of blocks) {
     if (block === null || typeof block !== 'object') continue;
     const decision = BLOCK_DECISIONS[block.type];
-    if (decision === undefined) throw unknown(`content block type "${block.type}"`, where);
+    if (decision === undefined) throw unknown(`content block type "${block.type}"`, where, `block ${block.type}`);
     if (decision === 'drop') continue;
     if (decision === 'drop-counted') {
       if (block.type === 'image') ctx.stats.images += 1;
@@ -363,7 +363,9 @@ function retainAttachment(rec, ctx, where) {
   const subtype = att && typeof att === 'object' ? att.type : undefined;
   if (subtype === undefined) throw unknown('an attachment with no sub-type', where);
   if (ATTACHMENT_DROP.includes(subtype)) return null;
-  if (!ATTACHMENT_KEEP.includes(subtype)) throw unknown(`attachment sub-type "${subtype}"`, where);
+  if (!ATTACHMENT_KEEP.includes(subtype)) {
+    throw unknown(`attachment sub-type "${subtype}"`, where, `attachment ${subtype}`);
+  }
 
   const body =
     subtype === 'queued_command'
@@ -432,7 +434,7 @@ function retainSystem(rec, ctx, where) {
   const subtype = rec.subtype ?? null;
   if (subtype === null) throw unknown('a system record with no subtype', where);
   if (SYSTEM_DROP.includes(subtype)) return null;
-  if (!SYSTEM_KEEP.includes(subtype)) throw unknown(`system subtype "${subtype}"`, where);
+  if (!SYSTEM_KEEP.includes(subtype)) throw unknown(`system subtype "${subtype}"`, where, `system ${subtype}`);
   return prune({
     type: 'system',
     subtype,
@@ -498,7 +500,7 @@ function prune(obj) {
   return out;
 }
 
-function unknown(what, where) {
+function unknown(what, where, kind = null) {
   return new RefusalError(`deident has never seen ${what}`, {
     why: [
       where ? `  ${where.file}  line ${where.line}` : '',
@@ -509,9 +511,15 @@ function unknown(what, where) {
     ].filter((l) => l !== ''),
     remedies: [
       { label: 'Report the type above', command: 'file an issue against deident' },
+      { label: 'Or drop just these records', command: 'deident export --skip-unknown-types' },
       { label: 'Meanwhile, export older logs', command: 'deident export --root <older copy>' },
     ],
-    detail: where ?? null,
+    // `unknown` names the class the escape hatch counts. Claude Code ships a
+    // new record type every few weeks (§F4 records 2.1.215 -> 2.1.238 inside
+    // one corpus), so refusal stays the default without being terminal: one
+    // such line in one session of one teammate used to block that person's
+    // whole export, with "export older logs" as the only remedy offered.
+    detail: { ...(where ?? {}), unknown: kind ?? what },
   });
 }
 

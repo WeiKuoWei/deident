@@ -118,6 +118,8 @@ Flags
   --namespace <TAG>        export: shift the pseudonym namespace, e.g. X
   --skip-unclassified      export: confirm unclassified workspaces stay out
   --skip-unreadable        scan/export: continue past an unparseable line
+  --skip-unknown-types     scan/export: drop records of a type deident has
+                           never seen, and list them in the manifest
   --include-denied <name>  export: typed confirmation for one denied workspace
   --selftest               run the fixture suite
   --help, --version

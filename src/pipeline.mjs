@@ -17,7 +17,7 @@ import * as report from './cli/report.mjs';
 import { RefusalError } from './cli/errors.mjs';
 import { resolveCorpus, corpusDateRange } from './corpus/root.mjs';
 import { readSession, roundTripRefusal, nestingError } from './corpus/reader.mjs';
-import { resolveLineCwd } from './corpus/cwdtrack.mjs';
+import { resolveLineCwd, cwdChangeFrom } from './corpus/cwdtrack.mjs';
 import {
   classifyWorkspaces,
   summarizeTiers,
@@ -175,17 +175,38 @@ export async function runExport(flags, env) {
   const rewriteUuid = makeUuidRewriter(salt);
   const sessionDrops = readSessionDrops(path.join(outDir, REVIEW_FILENAME));
   const retained = retainCorpus(
-    loaded, workspaceOf, exportable, cwdTierIndex(decisions), rewriteUuid, flags, sessionDrops,
+    loaded,
+    workspaceOf,
+    exportable,
+    cwdTierIndex(decisions),
+    rewriteUuid,
+    flags,
+    sessionDrops,
+    allowedDenyTokens(decisions, flags.includeDenied),
   );
 
   //  8  seed entities from PRE-substitution values (PLAN §2). Run seeding
   //     after substitution and these values are already pseudonyms: seeding
   //     becomes a no-op, the table is empty, and the tool exports the corpus
   //     while reporting a triumphant "known-entity residue: 0".
-  const distinctCwds = [...new Set(retained.cwds)];
+  //
+  //     Seeded from EVERY directory the corpus touched, not only the exported
+  //     ones. An excluded workspace's own path is still spelled out inside
+  //     retained text: measured on a real export, the parent matched and the
+  //     tail did not, so the zip carried `X_WORKSPACE_10601283/private/
+  //     derek-evidence` x8, `/private/hsbc-out.json` x9 and
+  //     `/private/payroll-ledger` x12 — a recipient learning the private
+  //     subtree's structure, the third party it concerns and what each file is
+  //     for, from an export whose review said that workspace was excluded.
+  //     Seeding the longer path makes longest-match replace the whole thing.
+  const exportedCwds = [...new Set(retained.cwds)];
+  const distinctCwds = [...new Set([...exportedCwds, ...allCorpusCwds(loaded)])];
   const seeded = seedEntities(env, corpus, {
     cwds: distinctCwds,
-    repoDirs: distinctCwds.slice(0, 200),
+    // Only directories that are actually exported are probed for a remote:
+    // the probe shells out, and an excluded directory's remote is not an
+    // entity anybody in the export can see.
+    repoDirs: exportedCwds.slice(0, 200),
     texts: collectRetainedStrings(retained.records),
   });
 
@@ -196,16 +217,30 @@ export async function runExport(flags, env) {
   // 10  tier-0 substitution -> `cleaned`
   const cleaned = substituteAll(retained.records, tier0Table);
 
-  // 11  tier-1 discovery reads the OUTPUT of step 10, never the raw records
+  // 11  tier-1 discovery reads the OUTPUT of step 10, never the raw records.
+  //
+  //     The candidates file holds third-party prose that tier 1 has not seen
+  //     yet, and cli-ux §10 promises that any non-zero exit leaves no output
+  //     file behind. It used to be written on EVERY export attempt, ahead of
+  //     the substitution invariant, the residual scan and the entity list it
+  //     is meant to feed — so a run that refused for an unrelated reason left
+  //     un-de-identified names on disk. It is written only on the path that
+  //     needs it: the refusal that asks the user to produce an entity list.
   const candidatesPath = path.join(outDir, CANDIDATES_FILENAME);
-  const proseChunks = extractProse(cleaned.records);
-  const candidates = writeCandidates(proseChunks, candidatesPath);
-
   const tier1 = flags.entities === null ? null : readEntities(flags.entities);
   const semantic = checkSemanticPass(tier1);
   if (!semantic.ok) {
+    const candidates = writeCandidates(
+      extractProse(cleaned.records),
+      candidatesPath,
+      // Everything the residual scan runs over the zip runs over this file too.
+      // It is the one artifact intended to be read by an LLM, i.e. the one most
+      // likely to leave the machine, and its own header states that the
+      // username, paths, git identity and remotes have already been replaced.
+      { table: tier0Table },
+    );
     report.renderCandidates(candidates.path, candidates.chars);
-    throw semanticRefusal(candidates.path);
+    throw semanticRefusal(candidates.path, semantic.why);
   }
 
   // 12  tier-1 substitution targets the SAME cleaned object, with a pseudonym
@@ -254,7 +289,25 @@ export async function runExport(flags, env) {
   if (!residue.ok) throw residueRefusal(residue);
   // I6 again, per PLAN §2: a refusal one skipped code path can bypass is not
   // a refusal.
-  if (!semantic.ok) throw semanticRefusal(candidates.path);
+  if (!semantic.ok) throw semanticRefusal(candidatesPath, semantic.why);
+
+  if (retained.records.length === 0) {
+    // An empty archive presented as a success is the one outcome a
+    // manifest-based trust model must never produce. Reachable whenever the
+    // cwd gate happens to drop everything.
+    throw new RefusalError('every session was filtered out, so the export would be empty', {
+      why: [
+        `${retained.stats.droppedByCwd.toLocaleString('en-US')} lines were dropped by the per-line cwd gate and`,
+        `${retained.stats.emptiedSessions.toLocaleString('en-US')} sessions retained nothing.`,
+        'Writing a zero-entry archive and reporting success would be worse than',
+        'refusing, so nothing was written.',
+      ],
+      remedies: [
+        { label: 'Check the tiers', command: `deident scan   # then edit ${REVIEW_FILENAME}` },
+        { label: 'Include a denied workspace', command: 'deident export --include-denied <name>' },
+      ],
+    });
+  }
 
   // 16  manifest. Occurrence counts come first, because the manifest reports
   //     how many secrets and phone numbers were replaced and those are counted
@@ -276,7 +329,7 @@ export async function runExport(flags, env) {
       path.join(outDir, `deident-preview-${today()}.diff`),
     );
     report.renderWrote(written.path, written.bytes, path.join(saltDir, 'salt'));
-    saveDecisions(saltDir, decisions);
+    rememberDecisions(saltDir, decisions);
     return 0;
   }
 
@@ -288,8 +341,31 @@ export async function runExport(flags, env) {
     safeUnlink(zipPath);
     throw err;
   }
-  saveDecisions(saltDir, decisions);
+  rememberDecisions(saltDir, decisions);
   return 0;
+}
+
+/**
+ * Persist the tier decisions, after the artifact is safely on disk.
+ *
+ * This was the only writer with no try/catch, and it ran AFTER writeZip and
+ * after the success line: an unwritable salt directory produced
+ * `-> deident-export-2026-08-22.zip  515 B` immediately followed by
+ * `internal error ... Nothing was written.` and exit 1, with the finished zip
+ * still sitting in the output directory. cli-ux §10 says a non-zero exit leaves
+ * no output behind; here a non-zero exit left the export AND told the user the
+ * opposite. A lost tier memo costs one re-edit of review.md, so it is a
+ * warning, not a failure.
+ */
+function rememberDecisions(saltDir, decisions) {
+  try {
+    saveDecisions(saltDir, decisions);
+  } catch (err) {
+    report.renderWarning(
+      `could not remember your tier decisions (${err.code ?? 'error'}: ${err.message}) — ` +
+        'the export is written and valid; you will be asked to set tiers again next time',
+    );
+  }
 }
 
 // ------------------------------------------------------------------ steps
@@ -355,7 +431,16 @@ function surveyCorpus(corpus, flags, namespace = null) {
 }
 
 /** Steps 6 and 7, re-reading one file at a time (see surveyCorpus). */
-function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid, flags, sessionDrops = new Set()) {
+function retainCorpus(
+  loaded,
+  workspaceOf,
+  exportable,
+  cwdTiers,
+  rewriteUuid,
+  flags,
+  sessionDrops = new Set(),
+  deniedTokensAllowed = new Set(),
+) {
   const out = [];
   const cwds = [];
   const stats = {
@@ -372,8 +457,17 @@ function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid, fl
     toolResultBytesOmitted: 0,
     dedupedPrompts: 0,
     sessions: 0,
+    emptiedSessions: 0,
+    droppedCwdless: 0,
+    unknownTypes: new Map(),
     workspaces: new Set(),
   };
+  // `--include-denied` takes a workspace NAME; the per-line gate matches a deny
+  // TOKEN. The two were never connected, so a user who typed the documented
+  // confirmation got the workspace promoted and then every one of its lines
+  // dropped by the token check — a green success report over a 22-byte zip.
+  // The tokens allowed here are exactly those of the workspaces the user named.
+  const allowDenyTokenFor = deniedTokensAllowed;
 
   for (const { file, cwds: lineCwds } of loaded.sessions) {
     const workspace = workspaceOf.get(file.path);
@@ -390,13 +484,39 @@ function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid, fl
     const ctx = newRetentionContext(rewriteUuid);
     const records = [];
 
+    // Did this session ever work inside a directory that is not exported?
+    //
+    // BRIEF §4.11 and PLAN §4.2 say a deny-listed directory is `exclude` and
+    // its material never leaves. It did. A `last-prompt` (and a
+    // `queue-operation`, same shape) carries no `cwd` of its own, so cwdtrack
+    // gives it the cwd in force when it was written — which, for a record that
+    // REPLAYS earlier user text, is the cwd of a later moment, not of the turn
+    // it replays. Measured on a real export: prose authored only at
+    // `...\ops-handover\private\derek-evidence` was replayed by three
+    // later last-prompt records sitting at `...\ops-handover`, passed the
+    // gate, and shipped. Eight distinct fragments that appear ONLY on
+    // deny-listed lines in the whole corpus reached the zip that way, including
+    // wage prose and bank statement text.
+    //
+    // A cwd-less record cannot be attributed to a turn, so in a session that
+    // ever touched an excluded directory it is dropped rather than guessed at.
+    // §C3 kept these types precisely because they carry user text found nowhere
+    // else, which is exactly what makes mis-attributing them expensive.
+    const touchedExcluded = lineCwds.some(
+      (cwd) => !allowLine(cwd, { cwdTiers, allowDenyTokenFor }).allow,
+    );
+
     for (let i = 0; i < session.records.length; i += 1) {
-      const verdict = allowLine(lineCwds[i], { cwdTiers });
+      const verdict = allowLine(lineCwds[i], { cwdTiers, allowDenyTokenFor });
       if (!verdict.allow) {
         stats.droppedByCwd += 1;
         continue;
       }
       const at = { file: file.path, line: session.records[i].index };
+      if (touchedExcluded && cwdChangeFrom(session.records[i].value) === null) {
+        stats.droppedCwdless += 1;
+        continue;
+      }
       let result;
       try {
         result = retainRecord(session.records[i].value, ctx, at);
@@ -405,6 +525,11 @@ function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid, fl
         // the input, so it is a read error naming the line (exit 3), never
         // "a bug in deident" (exit 1).
         if (err instanceof RangeError) throw nestingError(at.file, at.line, err);
+        if (flags.skipUnknownTypes && err instanceof RefusalError && err.detail && err.detail.unknown) {
+          const key = err.detail.unknown;
+          stats.unknownTypes.set(key, (stats.unknownTypes.get(key) ?? 0) + 1);
+          continue;
+        }
         throw err;
       }
       if (result.keep) {
@@ -425,6 +550,15 @@ function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid, fl
       stats.sessions += 1;
       stats.workspaces.add(workspace.key);
       out.push(Object.freeze({ file, workspace, records: Object.freeze(records) }));
+    } else {
+      // A session that retained nothing used to be skipped without incrementing
+      // any counter, so the shipped session count disagreed with the count the
+      // uploader approved in review.md and nothing said why. Session count is
+      // load-bearing downstream: privacy-tiers §2 shrinks domain confidence
+      // toward PRIOR_WEIGHT = 6 and gives no level at all under 8 sessions, so
+      // a vanished session moves a denominator that decides whether a person is
+      // scored.
+      stats.emptiedSessions += 1;
     }
   }
 
@@ -433,6 +567,36 @@ function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid, fl
     cwds: Object.freeze(cwds),
     stats,
   });
+}
+
+/**
+ * The deny tokens the user has explicitly overridden, for the per-line gate.
+ *
+ * `--include-denied` names a workspace; `allowLine` matches a token. Only the
+ * tokens of workspaces the user named AND that ended up on an exportable tier
+ * are allowed, so typing the confirmation for one workspace does not quietly
+ * open every `\private` directory on the machine — a line elsewhere still
+ * resolves to its own workspace and that workspace's tier still decides.
+ */
+function allowedDenyTokens(decisions, includeDenied) {
+  const named = new Set(includeDenied ?? []);
+  const tokens = new Set();
+  for (const d of decisions) {
+    if (d.denyToken === null || !named.has(d.name)) continue;
+    if (d.tier === 'redact' || d.tier === 'open') tokens.add(d.denyToken);
+  }
+  return tokens;
+}
+
+/** Every distinct effective cwd in the corpus, exported or not. */
+function allCorpusCwds(loaded) {
+  const out = new Set();
+  for (const session of loaded.sessions) {
+    for (const cwd of session.cwds) {
+      if (typeof cwd === 'string' && cwd.length > 0) out.add(cwd);
+    }
+  }
+  return out;
 }
 
 /** Every string in the retained (pre-substitution) records, for the email sweep. */
@@ -509,13 +673,41 @@ export function serializeSessions(sessions, table, rewriteUuid) {
     // entity matches it, so it reached the zip's directory listing verbatim
     // and I5 correctly reported three unknown uuids. Same reuse as the record
     // walker, so a slug and a record body cannot disagree.
-    const dir = rewriteUuidsInRecord(substituteString(s.workspace.name, table).out, rewriteUuid);
+    //
+    // The entry directory is derived from the workspace's own CWD, not from its
+    // short label. `s.workspace.name` is the last path segment, and the entity
+    // table only carries full cwd spellings, so the bare basename never matched
+    // anything: the archive contained `./sessions/catalyte/...jsonl` while every
+    // record body inside it read `"cwd":"WORKSPACE_3736654"`. That is the real
+    // directory name in plaintext AND a free WORKSPACE_n -> real-name mapping
+    // handed to the recipient, and a scan over record bodies reported
+    // `known-entity residue: 0` over it. There is no §F7 trade-off here: the
+    // entry name is generated by deident, so it can always be a token.
+    const dir = rewriteUuidsInRecord(
+      substituteString(s.workspace.cwd ?? s.workspace.name, table).out,
+      rewriteUuid,
+    );
     const id = rewriteUuid(s.file.sessionId) ?? s.file.sessionId;
-    const name = `sessions/${sanitizeEntryName(dir)}/${sanitizeEntryName(id)}.jsonl`;
+    const name = `sessions/${sanitizeEntryName(entryDir(dir, s.workspace.key))}/${sanitizeEntryName(id)}.jsonl`;
     entries.push({ name, data: body });
     parts.push(body, name, '\n');
   }
   return Object.freeze({ entries, allBytes: parts.join('') });
+}
+
+/**
+ * A directory name for the archive, or an opaque one when substitution left a
+ * path behind.
+ *
+ * A leftover separator or drive letter means the workspace's cwd was not fully
+ * replaced, and shipping half a path as a folder name is the same disclosure in
+ * a quieter form. The fallback is derived from the workspace key so it is
+ * stable across runs (I10) and identical for every session of one workspace.
+ */
+function entryDir(dir, key) {
+  if (typeof dir !== 'string' || dir === '') return 'workspace';
+  if (!/[\\/:]/.test(dir)) return dir;
+  return `workspace-${createHash('sha256').update(String(key), 'utf8').digest('hex').slice(0, 8)}`;
 }
 
 /** Keep entry names portable across Windows, macOS and Linux extractors. */
@@ -584,7 +776,12 @@ function classify(loaded, saved, flags) {
   const workspaceOf = new Map();
   for (const g of groups) {
     const d = byKey.get(g.key);
-    for (const p of g.sessionPaths) workspaceOf.set(p, Object.freeze({ key: g.key, name: d.name }));
+    for (const p of g.sessionPaths) {
+      // `cwd` rides along because the zip's entry directory is derived from it,
+      // not from the short label: the label is the last path segment and the
+      // entity table only carries full paths, so the label never matched.
+      workspaceOf.set(p, Object.freeze({ key: g.key, name: d.name, cwd: g.cwd ?? null }));
+    }
   }
   return { decisions, workspaceOf };
 }

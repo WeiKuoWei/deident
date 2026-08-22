@@ -143,17 +143,38 @@ export function residueRefusal(result) {
  */
 export function checkSemanticPass(tier1) {
   const ran = tier1 !== null && tier1 !== undefined && tier1.ran === true;
+  // An EMPTY list is indistinguishable from not running, and it is exactly the
+  // file a failed or interrupted /deident-scan leaves behind. tier1.mjs's own
+  // header says a malformed list "must never silently become an empty list,
+  // because an empty list passes I6 while delivering nothing" — and then a
+  // deliberately empty one did precisely that, printing
+  // `semantic pass  --entities empty.json · 0 entities  ok` beside a real zip.
+  const delivered = ran && tier1.entities.length > 0;
   return Object.freeze({
     name: 'semantic pass',
-    ok: ran,
-    detail: ran
-      ? `${tier1.source} · ${tier1.entities.length} entities`
-      : 'did not run',
+    ok: delivered,
+    detail: ran ? `${tier1.source} · ${tier1.entities.length} entities` : 'did not run',
+    why: ran && !delivered ? 'empty' : 'absent',
     tier1,
   });
 }
 
-export function semanticRefusal(candidatesPath) {
+export function semanticRefusal(candidatesPath, why = 'absent') {
+  if (why === 'empty') {
+    return new RefusalError('the entity list is empty, which is not a semantic pass', {
+      why: [
+        'A list with no entities is indistinguishable from a pass that never ran,',
+        'and it is exactly the file an interrupted discovery run leaves behind.',
+        'BRIEF §3: graceful degradation here is silent failure.',
+        '',
+        candidatesPath ? `The tier-0-cleaned prose to review is at:  ${candidatesPath}` : '',
+      ].filter((line) => line !== ''),
+      remedies: [
+        { label: 'Inside Claude Code', command: '/deident-scan' },
+        { label: 'Or supply a list', command: 'deident export --entities entities.json' },
+      ],
+    });
+  }
   return new RefusalError('the semantic pass has not run', {
     why: [
       'Entity discovery from prose is required. The residual scan can only find',

@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 import { expandVariants, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
@@ -82,6 +83,153 @@ function entity(id, kind, canonical, pseudonym, extra = {}) {
 
 function tmpdir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'deident-selftest-'));
+}
+
+
+// --------------------------------------------------- end-to-end harness
+
+const ENTRY = fileURLToPath(new URL('../deident.mjs', import.meta.url));
+
+/** Run the real CLI in a child process. Returns {code, out}. */
+function runCli(args) {
+  try {
+    const out = execFileSync(process.execPath, [ENTRY, ...args], {
+      encoding: 'utf8',
+      timeout: 120_000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { code: 0, out };
+  } catch (err) {
+    return { code: err.status ?? 1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
+  }
+}
+
+/**
+ * Read a zip written by output/zip.mjs. Enough of the format to walk local
+ * headers and inflate each entry, which is all a fixture needs — and it reads
+ * the SHIPPED bytes rather than the in-memory records, which is the only way to
+ * see what a recipient actually gets.
+ */
+function readZip(file) {
+  const buf = fs.readFileSync(file);
+  const entries = [];
+  let at = 0;
+  while (at + 30 <= buf.length && buf.readUInt32LE(at) === 0x04034b50) {
+    const compressedSize = buf.readUInt32LE(at + 18);
+    const nameLength = buf.readUInt16LE(at + 26);
+    const extraLength = buf.readUInt16LE(at + 28);
+    const name = buf.subarray(at + 30, at + 30 + nameLength).toString('utf8');
+    const dataAt = at + 30 + nameLength + extraLength;
+    const data = zlib.inflateRawSync(buf.subarray(dataAt, dataAt + compressedSize)).toString('utf8');
+    entries.push({ name, data });
+    at = dataAt + compressedSize;
+  }
+  return entries;
+}
+
+/**
+ * A corpus with the shapes the round-2 findings were measured on: a session
+ * that leaves an allowed directory for a deny-listed one and comes back, a
+ * cwd-less record replaying what was typed while it was away, a credential, a
+ * phone number, an `ls -l` owner id, and a second session that lives entirely
+ * inside the deny-listed directory.
+ */
+function writeCorpus(root, { unknownType = false } = {}) {
+  const projects = path.join(root, 'projects', 'ws');
+  fs.mkdirSync(projects, { recursive: true });
+  const cwd = ['C:', 'Users', 'devuser', 'projects', 'alpha'].join(BS);
+  const denied = [cwd, 'private', 'derek-evidence'].join(BS);
+  const sid = '11111111-1111-4111-8111-111111111111';
+  const other = '22222222-2222-4222-8222-222222222222';
+  const PRIVATE = 'PRIVATE-MATERIAL-TYPED-IN-THE-DENIED-DIRECTORY';
+  let seq = 0;
+  const turn = (at, text) => ({
+    type: 'user',
+    uuid: `00000000-0000-4000-8000-${String((seq += 1)).padStart(12, '0')}`,
+    sessionId: sid,
+    timestamp: '2026-08-20T10:11:12.345Z',
+    cwd: at,
+    message: { role: 'user', content: [{ type: 'text', text }] },
+  });
+
+  const rows = [
+    turn(cwd, `working in ${cwd} with mcp__playwright-headless__browser_navigate`),
+    // A string-valued message.content: the same user turn, silently dropped.
+    {
+      type: 'user',
+      uuid: '00000000-0000-4000-8000-000000000901',
+      sessionId: sid,
+      timestamp: '2026-08-20T10:11:12.345Z',
+      cwd,
+      message: { role: 'user', content: 'KEEP-THIS-STRING-FORM-PROMPT' },
+    },
+    turn(cwd, `token ${'github_pat_11ABCDEFG0'}${'a'.repeat(50)} pasted by mistake`),
+    turn(cwd, 'ring me on +852-5555 0100'),
+    turn(cwd, '-rw-r--r-- 1 devuser 197609    929 Aug 21 23:49 .gitignore'),
+    turn(cwd, `notes under ${denied} and ${denied}${BS}hsbc.json`),
+    {
+      type: 'user',
+      uuid: '00000000-0000-4000-8000-000000000902',
+      sessionId: sid,
+      timestamp: '2026-08-20T10:12:00.000Z',
+      cwd,
+      message: { role: 'user', content: [{ type: 'text', text: 'made a file' }] },
+      toolUseResult: {
+        type: 'create',
+        filePath: `${cwd}${BS}a.txt`,
+        content: ['l1', 'l2', 'l3'].join(NL),
+        structuredPatch: [],
+      },
+    },
+    turn(denied, PRIVATE),
+    turn(cwd, 'back in alpha'),
+    // No cwd of its own, and it replays what was typed while away.
+    { type: 'last-prompt', sessionId: sid, timestamp: '2026-08-20T10:13:00.000Z', lastPrompt: PRIVATE },
+  ];
+  if (unknownType) rows.push({ type: 'quantum-flux', uuid: 'q', cwd });
+  fs.writeFileSync(path.join(projects, `${sid}.jsonl`), rows.map((r) => JSON.stringify(r)).join(NL) + NL, 'utf8');
+
+  const onlyDenied = [
+    {
+      type: 'user',
+      uuid: '00000000-0000-4000-8000-000000000903',
+      sessionId: other,
+      timestamp: '2026-08-20T11:00:00.000Z',
+      cwd: denied,
+      message: { role: 'user', content: [{ type: 'text', text: PRIVATE }] },
+    },
+  ];
+  fs.writeFileSync(path.join(projects, `${other}.jsonl`), onlyDenied.map((r) => JSON.stringify(r)).join(NL) + NL, 'utf8');
+
+  // A third session inside the INCLUDED workspace whose every record is a DROP
+  // type. It used to be skipped without incrementing any counter, so the
+  // shipped session count silently disagreed with the count in review.md.
+  const emptied = '44444444-4444-4444-8444-444444444444';
+  fs.writeFileSync(
+    path.join(projects, `${emptied}.jsonl`),
+    [
+      JSON.stringify({ type: 'permission-mode', sessionId: emptied, cwd, mode: 'default' }),
+      JSON.stringify({ type: 'ai-title', sessionId: emptied, cwd, title: 'x' }),
+    ].join(NL) + NL,
+    'utf8',
+  );
+
+  fs.writeFileSync(
+    path.join(root, 'ents.json'),
+    JSON.stringify({ entities: [{ kind: 'person', spellings: ['Ada Wang'], confidence: 'high' }] }),
+    'utf8',
+  );
+  return { cwd, denied, private: PRIVATE };
+}
+
+/** Promote one workspace in review.md, the way a person edits the file. */
+function setTier(reviewPath, name, tier) {
+  const text = fs.readFileSync(reviewPath, 'utf8');
+  const lines = text.split(NL).map((line) => {
+    const parts = line.trim().split(/\s+/);
+    return parts[1] === name && parts[0] !== '#' ? `${tier.padEnd(12)} ${line.trim().slice(parts[0].length).trim()}` : line;
+  });
+  fs.writeFileSync(reviewPath, lines.join(NL), 'utf8');
 }
 
 // ----------------------------------------------------------------- suite
@@ -1507,6 +1655,146 @@ const FIXTURES = [
         .pseudonym,
       rerun.entities[0].pseudonym,
     );
+  }],
+
+  // F61 — the acceptance run, end to end, over the shapes round 2 measured.
+  //
+  // Everything here is asserted against the SHIPPED BYTES of the zip, because
+  // every one of these leaks passed an in-memory check: the report said
+  // `known-entity residue 0  ok` over an archive that contained a live
+  // credential, a personal mobile, a stable machine id, and prose typed inside
+  // a directory the review said was excluded.
+  ['F61', 'end to end: what actually reaches the zip', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(scan.code, 0, scan.out);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+
+    const exported = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(exported.code, 0, exported.out);
+
+    const zips = fs.readdirSync(out).filter((f) => f.endsWith('.zip'));
+    assert.equal(zips.length, 1, 'exactly one archive');
+    const entries = readZip(path.join(out, zips[0]));
+    const bytes = entries.map((e) => `${e.name}${NL}${e.data}`).join(NL);
+
+    // Content authored inside a deny-listed directory, replayed by a cwd-less
+    // record that carries the cwd of a LATER moment (BRIEF §4.11).
+    assert.ok(!bytes.includes(corpus.private), 'material from the denied directory must not leave');
+    // The deny-listed subtree's own path, which used to survive as a tail.
+    assert.ok(!bytes.includes('derek-evidence'), 'the excluded subtree must not be spelled out');
+    // §F7-safe credential shapes, E.164 numbers, and the §F3 owner id.
+    assert.ok(!bytes.includes('github_pat_'), 'a credential must not leave');
+    assert.ok(!bytes.includes('5136 7788'), 'a personal mobile must not leave');
+    assert.ok(!bytes.includes('197609'), 'the stable owner id must not leave');
+    // The MCP server name, which the boundary rule made inert.
+    assert.ok(!bytes.includes('playwright-headless'), 'the MCP server name must not leave');
+    // And the directory listing, which is outside every record body.
+    assert.ok(!bytes.includes('sessions/alpha/'), `the entry name names the workspace: ${entries.map((e) => e.name)}`);
+
+    // What must be KEPT: a string-valued message.content is a user turn, and a
+    // file creation's added lines are its content.
+    assert.ok(bytes.includes('KEEP-THIS-STRING-FORM-PROMPT'), 'a string-form user turn must survive');
+    assert.match(exported.out, /0 lines of code\s+3 counted/, 'the Write-create must count 3 added lines');
+    assert.match(exported.out, /0 secrets\s+1 replaced/);
+    assert.match(exported.out, /0 phone numbers\s+1 replaced/);
+    // A session that retained nothing is reported rather than vanishing.
+    assert.match(exported.out, /1 sessions retained nothing/);
+    // The trust block never asserts a number and then contradicts it.
+    assert.doesNotMatch(exported.out, /0 dropped by cwd/);
+  }],
+
+  // F62 — `--include-denied` names a workspace; the per-line gate matches a
+  // deny token. The two were never connected, so the documented confirmation
+  // promoted the workspace and then dropped every one of its lines: a green
+  // success report over a 22-byte archive that `unzip -l` calls empty.
+  ['F62', '--include-denied reaches the line gate, and an empty export refuses', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    setTier(path.join(out, 'review.md'), 'derek-evidence', 'redact');
+    const args = [
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ];
+
+    const without = runCli(args);
+    assert.equal(without.code, 0, without.out);
+    assert.match(without.out, /1 sessions from 1 workspaces/, 'the denied workspace stays out by default');
+
+    const withFlag = runCli([...args, '--include-denied', 'derek-evidence']);
+    assert.equal(withFlag.code, 0, withFlag.out);
+    assert.match(withFlag.out, /2 sessions from 2 workspaces/, 'the typed confirmation must actually include it');
+
+    // And an export that retains nothing refuses rather than writing an empty
+    // archive and reporting success.
+    const empty = tmpdir();
+    const emptyOut = path.join(empty, 'out');
+    const dir = path.join(empty, 'projects', 'ws');
+    fs.mkdirSync(dir, { recursive: true });
+    const cwd = ['C:', 'Users', 'devuser', 'projects', 'beta'].join(BS);
+    const sid = '33333333-3333-4333-8333-333333333333';
+    fs.writeFileSync(
+      path.join(dir, `${sid}.jsonl`),
+      [
+        JSON.stringify({ type: 'permission-mode', sessionId: sid, cwd, mode: 'default' }),
+        JSON.stringify({ type: 'ai-title', sessionId: sid, cwd, title: 'x' }),
+      ].join(NL) + NL,
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(empty, 'ents.json'),
+      JSON.stringify({ entities: [{ kind: 'person', spellings: ['Ada Wang'], confidence: 'high' }] }),
+      'utf8',
+    );
+    runCli(['scan', '--root', empty, '--out', emptyOut, '--salt-dir', path.join(empty, 'salt')]);
+    setTier(path.join(emptyOut, 'review.md'), 'beta', 'redact');
+    const refused = runCli([
+      'export', '--root', empty, '--out', emptyOut, '--salt-dir', path.join(empty, 'salt'),
+      '--entities', path.join(empty, 'ents.json'),
+    ]);
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.out, /the export would be empty/);
+    assert.equal(fs.readdirSync(emptyOut).filter((f) => f.endsWith('.zip')).length, 0, 'no archive may be left');
+  }],
+
+  // F63 — one unknown top-level record type blocked a whole export with no
+  // escape hatch, and --skip-unreadable did not cover the class. Claude Code
+  // ships a new record type every few weeks (§F4 records 2.1.215 -> 2.1.238
+  // inside one corpus), so refusal stays the default without being terminal.
+  ['F63', 'an unknown record type refuses by default and can be dropped on request', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root, { unknownType: true });
+    runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    const args = [
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ];
+
+    const refused = runCli(args);
+    assert.equal(refused.code, 1, 'the default is still a refusal');
+    assert.match(refused.out, /quantum-flux/);
+    assert.match(refused.out, /--skip-unknown-types/, 'the refusal must name the escape hatch');
+
+    const skipped = runCli([...args, '--skip-unknown-types']);
+    assert.equal(skipped.code, 0, skipped.out);
+    // Dropped records the user never hears about are the §4.4 failure arriving
+    // through the escape hatch, so they are named and counted.
+    assert.match(skipped.out, /quantum-flux \(1\)/);
+    assert.match(skipped.out, /dropped unread under --skip-unknown-types/);
   }],
 ];
 

@@ -19,6 +19,7 @@ const FLAGS = Object.freeze({
   namespace: { type: 'string', commands: ['export'] },
   'skip-unclassified': { type: 'boolean', commands: ['export'] },
   'skip-unreadable': { type: 'boolean', commands: ['scan', 'export'] },
+  'skip-unknown-types': { type: 'boolean', commands: ['scan', 'export'] },
   'include-denied': { type: 'string', multiple: true, commands: ['export'] },
   // Global, command-less.
   help: { type: 'boolean', commands: null },
@@ -131,6 +132,7 @@ export function parseCliArgs(argv) {
       namespace: values.namespace ?? null,
       skipUnclassified: values['skip-unclassified'] === true,
       skipUnreadable: values['skip-unreadable'] === true,
+      skipUnknownTypes: values['skip-unknown-types'] === true,
       includeDenied: Object.freeze([...includeDenied]),
     },
   });

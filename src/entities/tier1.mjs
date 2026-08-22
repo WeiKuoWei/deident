@@ -22,6 +22,7 @@ import { RefusalError } from '../cli/errors.mjs';
 import { expandVariants } from './variants.mjs';
 import { rejectReason } from './seed.mjs';
 import { CANDIDATE_EXCERPT_CHARS } from '../retain/constants.mjs';
+import { residualScan, firstExamples } from '../verify/residual.mjs';
 
 export const CANDIDATES_FILENAME = 'deident-candidates.txt';
 export const ENTITIES_FILENAME = 'deident-entities.json';
@@ -63,7 +64,7 @@ const HEADER = `# deident tier-1 candidates
  * feeding a semantic pass the other 97.7% is how it starts inventing entities
  * (§F7, arriving through the discovery pass instead of the residual pass).
  */
-export function writeCandidates(proseChunks, outPath) {
+export function writeCandidates(proseChunks, outPath, opts = {}) {
   const seen = new Set();
   const parts = [HEADER];
   for (const chunk of proseChunks) {
@@ -77,6 +78,28 @@ export function writeCandidates(proseChunks, outPath) {
     parts.push('');
   }
   const body = parts.join('\n');
+
+  // The same gate the zip gets. This file's header states that the username,
+  // paths, git identity, git remotes and MCP server names have already been
+  // replaced, and it is the one artifact meant to be read by an LLM — so a
+  // tier-0 entity surviving in it is the §F1 failure with the shortest route
+  // off the machine.
+  if (opts.table) {
+    const scan = residualScan(body, opts.table, new Set());
+    if (scan.entityCount > 0) {
+      throw new RefusalError(`${scan.entityCount} known-entity occurrences would be written to ${outPath}`, {
+        why: [
+          'The candidates file claims tier-0 substitution has already run over it.',
+          'It has, and something survived anyway, so the claim in its header would',
+          'be false. Nothing was written.',
+          '',
+          ...firstExamples(scan),
+        ],
+        remedies: [{ label: 'Report with the lines above', command: 'file an issue against deident' }],
+      });
+    }
+  }
+
   try {
     fs.writeFileSync(outPath, body, 'utf8');
   } catch (err) {
