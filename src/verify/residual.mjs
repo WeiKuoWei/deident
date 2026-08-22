@@ -18,7 +18,7 @@ import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
 // The left-boundary rule is imported, never re-implemented. When the scan had
 // its own copy, both copies had the same escape-tail bug and agreed with each
 // other, which is how a leak was reported as `known-entity residue: 0`.
-import { leftBoundaryBlocks, rightBoundaryBlocks } from '../substitute/engine.mjs';
+import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold } from '../substitute/engine.mjs';
 
 const WORD_RE = /[A-Za-z0-9_]/;
 function isWordChar(ch) {
@@ -84,9 +84,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
     const bucket = byFirst.get(bytes[i]);
     if (bucket === undefined) continue;
     for (const { form, entry, lower } of bucket) {
-      if (lower === null ? !bytes.startsWith(form, i) : bytes.slice(i, i + form.length).toLowerCase() !== lower) {
-        continue;
-      }
+      if (lower === null ? !bytes.startsWith(form, i) : !equalsFold(bytes, i, lower)) continue;
       // A match that begins inside a JSON escape sequence is an artifact of
       // reading serialized bytes as flat text, not a leak.
       //

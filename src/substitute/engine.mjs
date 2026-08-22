@@ -90,7 +90,24 @@ export function matchesAt(s, at, entry) {
   const end = at + entry.spelling.length;
   if (end > s.length) return false;
   if (!entry.lower) return s.startsWith(entry.spelling, at);
-  return s.slice(at, end).toLowerCase() === entry.lower;
+  return equalsFold(s, at, entry.lower);
+}
+
+/**
+ * Case-insensitive compare against an already-lowercased needle, without
+ * allocating. This runs once per bucket entry per candidate offset over the
+ * whole serialized output, so `s.slice(...).toLowerCase()` here would allocate
+ * a string per comparison across tens of megabytes — a check nobody is willing
+ * to wait for is a check that gets switched off (§F7's failure mode arriving
+ * as latency).
+ */
+export function equalsFold(s, at, lower) {
+  for (let k = 0; k < lower.length; k += 1) {
+    const ch = s[at + k];
+    if (ch === lower[k]) continue;
+    if (ch === undefined || ch.toLowerCase() !== lower[k]) return false;
+  }
+  return true;
 }
 
 /** Does the character at `end` block a match of `entry`? */
