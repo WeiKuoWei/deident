@@ -102,8 +102,19 @@ export function seedEntities(env, corpus, opts = {}) {
   }
 
   // --- MCP server names. §F4: they survive verbatim and fingerprint the device.
+  //
+  // Read from the local settings files AND swept out of the corpus itself.
+  // Measured on a real export: the settings files cover locally-configured
+  // servers only, so every Claude.ai connector — `claude_ai_Gmail`,
+  // `claude-in-chrome` and the rest, which are configured server-side and
+  // appear in no file on this machine — survived 436 times. The log form is
+  // always `mcp__NAME__tool`, which is exactly the §F7 precision profile: it
+  // cannot match anything by accident, and it is the only form that occurs.
   for (const name of mcpServerNames(env, warnings)) {
     add('machine', name, 'MCP server name', 'low');
+  }
+  for (const name of sweepMcpNames(opts.texts ?? [])) {
+    add('machine', name, 'MCP server name seen in session text', 'low');
   }
 
   // --- Emails found in the retained text itself.
@@ -230,6 +241,25 @@ const SECRET_RE = new RegExp(
   ].join('|'),
   'g',
 );
+
+// The only form an MCP tool name takes in these logs. The name itself may
+// contain single underscores (`claude_ai_Gmail`); the separator is a double.
+const MCP_TOOL_RE = /mcp__([A-Za-z0-9][A-Za-z0-9_-]*?)__[A-Za-z0-9]/g;
+
+/** Distinct MCP server names appearing in `texts`, from the tool-name form. */
+export function sweepMcpNames(texts) {
+  const found = new Set();
+  for (const text of texts) {
+    if (typeof text !== 'string' || !text.includes('mcp__')) continue;
+    MCP_TOOL_RE.lastIndex = 0;
+    let m;
+    while ((m = MCP_TOOL_RE.exec(text)) !== null) {
+      if (m[1].length >= 3) found.add(m[1]);
+      if (found.size > 200) return [...found];
+    }
+  }
+  return [...found];
+}
 
 /** Distinct credential-shaped strings in `texts`. */
 export function sweepSecrets(texts) {

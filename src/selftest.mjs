@@ -22,6 +22,7 @@ import {
   sweepSecrets,
   sweepPhones,
   sweepUnixUid,
+  sweepMcpNames,
   projectShaped,
   basenameOf,
   buildEntities,
@@ -765,6 +766,29 @@ const FIXTURES = [
     // The full addresses still are, per §F1/§F2.
     assert.ok(canonicals.includes('legal@catalyte.ai'));
     assert.ok(canonicals.includes('support@deel.com'));
+  }],
+
+  // F70 — §F4 required MCP server names to be entities. seed.mjs read them from
+  // the local settings files, which cover locally-configured servers only, so
+  // every Claude.ai connector — configured server-side and named in no file on
+  // this machine — survived 436 times in a real export. The log form is always
+  // `mcp__NAME__tool`, which is the §F7 precision profile exactly: it cannot
+  // match anything by accident and it is the only form that occurs.
+  ['F70', 'MCP server names are swept out of the corpus, not just the settings files', () => {
+    const found = sweepMcpNames([
+      'ran mcp__claude_ai_Gmail__send_message then mcp__playwright-headless__browser_navigate',
+      'and mcp__claude-in-chrome__navigate',
+    ]);
+    assert.deepEqual(found.sort(), ['claude-in-chrome', 'claude_ai_Gmail', 'playwright-headless']);
+    // A name must be a name: no bare prefix, nothing under three characters.
+    assert.deepEqual(sweepMcpNames(['mcp__ab__x', 'a bare mcp__ mention']), []);
+
+    // And the swept name is replaced where it occurs, boundary and all.
+    const built = buildEntities(found.map((n) => ({ kind: 'machine', canonical: n, source: 'fixture', confidence: 'low' })));
+    const table = buildTable(assignPseudonyms(built, SALT, null).entities);
+    const out = substituteString('mcp__claude_ai_Gmail__send_message failed', table).out;
+    assert.ok(!out.includes('claude_ai_Gmail'), out);
+    assert.match(out, /^mcp__MACHINE_[0-9]+__send_message failed$/);
   }],
 
   ['F27', 'the email sweep is precise and finds third-party addresses (§F1, §F7)', () => {
