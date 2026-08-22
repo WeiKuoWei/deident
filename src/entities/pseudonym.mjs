@@ -47,6 +47,18 @@ function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Exactly what randomBytes(32).toString('hex') produces, and nothing else.
+const SALT_RE = /^[0-9a-f]{64}$/;
+
+/** Say what the file holds without printing it: a salt is never printed. */
+function describeSalt(text) {
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes === 0) return 'it is empty';
+  const nul = String.fromCharCode(0);
+  if (text.length > 0 && [...text].every((ch) => ch === nul)) return `${bytes} zero bytes`;
+  return `${bytes} bytes, not 64 hex characters`;
+}
+
 export function defaultSaltDir(env) {
   return env.DEIDENT_SALT_DIR ?? path.join(os.homedir(), '.deident-private');
 }
@@ -61,11 +73,20 @@ export function loadOrCreateSalt(saltDir) {
   const file = path.join(saltDir, 'salt');
   try {
     const existing = fs.readFileSync(file, 'utf8').trim();
-    if (existing.length >= 32) return existing;
-    throw new RefusalError(`the salt at ${file} is too short to be usable`, {
+    // Shape, not length. `String.prototype.trim` does not strip U+0000, so a
+    // salt file of 64 NUL bytes — an interrupted write, filesystem corruption,
+    // a file someone touched — passed a length check and produced pseudonyms
+    // derived from an all-zero salt: predictable to anyone who guesses that,
+    // which is the whole per-uploader salt decision in BRIEF §3 undone in
+    // silence. deident writes exactly 64 lowercase hex characters, so anything
+    // else was not written by deident.
+    if (SALT_RE.test(existing)) return existing;
+    throw new RefusalError(`the salt at ${file} is not a salt deident wrote`, {
       why: [
-        'A salt shorter than 32 characters was not written by deident.',
-        'Replacing it silently would break reversal against every earlier export.',
+        'deident writes 64 hexadecimal characters. This file holds something else,',
+        `so it is truncated, zeroed or from another tool (${describeSalt(existing)}).`,
+        'Replacing it silently would break reversal against every earlier export;',
+        'using it as-is could mean pseudonyms derived from an all-zero salt.',
       ],
       remedies: [{ label: 'Inspect, then remove it', command: `del "${file}"` }],
     });
@@ -124,10 +145,18 @@ export function pseudonymIndex(canonical, kind, salt) {
  * the index forward deterministically, so the result stays stable for a given
  * (salt, entity set) without ever silently merging two people.
  *
- * @returns {Readonly<{entities: object[], namespace: string|null}>}
+ * `opts.taken` threads the tokens an EARLIER pass already minted through this
+ * one. Without it each call proved bijectivity over its own half: the pipeline
+ * calls this twice, once for tier 0 and once for tier 1, and the merged table
+ * silently kept the first entry per pseudonym — so two different people could
+ * carry one token and no refusal fired. The index is 24 bits and sweepEmails
+ * admits up to 5,000 addresses, each a `person`; 5,000 tier-0 persons against
+ * ~50 tier-1 persons is order 1.5% per export, not one in sixteen million.
+ *
+ * @returns {Readonly<{entities: object[], namespace: string|null, taken: Set<string>}>}
  */
-export function assignPseudonyms(entities, salt, namespace = null) {
-  const taken = new Set();
+export function assignPseudonyms(entities, salt, namespace = null, opts = {}) {
+  const taken = new Set(opts.taken ?? []);
   const out = [];
 
   // Sort by canonical so assignment order does not depend on discovery order:
@@ -182,7 +211,7 @@ export function assignPseudonyms(entities, salt, namespace = null) {
     byCanonical.set(key, e);
   }
 
-  return Object.freeze({ entities: Object.freeze(out), namespace });
+  return Object.freeze({ entities: Object.freeze(out), namespace, taken });
 }
 
 function format(namespace, prefix, index) {

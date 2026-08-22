@@ -45,7 +45,12 @@ import { proposeTier, personalDataShape } from './policy/signals.mjs';
 import { readSession } from './corpus/reader.mjs';
 import { resolveRoot } from './corpus/root.mjs';
 import { setCommand, renderRefusal, captureOutput } from './cli/report.mjs';
-import { namespaceCollisions, assignPseudonyms, pseudonymPattern } from './entities/pseudonym.mjs';
+import {
+  namespaceCollisions,
+  assignPseudonyms,
+  pseudonymPattern,
+  loadOrCreateSalt,
+} from './entities/pseudonym.mjs';
 import { buildZip } from './output/zip.mjs';
 import { parseReview, parseSessionDrops, renderReview } from './policy/reviewfile.mjs';
 import { readEntities } from './entities/tier1.mjs';
@@ -1440,6 +1445,68 @@ const FIXTURES = [
     assert.equal(personalDataShape('timeline'), null);
     assert.equal(personalDataShape('private-archive'), 'line');
     assert.equal(personalDataShape('health-tracker'), 'health');
+  }],
+
+  // F59 — only the salt's LENGTH was checked, and String.prototype.trim does
+  // not strip U+0000, so a file of 64 NUL bytes passed and every pseudonym in
+  // the export was derived from an all-zero salt: predictable to anyone who
+  // guesses that, which is BRIEF §3's per-uploader salt decision undone in
+  // silence. A 3-byte salt was refused only because it happened to be short.
+  ['F59', 'a zeroed or foreign salt file is refused, not accepted on length', () => {
+    const nul = String.fromCharCode(0);
+    for (const [name, body] of [
+      ['zeroed', Buffer.alloc(64, 0)],
+      ['padded with NULs', Buffer.from('a'.repeat(32) + nul.repeat(32), 'utf8')],
+      ['not hex', Buffer.from('z'.repeat(64), 'utf8')],
+      ['too long', Buffer.from('a'.repeat(65), 'utf8')],
+      ['uppercase hex', Buffer.from('A'.repeat(64), 'utf8')],
+    ]) {
+      const dir = tmpdir();
+      fs.writeFileSync(path.join(dir, 'salt'), body);
+      assert.throws(() => loadOrCreateSalt(dir), /not a salt deident wrote/, name);
+    }
+
+    // A salt deident wrote is accepted, and loading twice is stable.
+    const good = tmpdir();
+    const minted = loadOrCreateSalt(good);
+    assert.match(minted, /^[0-9a-f]{64}$/);
+    assert.equal(loadOrCreateSalt(good), minted);
+  }],
+
+  // F60 — I9 was proved twice over two halves. `assignPseudonyms` created a
+  // fresh `taken` set per call and the pipeline calls it once for tier 0 and
+  // once for tier 1, so two different entities could carry one token and the
+  // merged table silently kept the first. The index is 24 bits and the email
+  // sweep admits up to 5,000 `person` entities, so this is order 1.5% per
+  // export, not one in sixteen million.
+  ['F60', 'bijectivity holds across the tier-0 and tier-1 passes, not within each', () => {
+    const tier0 = assignPseudonyms(
+      buildEntities([{ kind: 'person', canonical: 'first-person', source: 'fixture', confidence: 'high' }]),
+      SALT,
+      null,
+    );
+    const token = tier0.entities[0].pseudonym;
+    assert.ok(token, 'tier 0 must mint a token');
+
+    // Force the collision: a tier-1 entity whose index is made to land on the
+    // token tier 0 already used.
+    const collide = [
+      { id: 'T1', kind: 'person', canonical: 'second-person', spellings: ['second-person'], tier: 1, rejected: null },
+    ];
+    const forced = assignPseudonyms(collide, SALT, null, { taken: new Set([token]) });
+    assert.notEqual(forced.entities[0].pseudonym, token, 'the second entity must not reuse the first token');
+
+    // And the pipeline's own threading is what makes that happen: without the
+    // taken set, two passes over the same canonical produce the same token.
+    const unthreaded = assignPseudonyms(collide, SALT, null);
+    const rerun = assignPseudonyms(collide, SALT, null, { taken: new Set([unthreaded.entities[0].pseudonym]) });
+    assert.notEqual(rerun.entities[0].pseudonym, unthreaded.entities[0].pseudonym);
+    // The result is still deterministic, so I10 survives.
+    assert.equal(
+      assignPseudonyms(collide, SALT, null, { taken: new Set([unthreaded.entities[0].pseudonym]) }).entities[0]
+        .pseudonym,
+      rerun.entities[0].pseudonym,
+    );
   }],
 ];
 

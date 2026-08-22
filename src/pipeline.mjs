@@ -210,7 +210,10 @@ export async function runExport(flags, env) {
 
   // 12  tier-1 substitution targets the SAME cleaned object, with a pseudonym
   //     guard so a semantic pass returning "PERSON" cannot destroy tier 0.
-  const tier1Assigned = assignPseudonyms(tier1.entities, salt, flags.namespace);
+  //     The tier-0 tokens are threaded in, so a tier-1 entity that hashes onto
+  //     one is walked forward rather than silently sharing it. Proving I9 twice
+  //     over two halves proves nothing about the merged table that ships.
+  const tier1Assigned = assignPseudonyms(tier1.entities, salt, flags.namespace, { taken: tier0.taken });
   const tier1Table = buildTable(tier1Assigned.entities, { forbidInside: pseudonymPattern(flags.namespace) });
   const final = substituteAll(cleaned.records, tier1Table);
 
