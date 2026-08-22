@@ -13,7 +13,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { expandVariants, isCjkOnly } from './variants.mjs';
 
-export const KINDS = Object.freeze(['person', 'org', 'workspace', 'client', 'machine']);
+export const KINDS = Object.freeze(['person', 'org', 'workspace', 'client', 'machine', 'secret', 'phone']);
 
 /**
  * @returns {Readonly<{entities: object[], warnings: string[]}>}
@@ -44,7 +44,22 @@ export function seedEntities(env, corpus, opts = {}) {
   // --- git identity. Failure is non-fatal (PLAN §4.2: git absent -> exit 0).
   const gitName = gitConfig('user.name', warnings);
   const gitEmail = gitConfig('user.email', warnings);
-  if (gitName) add('person', gitName, 'git config user.name');
+  if (gitName) {
+    add('person', gitName, 'git config user.name');
+    // A git identity that is a handle is not a display name, and tier 0 has no
+    // other source for the latter: Node's os.userInfo() carries no full name on
+    // any platform. Rather than imply a control that is not there, say which one
+    // is missing. Measured on this machine `git config user.name` is a handle,
+    // so the written-out name had no tier-0 source at all and survived 293 times
+    // in a real export. Any teammate whose git identity is a handle has the
+    // same gap.
+    if (!/\s/.test(gitName)) {
+      warnings.push(
+        'git config user.name is a handle rather than a written-out name, so your ' +
+          'display name is replaced only if the semantic pass finds it',
+      );
+    }
+  }
   if (gitEmail) {
     add('person', gitEmail, 'git config user.email');
     const local = gitEmail.split('@')[0];
@@ -109,6 +124,37 @@ export function seedEntities(env, corpus, opts = {}) {
     add('person', email, 'email found in session text');
   }
 
+  // --- Credentials. cli-ux §6 prints a `0 secrets   N replaced` line, so the
+  // contract already promised this; nothing in the pipeline looked for one.
+  // Measured on a real export: a 93-character GitHub fine-grained PAT survived
+  // twice in plain text, full length, not a truncated display form.
+  //
+  // Only unambiguous vendor prefixes are matched. §F7 asks for precision, and
+  // these cannot occur by accident: an entropy heuristic would fire on hashes,
+  // uuids and base64 tool output, and a scan that cries wolf is the first thing
+  // switched off.
+  for (const secret of sweepSecrets(opts.texts ?? [])) {
+    add('secret', secret, 'credential shape in session text');
+  }
+
+  // --- Phone numbers in E.164 form. Also §F7's profile: a leading plus, a
+  // country code and 8-15 digits does not fire on version numbers, part numbers
+  // or timestamps. Measured on a real export: 10 distinct numbers, 40+
+  // occurrences, the uploader's and third parties' personal mobiles, covered by
+  // no entity class and named in no NOT-protected line.
+  for (const phone of sweepPhones(opts.texts ?? [])) {
+    add('phone', phone, 'phone number in session text');
+  }
+
+  // --- The numeric owner id beside the username in `ls -l` output. §F3 says in
+  // terms that the stable Windows UID "is itself an identifier"; nothing
+  // produced one, and it survived 786 times in a real export, in the exact
+  // shape fixture F05 exists to guard. It is a machine-stable value that joins
+  // two exports from the same laptop after every name has been replaced.
+  for (const uid of sweepUnixUid(opts.texts ?? [], username)) {
+    add('machine', uid, 'owner id beside your username in ls -l output');
+  }
+
   return Object.freeze({
     entities: buildEntities(collected),
     warnings: Object.freeze(warnings),
@@ -119,7 +165,17 @@ export function seedEntities(env, corpus, opts = {}) {
 // no consecutive dots. Tuned for precision, not recall (§F7).
 const EMAIL_RE = /[A-Za-z0-9](?:[A-Za-z0-9._%+-]*[A-Za-z0-9])?@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}/g;
 
-/** Distinct email addresses appearing in `texts`. */
+// An email written with no domain: `devuser@ / ivy.lin@ / ...`. The local part
+// is the identity and the at-sign is what makes it an email rather than a word,
+// so the negative lookahead keeps it off `pkg@1.2.3` and off an @mention.
+//
+// Measured: deident-candidates.txt — the one artifact meant to be read by an
+// LLM, and therefore the one most likely to leave the machine — contained
+// "All 3 invites (devuser@ / ivy.lin@ / X_PERSON_2736243) are still Pending"
+// under a header stating the username had already been replaced.
+const EMAIL_LOCAL_RE = /[A-Za-z0-9](?:[A-Za-z0-9._%+-]{2,}[A-Za-z0-9])@(?![A-Za-z0-9])/g;
+
+/** Distinct email addresses appearing in `texts`, full and domainless. */
 export function sweepEmails(texts) {
   const found = new Set();
   for (const text of texts) {
@@ -131,8 +187,104 @@ export function sweepEmails(texts) {
       found.add(m[0]);
       if (found.size > 5000) return [...found];
     }
+    EMAIL_LOCAL_RE.lastIndex = 0;
+    while ((m = EMAIL_LOCAL_RE.exec(text)) !== null) {
+      found.add(m[0]);
+      if (found.size > 5000) return [...found];
+    }
   }
   return [...found];
+}
+
+// Vendor prefixes that cannot occur by accident. One greppable list, so adding
+// a provider is one line and never a heuristic.
+const SECRET_RE = new RegExp(
+  [
+    'github_pat_[A-Za-z0-9_]{22,}',
+    'gh[pousr]_[A-Za-z0-9]{16,}',
+    'sk-ant-[A-Za-z0-9_-]{20,}',
+    'xox[baprse]-[A-Za-z0-9-]{10,}',
+    'AKIA[0-9A-Z]{16}',
+    'ntn_[A-Za-z0-9]{20,}',
+    'AIza[0-9A-Za-z_-]{30,}',
+  ].join('|'),
+  'g',
+);
+
+/** Distinct credential-shaped strings in `texts`. */
+export function sweepSecrets(texts) {
+  const found = new Set();
+  for (const text of texts) {
+    if (typeof text !== 'string') continue;
+    SECRET_RE.lastIndex = 0;
+    let m;
+    while ((m = SECRET_RE.exec(text)) !== null) {
+      found.add(m[0]);
+      if (found.size > 1000) return [...found];
+    }
+  }
+  return [...found];
+}
+
+const PHONE_RE = /\+[1-9][0-9]{0,3}[-. ]?(?:[0-9][-. ]?){6,13}[0-9]/g;
+const SEPARATOR_RE = /[-. ]/;
+
+/**
+ * Distinct E.164-shaped phone numbers in `texts`.
+ *
+ * The one shape that would over-match is a unified-diff added line, which also
+ * begins with a plus and can be all digits, so a separatorless run at the start
+ * of a line is not treated as a number. §F7: precision over recall.
+ */
+export function sweepPhones(texts) {
+  const newline = String.fromCharCode(10);
+  const found = new Set();
+  for (const text of texts) {
+    if (typeof text !== 'string' || !text.includes('+')) continue;
+    PHONE_RE.lastIndex = 0;
+    let m;
+    while ((m = PHONE_RE.exec(text)) !== null) {
+      const digits = m[0].replace(/[^0-9]/g, '').length;
+      if (digits < 8 || digits > 15) continue;
+      const atLineStart = m.index === 0 || text[m.index - 1] === newline;
+      if (atLineStart && !SEPARATOR_RE.test(m[0])) continue;
+      found.add(m[0]);
+      if (found.size > 1000) return [...found];
+    }
+  }
+  return [...found];
+}
+
+/**
+ * The numeric owner id sitting beside `username` in `ls -l` output.
+ *
+ * Five digits minimum: a POSIX uid of `1000` is four characters that occur
+ * everywhere in ordinary text, and substituting every `1000` in the corpus
+ * would be §F7 over-substitution. The Windows value this exists for is six.
+ */
+export function sweepUnixUid(texts, username) {
+  if (typeof username !== 'string' || username.length === 0) return [];
+  const re = new RegExp(
+    '(?:^|' + String.fromCharCode(10) + ')[-dlbcps][rwxSsTt-]{9}[.+@]?[ \\t]+[0-9]+[ \\t]+' +
+      escapeRe(username) +
+      '[ \\t]+([0-9]{5,})(?![0-9])',
+    'g',
+  );
+  const found = new Set();
+  for (const text of texts) {
+    if (typeof text !== 'string' || !text.includes(username)) continue;
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      found.add(m[1]);
+      if (found.size > 20) return [...found];
+    }
+  }
+  return [...found];
+}
+
+function escapeRe(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**

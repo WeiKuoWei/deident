@@ -17,7 +17,15 @@ import { createHash, randomBytes } from 'node:crypto';
 import { RefusalError } from '../cli/errors.mjs';
 
 /** The four families the pseudonym namespace uses. */
-export const NAMESPACE_PREFIXES = Object.freeze(['PERSON', 'WORKSPACE', 'ORG', 'CLIENT', 'MACHINE']);
+export const NAMESPACE_PREFIXES = Object.freeze([
+  'PERSON',
+  'WORKSPACE',
+  'ORG',
+  'CLIENT',
+  'MACHINE',
+  'SECRET',
+  'PHONE',
+]);
 
 const KIND_TO_PREFIX = Object.freeze({
   person: 'PERSON',
@@ -25,6 +33,8 @@ const KIND_TO_PREFIX = Object.freeze({
   org: 'ORG',
   client: 'CLIENT',
   machine: 'MACHINE',
+  secret: 'SECRET',
+  phone: 'PHONE',
 });
 
 /** Pseudonym tokens, optionally namespace-shifted: `X_PERSON_1`. */

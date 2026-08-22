@@ -30,7 +30,7 @@ import {
 import { groupSessions } from './policy/grouping.mjs';
 import { proposeTier, makeRemoteProbe } from './policy/signals.mjs';
 import { allowLine, touchedDenied } from './policy/linefilter.mjs';
-import { readReview, writeReview, renderReviewHtml, REVIEW_FILENAME } from './policy/reviewfile.mjs';
+import { readReview, readSessionDrops, writeReview, renderReviewHtml, REVIEW_FILENAME } from './policy/reviewfile.mjs';
 import { seedEntities } from './entities/seed.mjs';
 import {
   loadOrCreateSalt,
@@ -67,8 +67,9 @@ export async function runScan(flags, env) {
   const loaded = surveyCorpus(corpus, flags);
   const { decisions, workspaceOf } = classify(loaded, loadSavedDecisions(saltDir), flags);
 
-  const model = buildReviewModel(decisions, loaded, workspaceOf, [], nowStamp());
-  const written = writeReview(model, path.join(outDir, REVIEW_FILENAME));
+  const reviewPath = path.join(outDir, REVIEW_FILENAME);
+  const model = buildReviewModel(decisions, loaded, workspaceOf, [], nowStamp(), readSessionDrops(reviewPath));
+  const written = writeReview(model, reviewPath);
 
   report.renderScan({
     fileCount: corpus.files.length,
@@ -93,7 +94,9 @@ export async function runReview(flags, env) {
   const loaded = surveyCorpus(corpus, flags);
   const saved = { ...loadSavedDecisions(saltDir), ...readReview(path.join(outDir, REVIEW_FILENAME)) };
   const { decisions, workspaceOf } = classify(loaded, saved, flags);
-  const model = buildReviewModel(decisions, loaded, workspaceOf, [], nowStamp());
+  const model = buildReviewModel(
+    decisions, loaded, workspaceOf, [], nowStamp(), readSessionDrops(path.join(outDir, REVIEW_FILENAME)),
+  );
 
   if (flags.html) {
     const target = path.join(outDir, 'review.html');
@@ -170,7 +173,10 @@ export async function runExport(flags, env) {
   //  6 + 7  per-line cwd gate, then retention
   const salt = loadOrCreateSalt(saltDir);
   const rewriteUuid = makeUuidRewriter(salt);
-  const retained = retainCorpus(loaded, workspaceOf, exportable, cwdTierIndex(decisions), rewriteUuid, flags);
+  const sessionDrops = readSessionDrops(path.join(outDir, REVIEW_FILENAME));
+  const retained = retainCorpus(
+    loaded, workspaceOf, exportable, cwdTierIndex(decisions), rewriteUuid, flags, sessionDrops,
+  );
 
   //  8  seed entities from PRE-substitution values (PLAN §2). Run seeding
   //     after substitution and these values are already pseudonyms: seeding
@@ -247,11 +253,12 @@ export async function runExport(flags, env) {
   // a refusal.
   if (!semantic.ok) throw semanticRefusal(candidates.path);
 
-  // 16  manifest
-  const manifest = buildManifest(retained, decisions, serialized, residue.scan.embedded);
-  report.renderManifest(manifest);
-
+  // 16  manifest. Occurrence counts come first, because the manifest reports
+  //     how many secrets and phone numbers were replaced and those are counted
+  //     per entity, not per record.
   const entities = withOccurrences([...tier0.entities, ...tier1Assigned.entities], allStrings);
+  const manifest = buildManifest(retained, decisions, serialized, residue.scan.embedded, entities);
+  report.renderManifest(manifest);
 
   // 17  the only step that writes an output artifact
   if (flags.preview) {
@@ -345,13 +352,14 @@ function surveyCorpus(corpus, flags, namespace = null) {
 }
 
 /** Steps 6 and 7, re-reading one file at a time (see surveyCorpus). */
-function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid, flags) {
+function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid, flags, sessionDrops = new Set()) {
   const out = [];
   const cwds = [];
   const stats = {
     kept: 0,
     dropped: 0,
     droppedByCwd: 0,
+    droppedBySession: 0,
     userMessages: 0,
     assistantMessages: 0,
     images: 0,
@@ -367,6 +375,12 @@ function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid, fl
   for (const { file, cwds: lineCwds } of loaded.sessions) {
     const workspace = workspaceOf.get(file.path);
     if (workspace === undefined || !exportable.has(workspace.key)) continue;
+    // privacy-tiers §4 level 3. Checked before the file is re-read, because a
+    // session held back by hand should cost nothing to hold back.
+    if (sessionDrops.has(sessionIdOf(file.path))) {
+      stats.droppedBySession += 1;
+      continue;
+    }
     // Re-read rather than hold: the survey pass released this file's records
     // precisely so the whole corpus is never resident at once.
     const session = readSession(file.path, { skipUnreadable: flags.skipUnreadable, keepRaw: false });
@@ -507,19 +521,34 @@ function sanitizeEntryName(name) {
 }
 
 /** Step 16. */
-function buildManifest(retained, decisions, serialized, embedded) {
+function buildManifest(retained, decisions, serialized, embedded, entities) {
   const s = retained.stats;
+  const num = (v) => v.toLocaleString('en-US');
+  const occurrencesOf = (kind) =>
+    entities.filter((e) => e.kind === kind).reduce((a, e) => a + (e.occurrences ?? 0), 0);
+  const distinctOf = (kind) => entities.filter((e) => e.kind === kind && (e.occurrences ?? 0) > 0).length;
   return Object.freeze({
     sessions: s.sessions,
     workspaces: s.workspaces.size,
     userMessages: s.userMessages,
     zeros: Object.freeze([
-      { label: 'lines of code', suppressed: `${s.codeLinesCounted.toLocaleString('en-US')} counted, none included` },
-      { label: 'images', suppressed: `${s.images.toLocaleString('en-US')} replaced with placeholders` },
-      { label: 'code parameters', suppressed: `${s.codeParamsDropped.toLocaleString('en-US')} replaced with counts` },
-      { label: 'dropped by cwd', suppressed: `${s.droppedByCwd.toLocaleString('en-US')} lines outside an included directory` },
-      { label: 'documents', suppressed: `${s.documents.toLocaleString('en-US')} pasted documents replaced` },
+      { label: 'lines of code', suppressed: `${num(s.codeLinesCounted)} counted, none included` },
+      { label: 'images', suppressed: `${num(s.images)} replaced with placeholders` },
+      { label: 'code parameters', suppressed: `${num(s.codeParamsDropped)} replaced with counts` },
+      { label: 'held back by hand', suppressed: `${num(s.droppedBySession ?? 0)} sessions dropped in review.md` },
+      { label: 'documents', suppressed: `${num(s.documents)} pasted documents replaced` },
+      // cli-ux §6 prints this row. It printed nothing at all while a live
+      // 93-character token was in the archive.
+      { label: 'secrets', suppressed: `${num(occurrencesOf('secret'))} replaced (${num(distinctOf('secret'))} distinct)` },
+      { label: 'phone numbers', suppressed: `${num(occurrencesOf('phone'))} replaced (${num(distinctOf('phone'))} distinct)` },
     ]),
+    // Counters, not zeros: a row reading `0 dropped by cwd  3 lines outside an
+    // included directory` asserts a number and then contradicts it.
+    droppedByCwd: s.droppedByCwd,
+    emptiedSessions: s.emptiedSessions ?? 0,
+    unknownTypes: Object.freeze(
+      [...(s.unknownTypes ?? new Map())].map(([type, count]) => Object.freeze({ type, count })),
+    ),
     embedded,
     countOnly: Object.freeze({
       sessions: decisions.filter((d) => d.tier === 'count-only').reduce((a, d) => a + d.sessionCount, 0),
@@ -557,8 +586,14 @@ function classify(loaded, saved, flags) {
   return { decisions, workspaceOf };
 }
 
-function buildReviewModel(decisions, loaded, workspaceOf, entities, generated) {
+/** A session's id is its file's basename: stable, and local to this machine. */
+function sessionIdOf(filePath) {
+  return path.basename(filePath, '.jsonl');
+}
+
+function buildReviewModel(decisions, loaded, workspaceOf, entities, generated, sessionDrops = new Set()) {
   const flagged = [];
+  const sessions = [];
   for (const { file, cwds } of loaded.sessions) {
     const token = touchedDenied(cwds);
     if (token !== null) {
@@ -568,10 +603,21 @@ function buildReviewModel(decisions, loaded, workspaceOf, entities, generated) {
         reason: `a directory containing "${token}"`,
       });
     }
+    const id = sessionIdOf(file.path);
+    sessions.push({
+      id,
+      date: new Date(file.mtimeMs).toISOString().slice(0, 10),
+      workspace: workspaceOf.get(file.path)?.name ?? '<no-cwd>',
+      decision: sessionDrops.has(id) ? 'drop' : 'keep',
+    });
   }
+  sessions.sort((a, b) =>
+    a.workspace !== b.workspace ? (a.workspace < b.workspace ? -1 : 1) : a.date < b.date ? -1 : a.date > b.date ? 1 : 0,
+  );
   return Object.freeze({
     generated,
     workspaces: decisions,
+    sessions: Object.freeze(sessions),
     flaggedSessions: Object.freeze(flagged),
     entities: Object.freeze(entities),
   });

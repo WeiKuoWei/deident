@@ -65,6 +65,21 @@ export function proposeTier(group, probeRemote) {
   }
   const remote = probeRemote(group.cwd);
   if (remote !== null) {
+    // A git remote is evidence a directory is a REPOSITORY. It is not evidence
+    // its content is shareable, and this row was the only thing standing
+    // between a 187-chat personal message archive and the zip: measured on a
+    // real export, `whatsapp-archive` was proposed `redact` on the strength of
+    // its remote alone and shipped a third party's real name 10 times, plus
+    // per-chat filenames naming the people in them. The deny-list never looked,
+    // because privacy-tiers §3 matches it against directory names and the
+    // directory is not called "redacted-name".
+    const personal = personalDataShape(group.name) ?? personalDataShape(remote.repo);
+    if (personal !== null) {
+      return frozen(
+        'unclassified',
+        `git remote ${remote.raw}, but "${personal}" reads like personal data — decide this one yourself`,
+      );
+    }
     return frozen('redact', `git remote ${remote.raw} (set "open" yourself if it is public)`);
   }
   if (group.name === HOME_NAME) {
@@ -73,6 +88,24 @@ export function proposeTier(group, probeRemote) {
     return frozen('exclude', 'your home directory: no repo, sessions here are individually undecidable');
   }
   return frozen('exclude', 'no git remote');
+}
+
+// Whole segments only, split on the separators a repository name uses. A
+// substring test would call `pipeline` and `timeline` personal data, which is
+// §F7's over-reporting arriving as noise in the review.
+const PERSONAL_TOKENS = new Set([
+  'archive', 'archives', 'chat', 'chats', 'line', 'whatsapp', 'wechat', 'telegram',
+  'messages', 'sms', 'dm', 'dms', 'journal', 'diary', 'health', 'medical',
+  'therapy', 'counselling', 'counseling', 'personal',
+]);
+
+/** The segment that reads like personal data, or null. */
+export function personalDataShape(name) {
+  if (typeof name !== 'string') return null;
+  for (const segment of name.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (PERSONAL_TOKENS.has(segment)) return segment;
+  }
+  return null;
 }
 
 function frozen(tier, reason) {

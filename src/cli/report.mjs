@@ -183,11 +183,29 @@ export function renderManifest(m) {
     say('  Counted but not shared   (count-only tier)');
     say(`    ${n(m.countOnly.sessions)} sessions from ${n(m.countOnly.workspaces)} workspaces: session count, work mode and outcome only`);
   }
+  if (m.droppedByCwd > 0) {
+    // NOT a "zeros" row. `0 dropped by cwd  3 lines outside…` asserts a number
+    // and then contradicts it, in the block cli-ux §6 calls the trust
+    // mechanism.
+    say(`    ${n(m.droppedByCwd)} lines dropped: outside an included directory`);
+  }
+  if (m.emptiedSessions > 0) {
+    // A session that retained nothing used to vanish with no counter at all, so
+    // the shipped session count silently disagreed with the count in review.md.
+    say(`    ${n(m.emptiedSessions)} sessions retained nothing and are not in the archive`);
+  }
   say('');
   say('  NOT protected against    (README § Limits)');
-  say('    device fingerprint: MCP server names, model mix, CLI version sequence');
+  say('    device fingerprint: localhost ports, model mix, CLI version sequence');
   say('    verbatim documents you pasted into your own messages');
   say('    third-party names the semantic pass did not recognise');
+  if (m.unknownTypes && m.unknownTypes.length > 0) {
+    // --skip-unknown-types was given, so these were dropped rather than
+    // refused. Say which and how many; a dropped record class the user never
+    // hears about is the §4.4 failure arriving through the escape hatch.
+    say(`    ${m.unknownTypes.map((u) => `${u.type} (${n(u.count)})`).join(', ')}`);
+    say('      dropped unread under --skip-unknown-types');
+  }
   if (m.embedded > 0) {
     // Honest, not reassuring: these are occurrences of a known entity that
     // abut a word character, where §4.5's boundary rule does not fire.

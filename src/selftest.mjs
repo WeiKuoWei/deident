@@ -14,7 +14,16 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { expandVariants, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
-import { rejectReason, sweepEmails, projectShaped, basenameOf, buildEntities } from './entities/seed.mjs';
+import {
+  rejectReason,
+  sweepEmails,
+  sweepSecrets,
+  sweepPhones,
+  sweepUnixUid,
+  projectShaped,
+  basenameOf,
+  buildEntities,
+} from './entities/seed.mjs';
 import { buildTable, substituteString, reverseString, allOccurrences } from './substitute/engine.mjs';
 import { substituteRecord } from './substitute/walker.mjs';
 import { checkSubstitution } from './verify/checks.mjs';
@@ -32,7 +41,7 @@ import {
   loadSavedDecisions,
 } from './policy/workspaces.mjs';
 import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
-import { proposeTier } from './policy/signals.mjs';
+import { proposeTier, personalDataShape } from './policy/signals.mjs';
 import { readSession } from './corpus/reader.mjs';
 import { resolveRoot } from './corpus/root.mjs';
 import { setCommand, renderRefusal, captureOutput } from './cli/report.mjs';
@@ -1362,6 +1371,75 @@ const FIXTURES = [
     // An exact duplicate is still removed, which is all C2/C3 asked for.
     assert.equal(retainRecord({ ...two, timestamp: '2026-08-22T10:02:00.000Z' }, ctx, { file: 'f', line: 3 }).keep, false);
     assert.equal(ctx.stats.dedupedPrompts, 1);
+  }],
+
+  // F57 — cli-ux §6 prints a `0 secrets  N replaced` line, so the contract
+  // already promised credential handling. Nothing in the pipeline looked for
+  // one: a real export carried a 93-character GitHub fine-grained PAT twice, in
+  // plain text, at full length. Only unambiguous vendor prefixes are matched,
+  // because §F7 asks for precision and an entropy heuristic fires on every hash
+  // and uuid in the corpus.
+  ['F57', 'credential shapes, phone numbers and the ls -l owner id are entities', () => {
+    const pat = 'github_pat_11ABCDEFG0' + 'a'.repeat(50);
+    const secrets = sweepSecrets([`Token: "${pat}" and sk-ant-${'x'.repeat(24)} here`]);
+    assert.ok(secrets.includes(pat), 'the full-length PAT must be found');
+    assert.equal(secrets.length, 2);
+    // Precision: none of these are credentials.
+    assert.deepEqual(sweepSecrets(['M1019757 thermal paste', 'sha256:abcdef0123456789', 'ghost_writer']), []);
+
+    // E.164 phones. §F7's profile again: no version or part number matches.
+    const phones = sweepPhones(['ring +852-5555 0100 or +1 650 666 1234 today']);
+    assert.deepEqual(phones, ['+852-5555 0100', '+1 650 666 1234']);
+    assert.deepEqual(sweepPhones(['bump to v+1.2.3', 'part +12 34']), []);
+    // A unified-diff added line is the one shape that would over-match.
+    assert.deepEqual(sweepPhones([NL + '+12345678901234'], []), []);
+
+    // §F3 says the stable Windows UID "is itself an identifier". Nothing
+    // produced one, and it survived 786 times in a real export in exactly the
+    // shape F05 exists to guard.
+    assert.deepEqual(sweepUnixUid(['-rw-r--r-- 1 devuser 197609    929 Aug 21 23:49 .gitignore'], 'devuser'), ['197609']);
+    // A four-digit POSIX uid is four characters that occur everywhere in
+    // ordinary text; substituting every `1000` would be §F7 over-substitution.
+    assert.deepEqual(sweepUnixUid(['-rw-r--r-- 1 devuser 1000 929 a.txt'], 'devuser'), []);
+
+    // And each becomes a real, substitutable entity.
+    const built = buildEntities([
+      { kind: 'secret', canonical: pat, source: 'fixture', confidence: 'high' },
+      { kind: 'phone', canonical: '+852-5555 0100', source: 'fixture', confidence: 'high' },
+      { kind: 'machine', canonical: '197609', source: 'fixture', confidence: 'high' },
+    ]);
+    const assigned = assignPseudonyms(built, SALT, null);
+    const table = buildTable(assigned.entities);
+    const out = substituteString(`use ${pat} then call +852-5555 0100, uid 197609`, table).out;
+    assert.ok(!out.includes(pat), 'the credential must not survive');
+    assert.ok(!out.includes('5136'), 'the phone number must not survive');
+    assert.ok(!out.includes('197609'), 'the owner id must not survive');
+    assert.match(out, /SECRET_[0-9]+/);
+    assert.match(out, /PHONE_[0-9]+/);
+  }],
+
+  // F58 — a git remote is evidence a directory is a repository. It is not
+  // evidence its content is shareable. `whatsapp-archive` was proposed `redact`
+  // on the strength of its remote alone and shipped a third party's real name
+  // 10 times plus per-chat filenames naming the people in them; the deny-list
+  // never looked, because privacy-tiers §3 matches it against directory names
+  // and the directory is not called "redacted-name".
+  ['F58', 'a git remote alone does not make a personal archive shareable', () => {
+    const remote = (raw) => ({ raw, owner: raw.split('/')[0], repo: raw.split('/')[1], host: null });
+    const group = (name) => ({ name, cwd: `C:${BS}x${BS}${name}`, denyToken: null, unresolved: false });
+
+    const personal = proposeTier(group('whatsapp-archive'), () => remote('me/whatsapp-archive'));
+    assert.equal(personal.tier, 'unclassified', 'a personal archive must not be swept in by its remote');
+    assert.match(personal.reason, /personal data/);
+
+    // Ordinary work still proposes redact, or the row becomes 29 questions.
+    assert.equal(proposeTier(group('gitroll'), () => remote('gitroll-dev/gitroll')).tier, 'redact');
+    // Whole segments only: a substring test would call these personal data.
+    assert.equal(personalDataShape('cohort-learning-dashboard'), null);
+    assert.equal(personalDataShape('pipeline-runner'), null);
+    assert.equal(personalDataShape('timeline'), null);
+    assert.equal(personalDataShape('private-archive'), 'line');
+    assert.equal(personalDataShape('health-tracker'), 'health');
   }],
 ];
 
