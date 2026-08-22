@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { expandVariants, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
-import { rejectReason, sweepEmails, projectShaped, basenameOf } from './entities/seed.mjs';
+import { rejectReason, sweepEmails, projectShaped, basenameOf, buildEntities } from './entities/seed.mjs';
 import { buildTable, substituteString, reverseString, allOccurrences } from './substitute/engine.mjs';
 import { substituteRecord } from './substitute/walker.mjs';
 import { checkSubstitution } from './verify/checks.mjs';
@@ -28,6 +28,7 @@ import { buildZip } from './output/zip.mjs';
 import { parseReview, renderReview } from './policy/reviewfile.mjs';
 import { readEntities } from './entities/tier1.mjs';
 import { parseCliArgs } from './cli/args.mjs';
+import { serializeSessions } from './pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
 
 const BS = String.fromCharCode(92); // a single backslash, written without escapes
@@ -575,6 +576,12 @@ const FIXTURES = [
     assert.equal(projectShaped('private-archive'), true);
     assert.equal(projectShaped('moss-local'), true);
     assert.equal(projectShaped('wf_20783'), true);
+    // A name with no letter in it is a version or a date, never a project.
+    // Seeded from a real cwd on 2026-08-22; substituting it rewrites every
+    // version string in the prose, and §F4 says leave the version sequence.
+    assert.equal(projectShaped('6.2.0'), false);
+    assert.equal(projectShaped('2026-08'), false);
+    assert.equal(projectShaped('會議記錄'), true, 'a CJK name has no ASCII letter and must survive');
     assert.equal(basenameOf(`C:${BS}Users${BS}devuser${BS}projects${BS}deident`), 'deident');
     assert.equal(basenameOf('C:/'), null);
   }],
@@ -730,6 +737,95 @@ const FIXTURES = [
     assert.equal(jsonEscaped(`a${BS}b`), `a${BS}${BS}b`);
     const bytes = JSON.stringify({ text: 'a 郭大明 b' });
     assert.equal(residualScan(bytes, t).entityCount, 1, 'the CJK entity must be findable in the bytes');
+  }],
+
+  // Both of the following were found by the live acceptance run against the
+  // real corpus on 2026-08-22, after F01-F36 were green. Each is the exact
+  // shape that refused the export.
+  ['F37', 'a bare drive root is not an entity, and would cry wolf if it were', () => {
+    // Negative control first: with the spelling in the table, ordinary Python
+    // trips the residual scan. `if r != c:` followed by a newline serializes
+    // as `c:` then the two characters backslash-n, so the three-character
+    // spelling `c:\` matches text that contains no path at all.
+    const NL = String.fromCharCode(10);
+    const wolf = buildTable([
+      {
+        id: 'W1',
+        kind: 'workspace',
+        canonical: `C:${BS}`,
+        spellings: [`c:${BS}`],
+        pseudonym: 'WORKSPACE_1',
+        confidence: 'low',
+        tier: 0,
+        rejected: null,
+        source: 'fixture',
+      },
+    ]);
+    const bytes = JSON.stringify({ text: `if r != c:${NL}157 f = A[r]` });
+    assert.ok(residualScan(bytes, wolf).entityCount > 0, 'negative control: the spelling does match');
+
+    // The guard: every root form is rejected, so it never reaches a table.
+    for (const root of [`C:${BS}`, 'C:/', 'c:', '/', BS, '/c/']) {
+      assert.notEqual(rejectReason(root), null, `${root} must be rejected`);
+    }
+    assert.equal(rejectReason(`C:${BS}Users${BS}devuser`), null, 'a real home path is still an entity');
+    const seeded = buildEntities([
+      { kind: 'workspace', canonical: `C:${BS}`, source: 'session cwd', confidence: 'high' },
+    ]);
+    assert.deepEqual(seeded[0].spellings, [], 'a rejected entity carries no spellings');
+  }],
+
+  ['F38', 'a uuid inside a workspace slug is rewritten before it becomes an entry name', () => {
+    // The slug of a session launched from a scratchpad path embeds a uuid that
+    // no entity matches. Substitution alone left it in the zip's directory
+    // listing, where I5 correctly reported it as an unknown uuid.
+    const real = 'deadbeef-1111-4222-8333-444455556666';
+    const minted = 'aaaaaaaa-0000-4000-8000-000000000000';
+    const rewrite = (u) => (u === real ? minted : null);
+    const out = serializeSessions(
+      [{ file: { dirName: `C--Temp-claude-${real}-scratchpad`, sessionId: real }, records: [{ type: 'x' }] }],
+      buildTable([]),
+      rewrite,
+    );
+    assert.equal(out.entries.length, 1);
+    assert.ok(!out.entries[0].name.includes('deadbeef'), 'the real uuid must not survive into the entry name');
+    assert.ok(out.entries[0].name.includes(minted), 'the minted uuid replaces it');
+    assert.ok(!out.allBytes.includes('deadbeef'), 'and the residual scan sees the rewritten name');
+  }],
+
+  ['F39', 'an entity preceded by a JSON escape is a real occurrence, not an embedded one', () => {
+    // These logs nest JSON inside JSON: a pasted email body arrives as a
+    // string whose own newlines are the two characters backslash + n, and CJK
+    // inside it arrives as backslash-u escapes. Before this rule the `n` of
+    // `\n` counted as a word character, so `Best\nJake` was classified as the
+    // spelling sitting inside a longer word and left in the output — and the
+    // residual scan had its own copy of the same rule, so it agreed and
+    // reported `known-entity residue: 0` over a zip that named a third party.
+    // Found by the live acceptance run, 2026-08-22, in 210 exported sessions.
+    const t = buildTable([entity('P1', 'person', 'Jake', 'PERSON_1')]);
+    assert.equal(substituteString(`Best${BS}nJake${BS}n${BS}nOn Jul`, t).out, `Best${BS}nPERSON_1${BS}n${BS}nOn Jul`);
+    assert.equal(substituteString(`${BS}t${BS}tJake's push`, t).out, `${BS}t${BS}tPERSON_1's push`);
+    assert.equal(substituteString(`${BS}u4e0bJake${BS}u7684`, t).out, `${BS}u4e0bPERSON_1${BS}u7684`);
+
+    // Negative controls. F04's correct non-match must survive unchanged, and a
+    // doubled backslash means the `n` really is a letter, not an escape.
+    const r = buildTable([entity('P2', 'person', 'ray', 'PERSON_2')]);
+    assert.equal(substituteString('array index', r).out, 'array index');
+    assert.equal(substituteString('JakeJoin', t).out, 'JakeJoin', 'a trailing word char is still embedded');
+    assert.equal(substituteString(`x${BS}${BS}nJake`, t).out, `x${BS}${BS}nJake`, 'an escaped backslash leaves a literal n');
+
+    // §4.6's percent-encoded form is the same shape: `%3D` ends in `D`, so the
+    // email that follows it read as embedded. Measured on the real corpus in
+    // 22 occurrences of one query string.
+    const e = buildTable([
+      entity('P3', 'person', 'devuser@gitroll.io', 'PERSON_3'),
+      entity('O1', 'org', 'gitroll-dev', 'ORG_1'),
+    ]);
+    assert.equal(
+      substituteString('authuser%3Ddevuser%40gitroll.io%23all', e).out,
+      'authuser%3DPERSON_3%23all',
+    );
+    assert.equal(substituteString('github.com%2Fgitroll-dev%2Fx', e).out, 'github.com%2FORG_1%2Fx');
   }],
 ];
 
