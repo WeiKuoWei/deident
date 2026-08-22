@@ -1,3 +1,4 @@
+<!doctype html>
 <title>Deident Export Review</title>
 
 <style>
@@ -209,6 +210,7 @@
     border-bottom: 1px solid var(--rule);
   }
   .row:last-child { border-bottom: 0; }
+  .row .sub[hidden] { display: none; }
   .row .label { font-size: 14.5px; }
   .row .sub {
     display: block;
@@ -293,6 +295,7 @@
   }
   .pill.ok   { background: var(--ok-bg);   color: var(--ok); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.mute { background: var(--surface-2); color: var(--ink-2); }
 
   /* ---------- limits ---------- */
   /* Set as a ledger footnote-of-record, not a card: a heavy rule above and a
@@ -363,11 +366,14 @@
   }
   button.link:hover { background: none; filter: brightness(1.15); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* No blanket opacity. The disabled primary carries the only text that says how
+     to unblock the flow ("先決定上面那 2 個"), so it has to stay readable; the
+     muted surface and the not-allowed cursor are what mark it as inert. */
   button:disabled {
-    opacity: 0.45; cursor: not-allowed;
-    background: var(--surface-2); border-color: var(--rule); color: var(--ink-3);
+    cursor: not-allowed;
+    background: var(--surface-2); border-color: var(--rule-2); color: var(--ink-2);
   }
-  button.primary:disabled { background: var(--surface-2); border-color: var(--rule); color: var(--ink-3); }
+  button.primary:disabled { background: var(--surface-2); border-color: var(--rule-2); color: var(--ink-2); }
 
   /* ---------- disclosure ---------- */
   .disclosure { display: none; }
@@ -385,6 +391,15 @@
   .sesslist .q { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sesslist .why { color: var(--warn); font-size: 11.5px; }
   .drop { color: var(--ink-3); text-decoration: line-through; }
+
+  /* Narrow: the question gets its own full-width line. Same reason as the
+     candidate list below: cli-ux.md §3 calls this list the last escape hatch,
+     and an escape hatch truncated to five characters is not one. */
+  @media (max-width: 640px) {
+    .sesslist div { grid-template-columns: auto auto 1fr; row-gap: 3px; }
+    .sesslist .q   { grid-column: 1 / -1; white-space: normal; overflow: visible; }
+    .sesslist .why { grid-column: 1 / -1; }
+  }
 
   /* ---------- candidate chips ---------- */
   .cands { display: flex; flex-direction: column; }
@@ -409,6 +424,14 @@
     text-align: right; font-variant-numeric: tabular-nums;
   }
   .cand mark { background: var(--warn-bg); color: var(--warn); padding: 0 2px; border-radius: 1px; }
+  /* cli-ux.md §3: low-confidence entities are listed individually and marked.
+     They never look like the high-confidence ones. */
+  .cand .conf {
+    display: block; font-family: var(--mono); font-size: 11px; font-weight: 400;
+    letter-spacing: 0.03em; margin-top: 2px;
+  }
+  .cand .conf.hi { color: var(--ok); }
+  .cand .conf.lo { color: var(--warn); }
 
   /* Narrow: the evidence snippet gets its own full-width line. Approving a name
      with the snippet squeezed to nothing is exactly the review theatre §3 bans. */
@@ -454,6 +477,7 @@
   .ws button {
     font-family: var(--mono); font-size: 11.5px; padding: 3px 9px;
     border-radius: 2px; letter-spacing: 0.02em;
+    white-space: nowrap;
   }
   .quiet { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
 
@@ -495,6 +519,11 @@
   .ws .chosen {
     display: block; font-family: var(--mono); font-size: 11.5px;
     margin-top: 3px; color: var(--ink-2);
+  }
+  /* the one irreversible thing in the flow gets body weight, next to the click
+     that caused it, not小字 in a panel 700px further down */
+  .ws .chosen.grave {
+    font-family: var(--sans); font-size: 13.5px; color: var(--ink);
   }
 
   /* summary of what THIS run sends, after de-duplication */
@@ -546,6 +575,15 @@
   .done .file span { color: var(--ink-3); font-weight: 400; font-size: 13px; }
   .done .zipsub {
     font-size: 13px; color: var(--ink-2); margin: 8px 2px 0;
+  }
+  /* the file on disk does not follow your later clicks; say so where the file is */
+  .stale {
+    border-top: 2px solid var(--warn);
+    border-bottom: 1px solid var(--rule-2);
+    padding: 13px 2px 14px;
+    margin: 0 0 16px;
+    font-size: 14px;
+    color: var(--ink);
   }
 
   .screen { display: none; }
@@ -607,10 +645,11 @@
     </div>
 
     <p class="payload">
-      會送出:<strong><span id="payloadN">153</span> 個 session</strong> 的對話結構,
-      加上你自己打的 2,104 則訊息原文,以及 Claude 的回覆
-      (回覆裡的程式碼、檔案路徑、圖片、金鑰都已經抽掉,只留下對話本身)。
-      <span class="who">收件人:GitRoll 內部評測小組。用途:評估 AI coding agent 的使用方式,只有評測小組看得到。</span>
+      <strong>這次會離開這台電腦的是 <span id="payloadRun">42</span> 個 session。</strong>
+      <span id="payloadMath"></span><br>
+      每個 session 送的是:你自己打的每一句話原文、Claude 回了什麼、來回幾輪、每輪隔多久。
+      程式碼、檔案路徑、圖片、金鑰不送。
+      <span class="who">收件人:GitRoll 內部評測小組。用途:評估 AI coding agent 的使用方式。檔案離開這台電腦之後,這個工具就管不到它了:誰能看、留多久、會不會再轉給別人,由收件人那邊決定。</span>
     </p>
 
     <!-- ── the blocking group: only a person can settle these ── -->
@@ -620,7 +659,7 @@
 
       <div class="ws" id="dw1"
            data-id="sketch-ui" data-tier="un" data-kind="decide"
-           data-ws="1" data-n="6" data-new="6" data-upd="0" data-sent="0" data-unattr="6">
+           data-ws="1" data-n="6" data-new="6" data-upd="0" data-sent="0" data-unattr="6" data-msgs="74" data-code="980" data-img="3" data-path="812" data-key="0" data-lines="1080" data-reason="判斷不出歸屬">
         <div><span class="nm">sketch-ui</span>
           <span class="why">上次匯出之後才出現的 workspace。沒有 git remote。</span></div>
         <div class="ct">6</div>
@@ -632,7 +671,7 @@
 
       <div class="ws" id="dw2"
            data-id="infra-scratch" data-tier="un" data-kind="decide"
-           data-ws="1" data-n="2" data-new="2" data-upd="0" data-sent="0" data-unattr="0">
+           data-ws="1" data-n="2" data-new="2" data-upd="0" data-sent="0" data-unattr="0" data-msgs="21" data-code="260" data-img="0" data-path="190" data-key="0" data-lines="360" data-reason="remote 在你不屬於的 org">
         <div><span class="nm">infra-scratch</span>
           <span class="why">remote 指向你不屬於的 org。可能是客戶的東西。</span></div>
         <div class="ct">2</div>
@@ -649,7 +688,7 @@
       <div class="body" id="inBody">
         <div class="ws" id="i1"
              data-id="payments-api" data-tier="in"
-             data-ws="1" data-n="59" data-new="20" data-upd="0" data-sent="39" data-unattr="0">
+             data-ws="1" data-n="59" data-new="20" data-upd="0" data-sent="39" data-unattr="0" data-msgs="812" data-code="7100" data-img="28" data-path="10220" data-key="4" data-lines="10622" data-reason="">
           <div><span class="nm">payments-api</span><span class="st new">20 新</span><span class="st sent">39 已送過</span>
             <span class="why">gitroll-dev/payments-api · private · 你所屬的 org。原本 61 筆,其中 2 筆單獨挑掉了(見下面「不會交出去」)。</span></div>
           <div class="ct">59</div>
@@ -657,7 +696,7 @@
         </div>
         <div class="ws" id="i2"
              data-id="web-app" data-tier="in"
-             data-ws="1" data-n="22" data-new="12" data-upd="0" data-sent="10" data-unattr="0">
+             data-ws="1" data-n="22" data-new="12" data-upd="0" data-sent="10" data-unattr="0" data-msgs="302" data-code="2640" data-img="10" data-path="3810" data-key="1" data-lines="3960" data-reason="">
           <div><span class="nm">web-app</span><span class="st new">12 新</span><span class="st sent">10 已送過</span>
             <span class="why">gitroll-dev/web-app · private · 你所屬的 org</span></div>
           <div class="ct">22</div>
@@ -665,15 +704,15 @@
         </div>
         <div class="ws" id="i3"
              data-id="northwind-integration" data-tier="in"
-             data-ws="1" data-n="18" data-new="0" data-upd="3" data-sent="15" data-unattr="0">
-          <div><span class="nm">northwind-integration</span><span class="st upd">3 有更新</span><span class="st sent">15 已送過</span>
+             data-ws="1" data-n="18" data-new="0" data-upd="3" data-sent="15" data-unattr="0" data-msgs="248" data-code="2160" data-img="9" data-path="3118" data-key="1" data-lines="3241" data-reason="">
+          <div><span class="nm">northwind-integration</span><span class="st sent">15 已送過·沒變動</span><span class="st upd">3 已送過·有新對話</span>
             <span class="why">remote 在客戶 org 底下 · 已套用較嚴格的替換</span></div>
           <div class="ct">18</div>
           <div class="act"><button onclick="flip(this)">改成不交</button></div>
         </div>
         <div class="ws" id="i4"
              data-id="cli-tools" data-tier="in"
-             data-ws="1" data-n="14" data-new="0" data-upd="0" data-sent="14" data-unattr="0">
+             data-ws="1" data-n="14" data-new="0" data-upd="0" data-sent="14" data-unattr="0" data-msgs="193" data-code="1690" data-img="7" data-path="2425" data-key="2" data-lines="2520" data-reason="">
           <div><span class="nm">cli-tools</span><span class="st sent">14 已送過</span>
             <span class="why">公開 repo · 只拿掉金鑰</span></div>
           <div class="ct">14</div>
@@ -681,7 +720,7 @@
         </div>
         <div class="ws" id="i5" data-tail="1"
              data-id="in-rest" data-tier="in" data-kind="agg"
-             data-ws="12" data-n="40" data-new="7" data-upd="0" data-sent="33" data-unattr="24">
+             data-ws="12" data-n="40" data-new="7" data-upd="0" data-sent="33" data-unattr="24" data-msgs="549" data-code="4812" data-img="19" data-path="6932" data-key="0" data-lines="7202" data-reason="">
           <div><span class="nm" style="color:var(--ink-3)">… 還有 12 個 workspace</span><span class="st new">7 新</span><span class="st sent">33 已送過</span></div>
           <div class="ct">40</div>
           <div class="act"><button onclick="stubExpand('in')">全部展開</button></div>
@@ -701,7 +740,7 @@
       <div class="body" id="outBody">
         <div class="ws" id="o1"
              data-id="personal-journal" data-tier="out"
-             data-ws="1" data-n="4" data-new="4" data-upd="0" data-sent="0" data-unattr="0">
+             data-ws="1" data-n="4" data-new="4" data-upd="0" data-sent="0" data-unattr="0" data-msgs="61" data-code="40" data-img="2" data-path="300" data-key="0" data-lines="700" data-reason="名稱命中私密字樣">
           <div><span class="nm">personal-journal</span>
             <span class="why">名稱含 "journal" · 命中私密字樣</span></div>
           <div class="ct">4</div>
@@ -709,7 +748,7 @@
         </div>
         <div class="ws" id="o2"
              data-id="&lt;home&gt;" data-tier="out"
-             data-ws="1" data-n="47" data-new="47" data-upd="0" data-sent="0" data-unattr="47">
+             data-ws="1" data-n="47" data-new="47" data-upd="0" data-sent="0" data-unattr="47" data-msgs="690" data-code="3900" data-img="41" data-path="8140" data-key="3" data-lines="8460" data-reason="判斷不出歸屬">
           <div><span class="nm">&lt;home&gt;</span>
             <span class="why">你的家目錄。不在任何 repo 底下,也不在 projects/ 底下,判斷不出歸屬,所以整包不送。</span></div>
           <div class="ct">47</div>
@@ -717,7 +756,7 @@
         </div>
         <div class="ws" id="o3"
              data-id="acme-payroll-2026" data-tier="out"
-             data-ws="1" data-n="5" data-new="5" data-upd="0" data-sent="0" data-unattr="0">
+             data-ws="1" data-n="5" data-new="5" data-upd="0" data-sent="0" data-unattr="0" data-msgs="88" data-code="0" data-img="6" data-path="410" data-key="1" data-lines="900" data-reason="名稱命中私密字樣">
           <div><span class="nm">acme-payroll-2026</span>
             <span class="why">名稱含 "payroll" · 命中私密字樣</span></div>
           <div class="ct">5</div>
@@ -725,7 +764,7 @@
         </div>
         <div class="ws" id="o4"
              data-id="tax-filing" data-tier="out"
-             data-ws="1" data-n="2" data-new="2" data-upd="0" data-sent="0" data-unattr="0">
+             data-ws="1" data-n="2" data-new="2" data-upd="0" data-sent="0" data-unattr="0" data-msgs="35" data-code="0" data-img="3" data-path="160" data-key="0" data-lines="360" data-reason="名稱命中私密字樣">
           <div><span class="nm">tax-filing</span>
             <span class="why">名稱含 "tax" · 命中私密字樣</span></div>
           <div class="ct">2</div>
@@ -733,7 +772,7 @@
         </div>
         <div class="ws" id="o5" data-tail="1"
              data-id="dropped-sessions" data-tier="out" data-kind="agg"
-             data-ws="0" data-n="2" data-new="2" data-upd="0" data-sent="0" data-unattr="0">
+             data-ws="0" data-n="2" data-new="2" data-upd="0" data-sent="0" data-unattr="0" data-msgs="29" data-code="210" data-img="1" data-path="380" data-key="0" data-lines="350" data-reason="cwd 碰到私密目錄">
           <div><span class="nm">單獨挑掉的 session</span>
             <span class="why">原本在 payments-api 裡,中途 cd 進了私密目錄。這 2 筆已經從 payments-api 扣掉(61 變 59),只算一次。不是一個 workspace,所以不計入上面的 workspace 數。</span></div>
           <div class="ct">2</div>
@@ -741,7 +780,7 @@
         </div>
         <div class="ws" id="o6"
              data-id="out-rest" data-tier="out" data-kind="agg"
-             data-ws="9" data-n="4" data-new="4" data-upd="0" data-sent="0" data-unattr="0">
+             data-ws="9" data-n="4" data-new="4" data-upd="0" data-sent="0" data-unattr="0" data-msgs="47" data-code="520" data-img="2" data-path="610" data-key="0" data-lines="720" data-reason="規則排除">
           <div><span class="nm" style="color:var(--ink-3)">… 還有 9 個 workspace</span></div>
           <div class="ct">4</div>
           <div class="act"><button onclick="stubExpand('out')">全部展開</button></div>
@@ -813,32 +852,33 @@
       <div class="body">
         <div class="row">
           <div class="label">程式碼
-            <div class="removed"><i style="width:118px"></i> 18,402 行已計數,只送數字</div>
+            <div class="removed"><i id="barCode" style="width:118px"></i> <span id="cntCode">18,402</span> 行已計數,只送數字</div>
           </div>
           <div class="fig zero">0 行</div>
         </div>
         <div class="row">
           <div class="label">圖片與截圖
-            <div class="removed"><i style="width:46px"></i> 73 張換成佔位符</div>
+            <div class="removed"><i id="barImg" style="width:46px"></i> <span id="cntImg">73</span> 張換成佔位符</div>
           </div>
           <div class="fig zero">0 張</div>
         </div>
         <div class="row">
           <div class="label">檔案路徑
-            <div class="removed"><i style="width:152px"></i> 26,505 處已替換</div>
+            <div class="removed"><i id="barPath" style="width:152px"></i> <span id="cntPath">26,505</span> 處已替換</div>
           </div>
           <div class="fig zero">0 條</div>
         </div>
         <div class="row">
           <div class="label">金鑰形狀的字串
-            <div class="removed"><i style="width:14px"></i> 8 處已替換</div>
+            <div class="removed"><i id="barKey" style="width:14px"></i> <span id="cntKey">8</span> 處已替換</div>
           </div>
           <div class="fig zero">0 個</div>
         </div>
         <div class="row">
           <div class="label">人名與公司名
-            <span class="sub">47 個實體換成代號,同一個人每次都是同一個代號</span></div>
-          <div class="fig">已換</div>
+            <span class="sub" id="entSub"></span>
+            <span class="sub grave" id="entClear" hidden></span></div>
+          <div class="fig" id="entFig">52</div>
         </div>
         <div class="row">
           <div class="label">Claude 的回覆
@@ -847,34 +887,38 @@
         </div>
         <div class="row">
           <div class="label">你自己打的字
-            <span class="sub">2,104 則訊息,原文保留。這是被評分的東西。</span></div>
-          <div class="fig">2,104</div>
+            <span class="sub"><span id="cntMsg">2,104</span> 則訊息,原文保留。這是被評分的東西。</span></div>
+          <div class="fig" id="cntMsgFig">2,104</div>
         </div>
       </div>
     </div>
 
     <div class="panel">
-      <h2>檢查</h2>
+      <h2>檢查 · 還沒跑</h2>
       <div class="body">
+        <p class="note" style="margin:10px 0 4px">
+          這四項要等你在第 2 步把名字確認完才有得跑:要搜尋哪些寫法,取決於你在那一步勾了什麼。
+          跑完的結果會跟檔案一起出現在第 3 步。下面是上次 2026-08-08 匯出時的數字,只能當參考,不是這一份的結論。
+        </p>
         <div class="row">
           <div class="label">每一行都能原樣重建
-            <span class="sub">27,545 / 27,545 行位元組相同</span></div>
-          <div class="fig"><span class="pill ok">通過</span></div>
+            <span class="sub">上次:27,545 / 27,545 行位元組相同</span></div>
+          <div class="fig"><span class="pill mute">等第 3 步</span></div>
         </div>
         <div class="row">
           <div class="label">每一次替換都能還原
-            <span class="sub">1,284 次替換</span></div>
-          <div class="fig"><span class="pill ok">通過</span></div>
+            <span class="sub">上次:1,284 次替換</span></div>
+          <div class="fig"><span class="pill mute">等第 3 步</span></div>
         </div>
         <div class="row">
           <div class="label">代號沒有跟原文撞名
-            <span class="sub">語料裡沒有既存的 PERSON_n 字樣</span></div>
-          <div class="fig"><span class="pill ok">通過</span></div>
+            <span class="sub">上次:語料裡沒有既存的 PERSON_n 字樣</span></div>
+          <div class="fig"><span class="pill mute">等第 3 步</span></div>
         </div>
         <div class="row">
           <div class="label">已知實體殘留
-            <span class="sub">回頭搜尋全部 47 個實體的原始寫法</span></div>
-          <div class="fig"><span class="pill ok">0 命中</span></div>
+            <span class="sub">回頭搜尋每一個要換掉的實體的原始寫法。搜尋範圍要等你確認完名字才定得下來。</span></div>
+          <div class="fig"><span class="pill mute">等第 3 步</span></div>
         </div>
       </div>
     </div>
@@ -891,7 +935,7 @@
 
     <div class="disclosure" id="d-sessions">
       <div class="panel">
-        <h2>會送出的 session,逐筆</h2>
+        <h2 id="sessH2">逐筆</h2>
         <div class="body sesslist">
           <div><span>✓</span><span>08-15</span><span class="q">把 passport 的 hero section 重做</span><span class="n"></span></div>
           <div><span>✓</span><span>08-15</span><span class="q">這個 residual scan 要怎麼寫比較好</span><span class="n"></span></div>
@@ -906,59 +950,102 @@
 
     <div class="actions">
       <button class="primary" id="next1" onclick="go(2)" disabled>先決定上面那 2 個</button>
-      <button class="link" onclick="toggle('d-sessions', this, '逐筆看會送出什麼', '收起逐筆清單')">逐筆看會送出什麼</button>
+      <button class="link" onclick="toggle('d-sessions', this, '逐筆看每一個 session', '收起逐筆清單')">逐筆看每一個 session</button>
     </div>
 
-    <p class="hint">你在這裡做的每個決定都會被記住,下次不會再問。</p>
+    <p class="hint">你的決定寫進 <code>~/.deident-private/workspaces.json</code>,下次直接沿用,不會再問。那個檔案是你的,可以自己開來看、自己改、或整個刪掉重來。</p>
   </section>
 
   <!-- ══════════════════════ SCREEN 2 ══════════════════════ -->
   <section class="screen" id="scr2" tabindex="-1">
 
     <p class="note">
-      這 8 個是<strong>本機跑的模型</strong>從你的對話裡挑出來的:過程沒有連網,判斷結果只寫進你自己電腦上的 review.md。
-      它預先勾了 5 個,勾起來的會換成代號。
-      這一步決定誰的名字會離開這台電腦,值得逐行看過。
-      取消勾選會被記住,下次不會再問同一個字。
+      第 1 頁講的 47 個實體,是直接從 git config 和 git remote 讀出來的,身分是確定的,一定換成代號,不用你確認,也不在這張清單上。
+      下面這 8 個不一樣:是<strong>本機跑的模型</strong>從對話裡猜的,過程沒有連網,結果只寫進你自己電腦上的 review.md。
+      要你看過的只有這 8 個。
+    </p>
+
+    <p class="note" style="color:var(--ink);font-weight:600;font-size:14.5px">
+      勾起來 = 換成代號送出。沒勾 = 原名原封不動寫進交出去的檔案。
     </p>
 
     <div class="panel">
-      <h2>候選 · 8 個 · 已勾選 5</h2>
+      <h2 id="candH2">候選 · 8 個 · 已勾選 5</h2>
       <div class="body">
-        <div style="padding:8px 0 12px;display:flex;gap:8px">
+        <div style="padding:8px 0 12px;display:flex;gap:8px;flex-wrap:wrap">
           <button onclick="setAll(true)">全選</button>
           <button onclick="setAll(false)">全不選</button>
+          <button onclick="resetCands()">回到模型的預設</button>
         </div>
         <div class="cands" id="cands">
-          <label class="cand"><input type="checkbox" checked><span class="name">Paul Kedrosky</span><span class="ctx">…看了 <mark>Paul Kedrosky</mark> 那篇講折舊的…</span><span class="n">4</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">Rosa Barnard</span><span class="ctx">…跟 <mark>Rosa Barnard</mark> 約禮拜四…</span><span class="n">2</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">Northwind Health</span><span class="ctx">…<mark>Northwind Health</mark> 那邊的 schema…</span><span class="n">11</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">Marta Alvarez</span><span class="ctx">…<mark>Marta Alvarez</mark> 說她下週交…</span><span class="n">6</span></label>
-          <label class="cand"><input type="checkbox" checked><span class="name">Ridgeline Capital</span><span class="ctx">…寄給 <mark>Ridgeline Capital</mark> 的 deck…</span><span class="n">3</span></label>
-          <label class="cand"><input type="checkbox"><span class="name">Good Friday</span><span class="ctx">…<mark>Good Friday</mark> 放假所以…</span><span class="n">1</span></label>
-          <label class="cand"><input type="checkbox"><span class="name">Brex Card</span><span class="ctx">…用 <mark>Brex Card</mark> 付掉了…</span><span class="n">3</span></label>
-          <label class="cand"><input type="checkbox"><span class="name">M1019757</span><span class="ctx">…換 <mark>M1019757</mark> 這條散熱膏…</span><span class="n">1</span></label>
+          <label class="cand"><input type="checkbox" checked><span class="name">Paul Kedrosky<b class="conf hi">高信心 · 出現 4 次</b></span><span class="ctx">…看了 <mark>Paul Kedrosky</mark> 那篇講折舊的…</span><span class="n">4</span></label>
+          <label class="cand"><input type="checkbox" checked><span class="name">Rosa Barnard<b class="conf hi">高信心 · 出現 2 次</b></span><span class="ctx">…跟 <mark>Rosa Barnard</mark> 約禮拜四…</span><span class="n">2</span></label>
+          <label class="cand"><input type="checkbox" checked><span class="name">Northwind Health<b class="conf hi">高信心 · 出現 11 次</b></span><span class="ctx">…<mark>Northwind Health</mark> 那邊的 schema…</span><span class="n">11</span></label>
+          <label class="cand"><input type="checkbox" checked><span class="name">Marta Alvarez<b class="conf hi">高信心 · 出現 6 次</b></span><span class="ctx">…<mark>Marta Alvarez</mark> 說她下週交…</span><span class="n">6</span></label>
+          <label class="cand"><input type="checkbox" checked><span class="name">Ridgeline Capital<b class="conf hi">高信心 · 出現 3 次</b></span><span class="ctx">…寄給 <mark>Ridgeline Capital</mark> 的 deck…</span><span class="n">3</span></label>
+          <label class="cand"><input type="checkbox"><span class="name">Good Friday<b class="conf lo">低信心 · 模型猜的,看起來是節日不是人</b></span><span class="ctx">…<mark>Good Friday</mark> 放假所以…</span><span class="n">1</span></label>
+          <label class="cand"><input type="checkbox"><span class="name">Brex Card<b class="conf lo">低信心 · 模型猜的,看起來是產品不是公司</b></span><span class="ctx">…用 <mark>Brex Card</mark> 付掉了…</span><span class="n">3</span></label>
+          <label class="cand"><input type="checkbox"><span class="name">M1019757<b class="conf lo">低信心 · 模型猜的,看起來是料號不是人</b></span><span class="ctx">…換 <mark>M1019757</mark> 這條散熱膏…</span><span class="n">1</span></label>
         </div>
+        <p class="note" id="candOut" style="margin:14px 0 0"></p>
       </div>
     </div>
 
     <div class="actions">
-      <button class="primary" onclick="go(3)">確定,產出檔案</button>
+      <button class="primary" onclick="exportNow()">確定,產出檔案</button>
       <button onclick="go(1)">回上一步</button>
     </div>
 
-    <p class="hint">取消勾選會被記住,下次不會再問同一個字。</p>
   </section>
 
   <!-- ══════════════════════ SCREEN 3 ══════════════════════ -->
   <section class="screen" id="scr3" tabindex="-1">
 
     <div class="done">
+      <div class="stale" id="zipStale" hidden><strong>這個檔案是舊的。</strong>
+        <span id="zipStaleTxt"></span></div>
       <div class="file">
         <span style="color:var(--ink)">deident-2026-08-22.zip</span>
-        <span id="zipMeta">14.2 MB · 本次送出 42 個 session</span>
+        <span id="zipMeta">約 14.2 MB · 本次送出 42 個 session</span>
       </div>
-      <p class="zipsub" id="zipSub">另外 111 個上次已經送過、內容沒有變動,不在這個檔案裡。</p>
+      <p class="zipsub" id="zipSub"></p>
+      <p class="zipsub">原型:這裡沒有真的在硬碟上寫出檔案。</p>
+
+      <div class="limits" style="margin-top:22px">
+        <h3>交出去之前,先知道這份檔案擋不住什麼</h3>
+        <ul>
+          <li>裝置指紋:你裝的 MCP server 名稱、模型使用比例、CLI 版本序列。合起來接近唯一。</li>
+          <li>你自己貼進對話的文件原文。名字換掉了,那段文字還在,可以拿去跟原始文件比對。</li>
+          <li>「已知實體殘留 0」的意思是「我們知道的那些沒漏」,不等於「沒有東西外洩」。</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h2>檢查 · 這一份的結果</h2>
+        <div class="body">
+          <div class="row">
+            <div class="label">每一行都能原樣重建
+              <span class="sub" id="ck1"></span></div>
+            <div class="fig"><span class="pill ok">通過</span></div>
+          </div>
+          <div class="row">
+            <div class="label">每一次替換都能還原
+              <span class="sub" id="ck2"></span></div>
+            <div class="fig"><span class="pill ok">通過</span></div>
+          </div>
+          <div class="row">
+            <div class="label">代號沒有跟原文撞名
+              <span class="sub">語料裡沒有既存的 PERSON_n 字樣</span></div>
+            <div class="fig"><span class="pill ok">通過</span></div>
+          </div>
+          <div class="row">
+            <div class="label">已知實體殘留
+              <span class="sub" id="ck4"></span>
+              <span class="sub grave" id="ck4b" hidden></span></div>
+            <div class="fig"><span class="pill ok">0 命中</span></div>
+          </div>
+        </div>
+      </div>
 
       <div class="panel" style="margin-top:18px">
         <h2>接下來</h2>
@@ -966,7 +1053,7 @@
           <div class="row">
             <div class="label">把這個檔案交出去
               <span class="sub">內部測試階段,直接傳給 GitRoll 內部評測小組</span></div>
-            <div class="fig"><button onclick="alert('原型:開啟檔案所在資料夾')">開啟資料夾</button></div>
+            <div class="fig"><button id="openBtn" onclick="openOrRerun()">開啟資料夾</button></div>
           </div>
           <div class="row">
             <div class="label">salt 留在這台電腦,不要跟 zip 一起走
@@ -976,7 +1063,7 @@
           <div class="row">
             <div class="label">留著原始檔,先別刪
               <span class="sub">萬一需要重跑,原檔就是唯一的還原來源</span></div>
-            <div class="fig"><span class="pill warn">記得</span></div>
+            <div class="fig"></div>
           </div>
           <div class="row">
             <div class="label">稽核紀錄
@@ -987,11 +1074,11 @@
       </div>
 
       <div class="actions">
-        <button onclick="go(1)">重跑一次</button>
+        <button onclick="restart()">重跑一次</button>
       </div>
     </div>
 
-    <p class="hint">下次再跑,分級決定會被記住,不會再問一次。</p>
+
   </section>
 
 </div>
@@ -1000,7 +1087,8 @@
   /* ─────────────────────────────────────────────────────────────
      ONE state table. Every number on every screen is derived from
      it in paint(), so two figures describing the same set cannot
-     drift apart. Row tiers are the only mutable state.
+     drift apart. Row tiers and the eight candidate checkboxes are
+     the only mutable state.
      ───────────────────────────────────────────────────────────── */
   var ROWS = [];
   var els = document.querySelectorAll('.ws[data-n]');
@@ -1016,12 +1104,29 @@
       upd:  +el.getAttribute('data-upd'),
       sent: +el.getAttribute('data-sent'),
       unat: +el.getAttribute('data-unattr'),
-      tier: el.getAttribute('data-tier')
+      msg:  +el.getAttribute('data-msgs'),
+      code: +el.getAttribute('data-code'),
+      img:  +el.getAttribute('data-img'),
+      path: +el.getAttribute('data-path'),
+      key:  +el.getAttribute('data-key'),
+      line: +el.getAttribute('data-lines'),
+      why:  el.getAttribute('data-reason') || '',
+      tier: el.getAttribute('data-tier'),
+      /* what the rules proposed. Never mutated, so a reversal can say honestly
+         whether the exclusion was the tool's decision or the reader's own. */
+      auto: el.getAttribute('data-tier')
     });
   }
 
-  var PREV_TOTAL = 114;   /* what the 2026-08-08 export contained */
-  var exported = false, maxStep = 1;
+  var PREV_TOTAL  = 114;   /* what the 2026-08-08 export contained */
+  var SEEDED_ENTS = 47;    /* read straight out of git config / git remote */
+  var SEEDED_OCC  = 1258;  /* their occurrences, replaced without asking */
+  var MB_PER      = 0.338; /* prototype: rough zip size per session */
+
+  var exported = false, maxStep = 1, exportedAt = null;
+  /* what the produced file actually contains. Frozen at export time, because a
+     zip on disk does not rewrite itself when you go back and click something. */
+  var frozen = null;
 
   function sum(tier, key) {
     var t = 0;
@@ -1034,6 +1139,29 @@
     return null;
   }
 
+  function T(id, s) { document.getElementById(id).textContent = s; }
+  function fmt(n) { return n.toLocaleString('en-US'); }
+
+  /* the candidate list is state too, so it derives like everything else */
+  function cands() {
+    var boxes = document.querySelectorAll('#cands input');
+    var on = [], off = [], occ = 0;
+    for (var i = 0; i < boxes.length; i++) {
+      var lab = boxes[i].parentNode;
+      var nm  = lab.querySelector('.name').firstChild.nodeValue;
+      var k   = +lab.querySelector('.n').textContent;
+      if (boxes[i].checked) { on.push(nm); occ += k; } else { off.push(nm); }
+    }
+    return { total: boxes.length, on: on, off: off, occ: occ };
+  }
+
+  /* everything a produced file depends on, in one string */
+  function fingerprint() {
+    var s = [];
+    for (var i = 0; i < ROWS.length; i++) s.push(ROWS[i].id + '=' + ROWS[i].tier);
+    return s.join(',') + '|' + cands().on.join(',');
+  }
+
   function mark(r) {
     r.el.classList.add('settled');
     var m = r.el.querySelector('.chosen');
@@ -1042,9 +1170,35 @@
       m.className = 'chosen';
       r.el.querySelector('.why').parentNode.appendChild(m);
     }
-    m.textContent = r.tier === 'in'
-      ? '你選了:交出去 · 隨時可以改回來 · 這個決定會被記住'
-      : '你選了:不交 · 隨時可以改回來 · 這個決定會被記住';
+    var already = r.sent + r.upd;
+    if (r.tier === 'in') {
+      m.className = 'chosen';
+      m.textContent = '你選了:交出去 · 隨時可以改回來';
+    } else if (already) {
+      /* the only irreversible thing in the whole flow, said next to the click
+         that caused it rather than in a panel further down the page */
+      m.className = 'chosen grave';
+      m.textContent = '你選了:不交。但這個 workspace 的 ' + already +
+        ' 個 session 上次已經送出去了,那一份收不回來,要刪只能另外通知收件人。隨時可以改回來。';
+    } else {
+      m.className = 'chosen';
+      m.textContent = '你選了:不交 · 隨時可以改回來';
+    }
+  }
+
+  /* Reversing toward LESS exposure is one click. Reversing toward MORE exposure
+     costs a typed workspace id, wherever it happens: an auto-excluded workspace
+     and a decide row you already settled are the same move, so they go through
+     the same guard. The id is the stable one, never a rendered Chinese label
+     nobody can type without an IME. */
+  function confirmMore(r) {
+    var why = r.auto === 'out'
+      ? r.id + ' 是規則自動排除的(' + r.why + ')。'
+      : r.id + ' 是你自己剛才改成不交的。';
+    var typed = prompt(
+      '把 ' + r.id + ' 改成會交出去。\n\n' + why +
+      '\n要往「送出更多」的方向改,請照抄下面這一行 workspace 代號:\n\n' + r.id);
+    return typed !== null && typed === r.id;
   }
 
   /* The row stays. The chosen button becomes the selected state and the other
@@ -1052,6 +1206,7 @@
   function decide(domId, verdict) {
     var r = rowById(domId);
     if (r.tier === verdict) return;
+    if (verdict === 'in' && r.tier === 'out' && !confirmMore(r)) return;
     r.tier = verdict;
     var btns = r.el.querySelectorAll('.act button');
     btns[0].classList.toggle('sel', verdict === 'in');
@@ -1060,19 +1215,10 @@
     paint();
   }
 
-  /* Reversing toward LESS exposure is one click. Reversing toward MORE exposure
-     needs a typed confirmation, against the stable workspace id (never a
-     rendered Chinese label, which nobody can type without an IME). */
   function flip(btn) {
     var r = rowById(btn.closest('.ws').id);
     var dir = r.tier === 'in' ? 'out' : 'in';
-
-    if (dir === 'in') {
-      var typed = prompt(
-        '把 ' + r.id + ' 改成會交出去。\n\n' +
-        '這個 workspace 是自動排除的。要往「送出更多」的方向改,請照抄下面這一行 workspace 代號:\n\n' + r.id);
-      if (typed === null || typed !== r.id) return;
-    }
+    if (dir === 'in' && !confirmMore(r)) return;
 
     r.tier = dir;
     var target = document.getElementById(dir === 'in' ? 'inBody' : 'outBody');
@@ -1109,50 +1255,122 @@
     return { names: names, n: n };
   }
 
+  /* bars keep their original length at the original value, so the motif is a
+     proportion of what was scanned, not decoration */
+  function bar(id, v, v0, w0) {
+    document.getElementById(id).style.width = Math.max(4, Math.round(v / v0 * w0)) + 'px';
+  }
+
   function paint() {
     var inN = sum('in', 'n'), outN = sum('out', 'n'), unN = sum('un', 'n');
     var inW = sum('in', 'ws'), outW = sum('out', 'ws'), unW = sum('un', 'ws');
     var newN = sum('in', 'nw'), updN = sum('in', 'upd'), skipN = sum('in', 'sent');
     var run = newN + updN;
     var unat = sum('in', 'unat'), attr = inN - unat;
+    var c = cands();
+    var ents = SEEDED_ENTS + c.on.length;
+    var reps = SEEDED_OCC + c.occ;
 
-    document.getElementById('hIn').textContent = inN;
-    document.getElementById('hUn').textContent = unN;
-    document.getElementById('hOut').textContent = outN;
-    document.getElementById('hInWs').textContent = inW + ' workspaces';
-    document.getElementById('hUnWs').textContent = unW + ' workspaces';
-    document.getElementById('hOutWs').textContent = outW + ' workspaces';
-    document.getElementById('payloadN').textContent = inN;
+    T('hIn', inN); T('hUn', unN); T('hOut', outN);
+    T('hInWs',  inW  + ' workspaces');
+    T('hUnWs',  unW  + ' workspaces');
+    T('hOutWs', outW + ' workspaces');
 
-    document.getElementById('inSum').textContent  = '會交出去 · ' + inW + ' workspaces · ' + inN + ' sessions';
-    document.getElementById('outSum').textContent = '不會交出去 · ' + outW + ' workspaces · ' + outN + ' sessions';
+    /* the biggest number on the page is the one that actually leaves */
+    T('payloadRun', run);
+    T('payloadMath',
+      '(挑中的一共 ' + inN + ' 個,其中 ' + skipN + ' 個上次送過、之後沒動過,這次跳過。)');
 
-    document.getElementById('groupSum').textContent =
-      '這些 session 屬於哪個專案 · 其中 ' + unat + ' 個我們不猜,因為沒有 repo 可判斷';
-    document.getElementById('attrN').textContent = attr;
-    document.getElementById('unattrN').textContent = unat;
+    T('inSum',  '會交出去 · ' + inW + ' workspaces · ' + inN + ' sessions');
+    T('outSum', '不會交出去 · ' + outW + ' workspaces · ' + outN + ' sessions');
+
+    T('groupSum', '這些 session 屬於哪個專案 · 其中 ' + unat + ' 個我們不猜,因為沒有 repo 可判斷');
+    T('attrN', attr);
+    T('unattrN', unat);
     document.getElementById('groupNote').firstChild.nodeValue =
       '\n          會送出的 ' + inN + ' 個裡,' + attr + ' 個從 git remote 判定得出專案,' + unat + ' 個判定不出來。\n          ';
 
-    document.getElementById('runN').textContent = run;
-    document.getElementById('runLine').textContent = '本次送出 ' + run + ' 個 session';
-    document.getElementById('runMath').textContent =
+    T('runN', run);
+    T('runLine', '本次送出 ' + run + ' 個 session');
+    T('runMath',
       run + ' ＝ ' + newN + ' 個從沒送過 ＋ ' + updN + ' 個送過但之後又有新對話(重送完整版)。' +
       '另外 ' + skipN + ' 個上次送過、之後沒動過,這次跳過。' +
-      newN + ' + ' + updN + ' + ' + skipN + ' = ' + inN + '。';
+      newN + ' + ' + updN + ' + ' + skipN + ' = ' + inN + '。');
 
-    document.getElementById('sessMore').textContent = '… 還有 ' + (inN - 4) + ' 筆';
+    T('sessH2', '逐筆 · 會送的 ' + inN + ' 個,加上已經幫你挑掉的 2 個(✕,不會送)');
+    T('sessMore', '… 還有 ' + (inN - 4) + ' 筆');
 
     var p = pulled();
-    document.getElementById('pulledNames').textContent = p.names.length ? p.names.join('、') : '目前沒有';
+    T('pulledNames', p.names.length ? p.names.join('、') : '目前沒有');
     var pf = document.getElementById('pulledFig');
     pf.textContent = p.n + ' 個 session';
     pf.className = 'pill ' + (p.n ? 'warn' : 'ok');
 
-    document.getElementById('zipMeta').textContent = '14.2 MB · 本次送出 ' + run + ' 個 session';
-    document.getElementById('zipSub').textContent =
-      '另外 ' + skipN + ' 個上次已經送過、內容沒有變動,不在這個檔案裡。' +
-      '上次那份是 ' + PREV_TOTAL + ' 個 session。';
+    /* ---- 會交出去的內容裡: same table as hIn, so it cannot go stale ---- */
+    var code = sum('in','code'), img = sum('in','img'), pth = sum('in','path');
+    var key  = sum('in','key'),  msg = sum('in','msg'), line = sum('in','line');
+    T('cntCode', fmt(code)); bar('barCode', code, 18402, 118);
+    T('cntImg',  fmt(img));  bar('barImg',  img,   73,    46);
+    T('cntPath', fmt(pth));  bar('barPath', pth,   26505, 152);
+    T('cntKey',  fmt(key));  bar('barKey',  key,   8,     14);
+    T('cntMsg',  fmt(msg));
+    T('cntMsgFig', fmt(msg));
+
+    T('entSub', SEEDED_ENTS + ' 個實體從 git config / git remote 讀出來,身分確定,一定換;' +
+      '第 2 步那 8 個候選你勾了 ' + c.on.length + ' 個。同一個人每次都是同一個代號。');
+    T('entFig', ents + ' 個換代號');
+    var ec = document.getElementById('entClear');
+    ec.hidden = c.off.length === 0;
+    ec.textContent = c.off.length
+      ? c.off.length + ' 個你沒勾:' + c.off.join('、') + '。這幾個名字會以原文出現在交出去的檔案裡。'
+      : '';
+
+    /* ---- screen 2 ---- */
+    T('candH2', '候選 · ' + c.total + ' 個 · 已勾選 ' + c.on.length);
+    T('candOut', c.off.length
+      ? '沒勾的 ' + c.off.length + ' 個:' + c.off.join('、') + '。這 ' + c.off.length +
+        ' 個名字會原封不動寫進交出去的檔案裡,殘留檢查也不會去搜尋它們。'
+      : '這 ' + c.total + ' 個候選都會換成代號。加上 git 讀出來的 ' + SEEDED_ENTS + ' 個,一共 ' + ents + ' 個。');
+
+    /* ---- screen 3 ---- */
+    var S = {
+      run: run,
+      meta: '約 ' + (run * MB_PER).toFixed(1) + ' MB · 本次送出 ' + run + ' 個 session',
+      sub: '上次送了 ' + PREV_TOTAL + ' 個。其中 ' + skipN + ' 個之後沒動過,這次跳過;' +
+           updN + ' 個之後又有新對話,這次重送完整版' +
+           (p.n ? ';' + p.n + ' 個被你這次排除了' : '') + '。' +
+           '加上 ' + newN + ' 個從沒送過的,這個檔案裡是 ' + run + ' 個。',
+      ck1: '挑中的 ' + inN + ' 個 session 共 ' + fmt(line) + ' 行,' + fmt(line) + ' 行位元組相同',
+      ck2: fmt(reps) + ' 次替換(git 讀出來的 ' + fmt(SEEDED_OCC) + ' 次 ＋ 你勾選的 ' + c.occ + ' 次)',
+      ck4: '在這次要送出的 ' + run + ' 個 session 裡,回頭搜尋這 ' + ents + ' 個實體的原始寫法',
+      ck4b: c.off.length
+        ? '你沒勾的 ' + c.off.length + ' 個名字不在搜尋範圍裡:它們本來就是照原文送的,不算殘留。'
+        : ''
+    };
+    if (!exported || frozen === null) frozen = S;
+
+    T('zipMeta', frozen.meta);
+    T('zipSub',  frozen.sub);
+    T('ck1', frozen.ck1);
+    T('ck2', frozen.ck2);
+    T('ck4', frozen.ck4);
+    var c4 = document.getElementById('ck4b');
+    c4.hidden = frozen.ck4b === '';
+    c4.textContent = frozen.ck4b;
+
+    /* the zip on disk does not follow later clicks. Say so, and offer the re-run. */
+    var stale = exported && exportedAt !== null && exportedAt !== fingerprint();
+    document.getElementById('zipStale').hidden = !stale;
+    if (stale) {
+      T('zipStaleTxt', '你在產出之後又改過選擇。上面那個檔案還是產出當下的那一份(' + frozen.run +
+        ' 個 session),硬碟上的內容不會跟著你的新選擇變。' +
+        (run === frozen.run
+          ? '你改的東西不影響這次要送的筆數,但送出去的內容不一樣了。'
+          : '照現在的選擇要送的是 ' + run + ' 個。') +
+        '要用新的選擇,必須重新產出一次。');
+    }
+    var ob = document.getElementById('openBtn');
+    ob.textContent = stale ? '重新產出' : '開啟資料夾';
 
     mirror('in', 'in');
     mirror('out', 'out');
@@ -1199,9 +1417,25 @@
       ? '原型:逐筆列出這些已送過、現在被排除的 session\n\n' + p.names.join('\n')
       : '原型:目前沒有任何已送過的 workspace 被你改成不交。');
   }
+  function openOrRerun() {
+    if (exported && exportedAt !== fingerprint()) {
+      exportNow();
+      alert('原型:用你現在的選擇重新產出,蓋掉舊的 zip。');
+    } else {
+      alert('原型:開啟檔案所在資料夾');
+    }
+  }
+
+  /* Producing the file is this button, and only this button. Walking back to
+     step 3 with the step chip is navigation, not a new export. */
+  function exportNow() {
+    exported = true;
+    exportedAt = fingerprint();
+    frozen = null;
+    go(3);
+  }
 
   function go(n) {
-    if (n === 3) exported = true;
     if (n > maxStep) maxStep = n;
     for (var i = 1; i <= 3; i++) {
       document.getElementById('scr' + i).classList.toggle('on', i === n);
@@ -1212,6 +1446,17 @@
     }
     window.scrollTo({ top: 0, behavior: 'instant' });
     document.getElementById('scr' + n).focus();
+    paint();
+  }
+
+  /* A new run starts at step 1 with steps 2 and 3 unreachable again. Tier and
+     name decisions survive on purpose (cli-ux.md §11: nothing prompts twice). */
+  function restart() {
+    exported = false;
+    exportedAt = null;
+    frozen = null;
+    maxStep = 1;
+    go(1);
   }
 
   function toggle(id, btn, closedLabel, openLabel) {
@@ -1220,33 +1465,42 @@
     btn.textContent = open ? openLabel : closedLabel;
   }
 
+  /* 全選 is the less-exposure direction and stays one click. 全不選 is the
+     largest single more-exposure action on the page, so it is not. */
   function setAll(v) {
+    var c = cands();
+    if (!v) {
+      if (!c.on.length) return;
+      if (!confirm('取消全部勾選。\n\n這 ' + c.total + ' 個名字會原封不動寫進交出去的檔案裡,' +
+                   '其中 ' + c.on.length + ' 個現在還會被換成代號。\n\n確定?')) return;
+    }
     var boxes = document.querySelectorAll('#cands input');
     for (var i = 0; i < boxes.length; i++) boxes[i].checked = v;
-    count();
+    paint();
   }
 
-  function count() {
+  function resetCands() {
     var boxes = document.querySelectorAll('#cands input');
-    var n = 0;
-    for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) n++;
-    document.querySelector('#scr2 .panel > h2').textContent =
-      '候選 · ' + boxes.length + ' 個 · 已勾選 ' + n;
+    for (var i = 0; i < boxes.length; i++) boxes[i].checked = boxes[i].defaultChecked;
+    paint();
   }
 
-  document.getElementById('cands').addEventListener('change', count);
+  document.getElementById('cands').addEventListener('change', paint);
 
-  /* one runnable check: the census must equal the sum of the three tiers,
-     in sessions and in workspaces, before anything is rendered. */
+  /* one runnable check: the census must equal the sum of the three tiers, and
+     every derived total in 會交出去的內容裡 must equal what was scanned. */
   (function selftest() {
     var s = sum('in', 'n') + sum('out', 'n') + sum('un', 'n');
     var w = sum('in', 'ws') + sum('out', 'ws') + sum('un', 'ws');
-    if (s !== 225 || w !== 31) {
-      document.getElementById('meta').textContent =
-        'CENSUS MISMATCH: ' + s + ' sessions / ' + w + ' workspaces';
-    } else {
-      document.getElementById('meta').textContent = s + ' sessions · ' + w + ' workspaces · 818 MB';
-    }
+    var bad = (s !== 225 || w !== 31)
+      || sum('in','msg')  !== 2104  || sum('in','code') !== 18402
+      || sum('in','img')  !== 73    || sum('in','path') !== 26505
+      || sum('in','key')  !== 8     || sum('in','line') !== 27545
+      || (SEEDED_OCC + 26) !== 1284
+      || (sum('in','sent') + sum('in','upd')) !== PREV_TOTAL;
+    document.getElementById('meta').textContent = bad
+      ? 'STATE MISMATCH: ' + s + ' sessions / ' + w + ' workspaces'
+      : s + ' sessions · ' + w + ' workspaces · 818 MB';
   })();
 
   paint();
