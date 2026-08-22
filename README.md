@@ -48,7 +48,7 @@ you what it would do.
 entry>` line per exported session. It exists so you can act on the last look:
 every id inside the archive has been rewritten, so without it nothing on your
 machine says which entry is which session. It pairs a local id with a local id,
-never a pseudonym with a name — but treat it like `review.md`: **local only,
+never a pseudonym with a name, but treat it like `review.md`: **local only,
 never shared, never committed.** A failed export removes it along with the zip.
 
 `review.md` is both the report and the config. The decision is made by editing a
@@ -147,9 +147,10 @@ It is never swept in. Beyond that, a workspace whose name (or whose per-line
 The per-line `cwd` filter matters more than it sounds. The largest session file
 on the development machine spans **11 distinct working directories**, two of them
 under `\private`, inside a workspace that is not itself deny-listed. Opting in at
-the directory level alone would have exported payroll material. In the acceptance
-run, 4,553 lines were dropped by this filter from workspaces that were otherwise
-included.
+the directory level alone would have exported payroll material. In the delivery
+run of 2026-08-22, 612 lines were dropped by this filter from workspaces that
+were otherwise included, and a further 32 records were withheld because they
+replay text typed inside an excluded directory and carry no cwd of their own.
 
 ## What is in the zip
 
@@ -184,9 +185,9 @@ downstream could see.
 
 **On Windows the file's protection is the directory it sits in, and nothing
 else.** deident asks for mode `0600`, and NTFS ignores it: `icacls` on the
-created file shows only inherited entries. That is honest rather than fixed —
-`%USERPROFILE%` is already user-scoped and any local administrator can read the
-file regardless — but do not read `mode: 0600` in the source as a guarantee. If
+created file shows only inherited entries. That is honest rather than fixed
+(`%USERPROFILE%` is already user-scoped and any local administrator can read the
+file regardless), but do not read `mode: 0600` in the source as a guarantee. If
 you want more, set an explicit ACL on `~/.deident-private` yourself.
 
 **Do not share the salt and do not commit it.** Anyone who has both the salt and
@@ -204,7 +205,7 @@ candidates.
 declared entities overlap in the text, the substituter replaces the union and
 emits both tokens, so the token they shared is gone: `the operator Wang` and
 `the operator Kuo Wang` produce the same output. The substitution invariant still
-passes, because it reverses from the spans the pass produced — but the spans
+passes, because it reverses from the spans the pass produced, but the spans
 live in memory and are never written down, so regenerating the entity list
 cannot tell those two inputs apart. The export prints the count of merged
 replacements for exactly this reason.
@@ -227,7 +228,7 @@ semantic pass is for, and it is why it is mandatory rather than optional.
 token boundary for spellings of five characters or more, and a camel-case hump
 always is. That is what makes `mcp__<server>__tool`, `project_<org>_notes.md`
 and `<Org>AI` real matches while keeping `ray` inside `array` a correct
-non-match — the case a tool without the rule would get wrong, destroying prose
+non-match: the case a tool without the rule would get wrong, destroying prose
 and being switched off within a day.
 
 What is still left alone is a spelling abutting an ordinary letter or digit:
@@ -291,7 +292,7 @@ turns. Orchestration is still visible through the parent session's `Agent` and
 node deident.mjs --selftest
 ```
 
-39 fixtures, plain `node:assert`, no framework and no network. Each one exists
+91 fixtures, plain `node:assert`, no framework and no network. Each one exists
 because it catches a specific bug, named in the fixture. Several carry a negative
 control, because a check that cannot fail proves nothing.
 
