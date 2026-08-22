@@ -23,6 +23,8 @@ import {
   sweepPhones,
   sweepUnixUid,
   sweepMcpNames,
+  sweepIdNumbers,
+  sweepPlatformIds,
   projectShaped,
   basenameOf,
   buildEntities,
@@ -2020,7 +2022,25 @@ const FIXTURES = [
     const empty = checkSemanticPass({ ran: true, source: '--entities empty.json', entities: [] });
     assert.equal(empty.ok, false, 'zero entities is indistinguishable from not running');
     assert.equal(empty.why, 'empty');
-    assert.match(semanticRefusal('cands.txt', empty.why).reason, /empty/);
+    assert.match(semanticRefusal('cands.txt', empty.why).reason, /no usable entity/);
+
+    // F81's half of the same gate: a list whose every entry is REJECTED is not
+    // a semantic pass either. `{"entities":[{"kind":"person",
+    // "spellings":["  "]}]}` printed `1 entities  ok` and shipped a zip,
+    // because the gate counted the array and the spelling was rejected
+    // downstream. Anyone can type that file in ten seconds.
+    const blank = checkSemanticPass({
+      ran: true,
+      source: '--entities blank.json',
+      entities: [{ id: 'T1', canonical: 'a', spellings: [], rejected: 'shorter than 3 characters' }],
+    });
+    assert.equal(blank.ok, false, 'a list of rejected entities delivers nothing');
+    assert.equal(blank.why, 'empty');
+    // A blank spelling never gets that far: the reader refuses the file.
+    const dir = tmpdir();
+    const file = path.join(dir, 'blank.json');
+    fs.writeFileSync(file, JSON.stringify({ entities: [{ kind: 'person', spellings: ['  '] }] }), 'utf8');
+    assert.throws(() => readEntities(file), /blank spelling/);
 
     const absent = checkSemanticPass(null);
     assert.equal(absent.ok, false);
@@ -2030,9 +2050,21 @@ const FIXTURES = [
     const real = checkSemanticPass({
       ran: true,
       source: '--entities e.json',
-      entities: [{ id: 'T1', canonical: 'Ada Wang' }],
+      entities: [{ id: 'T1', canonical: 'Ada Wang', spellings: ['Ada Wang'], rejected: null }],
     });
     assert.equal(real.ok, true);
+    // The count in the report is the USABLE count, and it says so when the two
+    // differ, because a number that overstates the pass is what was wrong.
+    const mixed = checkSemanticPass({
+      ran: true,
+      source: '--entities e.json',
+      entities: [
+        { id: 'T1', canonical: 'Ada Wang', spellings: ['Ada Wang'], rejected: null },
+        { id: 'T2', canonical: 'a', spellings: [], rejected: 'too short' },
+      ],
+    });
+    assert.equal(mixed.ok, true);
+    assert.match(mixed.detail, /1 entities \(1 rejected\)/);
   }],
 
   // F71 — a replacement changes the text the boundary rule reads.
@@ -2495,6 +2527,73 @@ const FIXTURES = [
     assert.match(exported.out, /already contains? a token in the pseudonym namespace/);
     assert.match(exported.out, /--namespace X/);
     assert.equal(fs.readdirSync(out).filter((f) => f.endsWith('.zip')).length, 0, 'nothing may be written');
+  }],
+
+  // F81 — four classes shipped verbatim while the manifest asserted they were
+  // handled, which is the §F6b failure repeated in new shapes.
+  //
+  //   `0 secrets`      beside two live Bearer tokens (a `v2.…` API token and a
+  //                    Notion MCP upload JWT whose payload carries org UUIDs)
+  //   nothing at all   beside a Taiwan passport number, 13 occurrences
+  //   nothing at all   beside 8 people's Slack ids, 255 occurrences of one
+  //   `0 phone numbers` beside 12 numbers written the way humans write them
+  ['F81', 'bearer tokens, id numbers, account ids and formatted phones are entities', () => {
+    const bearer = 'v2.5lB0-QQOVaaaaaaaaaaaaaaaaaaaaaa';
+    const jwt = 'eyJwdXJwb3NlIjoibWNwX2ZpbGVfdXBsb2FkIn0.abcdefghijkl.';
+    const secrets = sweepSecrets([
+      `{"headers":{"Authorization":"Bearer ${bearer}"}}`,
+      `{"authorization":"Bearer ${jwt}"}`,
+      'curl -H "authorization: Bearer ' + jwt + '"',
+    ]);
+    assert.ok(secrets.includes(bearer), `the bearer token is a credential: ${secrets}`);
+    assert.ok(secrets.includes(jwt), 'so is the JWT');
+    assert.ok(!secrets.some((v) => v.startsWith('Bearer')), 'the word Bearer is not the secret');
+    // §F7: the word has to be there. A bare version string is not a token.
+    assert.deepEqual(sweepSecrets(['upgraded to v2.5lB0-QQOVaaaaaaaaaaaaaaaaaaaaaa yesterday']), []);
+
+    // An identity-document number, only where the words say what it is.
+    assert.deepEqual(sweepIdNumbers(['Taiwan passport No. 361234560   U.S. TIN: none']), ['361234560']);
+    assert.deepEqual(sweepIdNumbers(['passport number pending', 'the passport-viz project']), [],
+      'no number, no entity');
+    // §F7's own example: a passport-shaped regex matched a thermal-paste part
+    // number, and nothing here says "passport" beside it.
+    assert.deepEqual(sweepIdNumbers(['the part is M1019757 and it runs hot']), []);
+
+    // Account ids: stable join keys for a named person.
+    const ids = sweepPlatformIds([
+      'Participants: A (ID: U06ET0DWQM), B (ID: U06EVQ4GLB)  Channel: DM (ID: D06EVTZZ4J)',
+      'notes at app.notion.com/3290b700541e81a2a23fc0ee24eab375',
+    ]);
+    assert.ok(ids.includes('U06ET0DWQM') && ids.includes('D06EVTZZ4J'), `slack ids: ${ids}`);
+    assert.ok(ids.includes('3290b700541e81a2a23fc0ee24eab375'), 'the notion page id');
+    // A bare 32-hex string is every content hash in the corpus (§F7).
+    assert.deepEqual(sweepPlatformIds(['sha 3290b700541e81a2a23fc0ee24eab375 of the blob']), []);
+
+    // Phone numbers as they appear in a signature block, not in E.164.
+    const phones = sweepPhones([
+      'M: +1 (650) 665 4812',
+      'HK (+852) 5136 0512 / (+886) 976 570 312',
+      'office (650) 877-4012 or 801-401-9012',
+    ]);
+    for (const want of ['+1 (650) 665 4812', '(+852) 5136 0512', '(650) 877-4012', '801-401-9012']) {
+      assert.ok(phones.includes(want), `${want} survived: ${phones}`);
+    }
+    assert.deepEqual(sweepPhones(['built 2026-08-22 from 1.2.3', 'range 2024-2025']), [],
+      'a date is not a phone number');
+
+    // And an MCP name written in prose with no tool after it.
+    assert.ok(
+      sweepMcpNames(['see mcp__plugin_context7_context7__ for docs']).includes('plugin_context7_context7'),
+      'a bare mcp__NAME__ fragment is the same server name',
+    );
+
+    // Every new kind mints a token, or the entity is carried and never applied.
+    const seeded = buildEntities([
+      { kind: 'idnumber', canonical: '361234560', source: 'x', confidence: 'high' },
+      { kind: 'account', canonical: 'U06ET0DWQM', source: 'x', confidence: 'high' },
+    ]);
+    const assigned = assignPseudonyms(seeded, SALT, null).entities;
+    assert.deepEqual(assigned.map((e) => e.pseudonym.replace(/_\d+$/, '')), ['ACCOUNT', 'IDNUM']);
   }],
 ];
 

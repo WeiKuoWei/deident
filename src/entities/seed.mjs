@@ -13,7 +13,9 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { expandVariants, isCjkOnly } from './variants.mjs';
 
-export const KINDS = Object.freeze(['person', 'org', 'workspace', 'client', 'machine', 'secret', 'phone']);
+export const KINDS = Object.freeze([
+  'person', 'org', 'workspace', 'client', 'machine', 'secret', 'phone', 'idnumber', 'account',
+]);
 
 /**
  * @returns {Readonly<{entities: object[], warnings: string[]}>}
@@ -180,6 +182,35 @@ export function seedEntities(env, corpus, opts = {}) {
     add('phone', phone, 'phone number in session text');
   }
 
+  // --- Identity-document numbers, and only where the text says what they are.
+  //
+  // Measured on a real export: a Taiwan passport number shipped 13 times
+  // across 5 session files, arriving through a pdftotext tool_result of the
+  // uploader's own support pack. It was in no entity class and in no
+  // "NOT protected against" line, so a reader of the manifest had no way to
+  // know it was in the file.
+  //
+  // §F7 is why this is label-anchored and not shape-anchored: a
+  // passport-shaped regex matched M1019757, a thermal-paste part number. The
+  // number is taken only when the words beside it say it is an identity
+  // document, which is exactly how it arrives in a document a tool read aloud.
+  for (const id of sweepIdNumbers(opts.texts ?? [])) {
+    add('idnumber', id, 'identity-document number named in session text');
+  }
+
+  // --- Account identifiers of the services these sessions talk to.
+  //
+  // Measured on a real export: 8+ distinct Slack user ids (255 occurrences of
+  // the uploader's own), a DM channel id, a shared channel id, and five Notion
+  // page ids sharing one workspace prefix. §F5 seeds the residual scan with
+  // "any UUID that is not a known message or session uuid" and catches none of
+  // them, because none is UUID-shaped — the same gap §F5 names for
+  // cse_01SuFwJN. They are stable cross-corpus join keys for named people: the
+  // pair (pseudonym, Slack id) re-identifies someone whose name never appears.
+  for (const id of sweepPlatformIds(opts.texts ?? [])) {
+    add('account', id, 'account or workspace id in session text');
+  }
+
   // --- The numeric owner id beside the username in `ls -l` output. §F3 says in
   // terms that the stable Windows UID "is itself an identifier"; nothing
   // produced one, and it survived 786 times in a real export, in the exact
@@ -245,20 +276,64 @@ const SECRET_RE = new RegExp(
   'g',
 );
 
+// A token presented after `Bearer ` in an Authorization header is a credential
+// whatever vendor minted it.
+//
+// Measured on a real export: two live credentials shipped verbatim while the
+// manifest printed `0 secrets`. One was a `Bearer v2.…` API token; one was a
+// Notion MCP upload JWT whose base64 payload decodes to a purpose, a file
+// upload id, a bot id and a space id — so it also carries org UUIDs and
+// defeats §F5's UUID residue check. Neither matches any vendor prefix above.
+//
+// This is the §F7 precision profile rather than an entropy heuristic: the word
+// `Bearer` immediately before it is the evidence, and `Bearer` followed by 20
+// or more token characters does not occur by accident. Only the token is
+// captured, so the word stays and a reader can still see a header was there.
+const BEARER_RE = /[Bb]earer[ ]+([A-Za-z0-9][A-Za-z0-9._~+/=-]{19,})/g;
+
+// A JSON Web Token anywhere, header included: `eyJ` is base64 of `{"`. Three
+// dot-separated base64url runs is not a shape ordinary prose produces.
+const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]*/g;
+
+// An identity-document number, taken only where the words beside it say what
+// it is. The digit floor is what keeps `U.S. TIN: none` out.
+const ID_NUMBER_RE = new RegExp(
+  '(?:passport|national id|identity card|id card|driver.?s licen[sc]e|social security|ssn|u[.]?s[.]? tin|tax id)' +
+    '[ ]*(?:no[.]?|number|#|card)?[ ]*[:：]?[ ]*([A-Za-z0-9-]{6,14})(?![A-Za-z0-9])',
+  'gi',
+);
+const ID_NUMBER_MIN_DIGITS = 5;
+
+// Slack object ids (user, bot, channel, DM, group, team) and Notion page ids.
+//
+// Slack's shape is a kind letter, a `0`, then 7-9 uppercase alphanumerics.
+// Notion's is a bare 32-hex id, taken ONLY after a notion host, because 32 hex
+// characters on their own are every content hash in the corpus (§F7).
+const SLACK_ID_RE = /(?<![A-Za-z0-9])[UWBCDGT]0[0-9A-Z]{7,9}(?![A-Za-z0-9])/g;
+const NOTION_ID_RE = /(?:app[.]notion[.]com|notion[.]so)[/](?:[A-Za-z0-9-]*-)?([0-9a-f]{32})/g;
+
 // The only form an MCP tool name takes in these logs. The name itself may
 // contain single underscores (`claude_ai_Gmail`); the separator is a double.
 const MCP_TOOL_RE = /mcp__([A-Za-z0-9][A-Za-z0-9_-]*?)__[A-Za-z0-9]/g;
+
+// The same name written in prose without a tool after it — `mcp__plugin_
+// context7_context7__` on its own. Measured: three such fragments survived a
+// real export after 2,864 complete names had been replaced, because no
+// seeded spelling matched a name with nothing following the closing pair.
+const MCP_BARE_RE = /mcp__([A-Za-z0-9][A-Za-z0-9_-]{2,})__(?![A-Za-z0-9])/g;
 
 /** Distinct MCP server names appearing in `texts`, from the tool-name form. */
 export function sweepMcpNames(texts) {
   const found = new Set();
   for (const text of texts) {
     if (typeof text !== 'string' || !text.includes('mcp__')) continue;
-    MCP_TOOL_RE.lastIndex = 0;
     let m;
-    while ((m = MCP_TOOL_RE.exec(text)) !== null) {
-      if (m[1].length >= 3) found.add(m[1]);
-      if (found.size > 200) return [...found];
+    for (const re of [MCP_TOOL_RE, MCP_BARE_RE]) {
+      re.lastIndex = 0;
+      while ((m = re.exec(text)) !== null) {
+        if (m[1].length >= 3) found.add(m[1]);
+        if (found.size > 200) return [...found];
+      }
     }
   }
   return [...found];
@@ -267,20 +342,83 @@ export function sweepMcpNames(texts) {
 /** Distinct credential-shaped strings in `texts`. */
 export function sweepSecrets(texts) {
   const found = new Set();
+  const sweep = (text, re, group) => {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const value = group === 0 ? m[0] : m[group];
+      if (typeof value === 'string' && value.length > 0) found.add(value);
+      if (found.size > 1000) return true;
+    }
+    return false;
+  };
   for (const text of texts) {
     if (typeof text !== 'string') continue;
-    SECRET_RE.lastIndex = 0;
+    if (sweep(text, SECRET_RE, 0)) break;
+    if (/earer/.test(text) && sweep(text, BEARER_RE, 1)) break;
+    if (text.includes('eyJ') && sweep(text, JWT_RE, 0)) break;
+  }
+  return [...found];
+}
+
+/** Distinct identity-document numbers named as such in `texts`. */
+export function sweepIdNumbers(texts) {
+  const found = new Set();
+  for (const text of texts) {
+    if (typeof text !== 'string') continue;
+    ID_NUMBER_RE.lastIndex = 0;
     let m;
-    while ((m = SECRET_RE.exec(text)) !== null) {
-      found.add(m[0]);
-      if (found.size > 1000) return [...found];
+    while ((m = ID_NUMBER_RE.exec(text)) !== null) {
+      // "U.S. TIN: none" and "passport number pending" carry no number.
+      if ((m[1].match(/[0-9]/g) ?? []).length < ID_NUMBER_MIN_DIGITS) continue;
+      found.add(m[1]);
+      if (found.size > 200) return [...found];
     }
   }
   return [...found];
 }
 
-const PHONE_RE = /\+[1-9][0-9]{0,3}[-. ]?(?:[0-9][-. ]?){6,13}[0-9]/g;
+/** Distinct Slack and Notion object ids in `texts`. */
+export function sweepPlatformIds(texts) {
+  const found = new Set();
+  for (const text of texts) {
+    if (typeof text !== 'string') continue;
+    SLACK_ID_RE.lastIndex = 0;
+    let m;
+    while ((m = SLACK_ID_RE.exec(text)) !== null) {
+      found.add(m[0]);
+      if (found.size > 1000) return [...found];
+    }
+    if (text.includes('notion')) {
+      NOTION_ID_RE.lastIndex = 0;
+      while ((m = NOTION_ID_RE.exec(text)) !== null) {
+        found.add(m[1]);
+        if (found.size > 1000) return [...found];
+      }
+    }
+  }
+  return [...found];
+}
+
+const PHONE_RE = /[+][1-9][0-9]{0,3}[-. ]?(?:[0-9][-. ]?){6,13}[0-9]/g;
 const SEPARATOR_RE = /[-. ]/;
+
+// The forms humans actually write, which E.164 never matches.
+//
+// Measured on a real export: 12 distinct numbers survived beside a printed
+// `0 phone numbers   103 replaced (36 distinct)`, including the uploader's own
+// mobile in a resume header. Every one came out of a signature block or a
+// contact table: `(+852) 5136 0512`, `M: +1 (650) 665 4812`, `(650) 877-4012`,
+// `801-401-9012`. §F6b required a leading `+`, a country code and 8-15 digits
+// CONTIGUOUSLY, so it fired only on the one form that does not appear in a
+// signature block.
+//
+// Two shapes, both §F7-precise:
+//   1. a parenthesised country or area code, which prose does not produce;
+//   2. a bare 3-3-4 with a consistent `-` or `.` separator, bounded so a date
+//      (2026-08-22) and a longer digit run cannot match.
+const PHONE_PAREN_RE = /(?:[+][0-9]{1,3}[ ]?)?[(][+]?[0-9]{1,4}[)][ ]?[0-9]{2,4}(?:[ .-][0-9]{2,4}){1,3}/g;
+const PHONE_DASHED_RE = /(?<![0-9-.])[0-9]{3}([-.])[0-9]{3}\1[0-9]{4}(?![0-9-.])/g;
 
 /**
  * Distinct E.164-shaped phone numbers in `texts`.
@@ -292,18 +430,25 @@ const SEPARATOR_RE = /[-. ]/;
 export function sweepPhones(texts) {
   const newline = String.fromCharCode(10);
   const found = new Set();
-  for (const text of texts) {
-    if (typeof text !== 'string' || !text.includes('+')) continue;
-    PHONE_RE.lastIndex = 0;
+  const take = (text, re, min, max) => {
+    re.lastIndex = 0;
     let m;
-    while ((m = PHONE_RE.exec(text)) !== null) {
+    while ((m = re.exec(text)) !== null) {
       const digits = m[0].replace(/[^0-9]/g, '').length;
-      if (digits < 8 || digits > 15) continue;
+      if (digits < min || digits > max) continue;
       const atLineStart = m.index === 0 || text[m.index - 1] === newline;
       if (atLineStart && !SEPARATOR_RE.test(m[0])) continue;
       found.add(m[0]);
-      if (found.size > 1000) return [...found];
+      if (found.size > 1000) return true;
     }
+    return false;
+  };
+  for (const text of texts) {
+    if (typeof text !== 'string') continue;
+    if (text.includes('+') && take(text, PHONE_RE, 8, 15)) break;
+    if (text.includes('(') && take(text, PHONE_PAREN_RE, 8, 15)) break;
+    // Exactly ten digits: a 3-3-4 run of any other length is not this shape.
+    if (take(text, PHONE_DASHED_RE, 10, 10)) break;
   }
   return [...found];
 }
@@ -390,6 +535,9 @@ export function buildEntities(collected) {
  * The CJK length rule is BRIEF §4.5's second half and is a fixture (F03).
  */
 export function rejectReason(canonical) {
+  if (typeof canonical !== 'string' || canonical.trim().length === 0) {
+    return 'blank: a spelling of whitespace matches every space in the corpus';
+  }
   if (isCjkOnly(canonical) && [...canonical].length < 2) {
     return 'single-character CJK entity: the lookaround boundary cannot stop it over-matching inside a longer word (BRIEF §4.5)';
   }

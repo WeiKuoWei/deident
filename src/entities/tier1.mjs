@@ -34,7 +34,9 @@ export const ENTITIES_FILENAME = 'deident-entities.json';
 // mislabel it or to drop the whole session, and dropping sessions is what
 // took that archive from 35 to 17. It also makes the manifest's `secrets`
 // row mean something, since that row counts this kind.
-const VALID_KINDS = Object.freeze(['person', 'org', 'client', 'workspace', 'machine', 'secret']);
+const VALID_KINDS = Object.freeze([
+  'person', 'org', 'client', 'workspace', 'machine', 'secret', 'idnumber', 'account',
+]);
 
 const HEADER = `# deident tier-1 candidates
 #
@@ -187,6 +189,10 @@ export function readEntities(filePath) {
     if (spellings === null || spellings.length === 0) throw badEntity(at, 'has no spellings');
     for (const s of spellings) {
       if (typeof s !== 'string' || s.length === 0) throw badEntity(at, 'has a non-string spelling');
+      // A whitespace-only spelling passed both the non-string test and the
+      // empty test, and three spaces are three characters, so rejectReason let
+      // it through as well. It substitutes every run of three spaces.
+      if (s.trim().length === 0) throw badEntity(at, 'has a blank spelling');
     }
 
     const canonical = spellings[0];

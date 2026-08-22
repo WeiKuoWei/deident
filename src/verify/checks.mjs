@@ -149,11 +149,22 @@ export function checkSemanticPass(tier1) {
   // because an empty list passes I6 while delivering nothing" — and then a
   // deliberately empty one did precisely that, printing
   // `semantic pass  --entities empty.json · 0 entities  ok` beside a real zip.
-  const delivered = ran && tier1.entities.length > 0;
+  //
+  // And USABLE entities, not declared ones. A list of one entity whose only
+  // spelling is `  ` or `a` printed `semantic pass  --entities blank.json ·
+  // 1 entities  ok` and shipped a zip: the spelling is rejected downstream by
+  // rejectReason, so nothing was substituted, but the gate only counted the
+  // array. A list whose every entry is rejected is not a semantic pass, for
+  // the same reason an empty list is not — and BRIEF §3 makes this gate the
+  // reason the tool can claim safety at all.
+  const usable = ran ? tier1.entities.filter((e) => !e.rejected && e.spellings.length > 0).length : 0;
+  const delivered = ran && usable > 0;
   return Object.freeze({
     name: 'semantic pass',
     ok: delivered,
-    detail: ran ? `${tier1.source} · ${tier1.entities.length} entities` : 'did not run',
+    detail: ran
+      ? `${tier1.source} · ${usable} entities${usable === tier1.entities.length ? '' : ` (${tier1.entities.length - usable} rejected)`}`
+      : 'did not run',
     why: ran && !delivered ? 'empty' : 'absent',
     tier1,
   });
@@ -161,9 +172,11 @@ export function checkSemanticPass(tier1) {
 
 export function semanticRefusal(candidatesPath, why = 'absent') {
   if (why === 'empty') {
-    return new RefusalError('the entity list is empty, which is not a semantic pass', {
+    return new RefusalError('the entity list has no usable entity, which is not a semantic pass', {
       why: [
-        'A list with no entities is indistinguishable from a pass that never ran,',
+        'Every entry was empty or rejected, which is indistinguishable from a pass',
+        'that never ran, and is exactly what a list of blank or one-character',
+        'spellings produces.',
         'and it is exactly the file an interrupted discovery run leaves behind.',
         'BRIEF §3: graceful degradation here is silent failure.',
         '',

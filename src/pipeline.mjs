@@ -869,6 +869,12 @@ function buildManifest(retained, decisions, serialized, residue, entities) {
       // 93-character token was in the archive.
       { label: 'secrets', suppressed: `${num(occurrencesOf('secret'))} replaced (${num(distinctOf('secret'))} distinct)` },
       { label: 'phone numbers', suppressed: `${num(occurrencesOf('phone'))} replaced (${num(distinctOf('phone'))} distinct)` },
+      // cli-ux §6's shape: a zero where a zero is the point, with the
+      // suppressed count beside it. Both classes shipped verbatim before they
+      // existed — a Taiwan passport number 13 times, 8 people's Slack ids 255
+      // times — with nothing in the manifest naming either.
+      { label: 'identity numbers', suppressed: `${num(occurrencesOf('idnumber'))} replaced (${num(distinctOf('idnumber'))} distinct)` },
+      { label: 'account ids', suppressed: `${num(occurrencesOf('account'))} replaced (${num(distinctOf('account'))} distinct)` },
     ]),
     // Counters, not zeros: a row reading `0 dropped by cwd  3 lines outside an
     // included directory` asserts a number and then contradicts it.

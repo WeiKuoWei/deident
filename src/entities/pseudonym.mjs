@@ -25,6 +25,8 @@ export const NAMESPACE_PREFIXES = Object.freeze([
   'MACHINE',
   'SECRET',
   'PHONE',
+  'IDNUM',
+  'ACCOUNT',
 ]);
 
 const KIND_TO_PREFIX = Object.freeze({
@@ -35,6 +37,8 @@ const KIND_TO_PREFIX = Object.freeze({
   machine: 'MACHINE',
   secret: 'SECRET',
   phone: 'PHONE',
+  idnumber: 'IDNUM',
+  account: 'ACCOUNT',
 });
 
 /**
