@@ -1,0 +1,18 @@
+# Never commit exported material or the salt.
+*.zip
+*.diff
+out/
+exports/
+.deident-private/
+salt
+
+# Real session logs must never enter the repo, even as fixtures.
+*.jsonl
+!test/fixtures/**/*.jsonl
+
+node_modules/
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
