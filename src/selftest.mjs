@@ -1769,7 +1769,8 @@ const FIXTURES = [
     // And so is the cost of the cwd-less rule: §C3 kept last-prompt because it
     // carries user text found nowhere else, so dropping one is not free and is
     // not reported as free.
-    assert.match(exported.out, /records dropped: no cwd of their own/);
+    assert.match(exported.out, /records dropped: they replay text typed inside an excluded/);
+    assert.match(exported.out, /last-prompt \(1\)/, 'and the class is named, not just a total');
     // The trust block never asserts a number and then contradicts it.
     assert.doesNotMatch(exported.out, /0 dropped by cwd/);
   }],
@@ -2719,6 +2720,70 @@ const FIXTURES = [
     );
     assert.equal(fine.record.message.content[0].input.file_path, 'C:/w/src/index.mjs');
     assert.equal(ctx.stats.deniedBlocks, 2);
+  }],
+
+  // F84 — the cwd-less gate destroyed two whole record classes and never said
+  // so. Measured over the 39 sessions a default-shaped run exports: 2,162
+  // last-prompt and 613 queue-operation records dropped, 0 kept, 872 of those
+  // texts (135,668 characters) appearing nowhere else in their own session —
+  // and 0 of 6,976 `mode` records in the corpus carry a cwd, so every one went
+  // too, while the manifest prints privacy-tiers' "session count, work mode
+  // and outcome only" verbatim.
+  //
+  // Claude Code is launched from the home directory, scan proposes that
+  // workspace `exclude`, and BRIEF §4.8 already measured that one session
+  // spans many cwds — so `touchedExcluded` was true for 39 of 39 sessions.
+  ['F84', 'a cwd-less record is dropped only when it replays excluded text', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const dir = path.join(root, 'projects', 'ws');
+    const sid = '66666666-6666-4666-8666-666666666666';
+    const KEPT = 'THIS-PROMPT-WAS-TYPED-IN-THE-ALLOWED-DIRECTORY-AND-MUST-SURVIVE';
+    fs.writeFileSync(
+      path.join(dir, `${sid}.jsonl`),
+      [
+        // one line inside the denied directory, so touchedExcluded is true
+        JSON.stringify({
+          type: 'user', uuid: '00000000-0000-4000-8000-000000000911', sessionId: sid,
+          timestamp: '2026-08-20T10:00:00.000Z', cwd: corpus.denied,
+          message: { role: 'user', content: [{ type: 'text', text: corpus.private }] },
+        }),
+        JSON.stringify({
+          type: 'user', uuid: '00000000-0000-4000-8000-000000000912', sessionId: sid,
+          timestamp: '2026-08-20T10:01:00.000Z', cwd: corpus.cwd,
+          message: { role: 'user', content: [{ type: 'text', text: KEPT }] },
+        }),
+        // cwd-less, replays the ALLOWED prompt: it must survive.
+        JSON.stringify({ type: 'last-prompt', sessionId: sid, timestamp: '2026-08-20T10:02:00.000Z', lastPrompt: KEPT }),
+        // cwd-less, replays the DENIED prompt: it must not.
+        JSON.stringify({ type: 'queue-operation', sessionId: sid, timestamp: '2026-08-20T10:03:00.000Z', operation: 'add', content: corpus.private }),
+        // cwd-less and carries no text at all: work mode must reach the zip.
+        JSON.stringify({ type: 'mode', sessionId: sid, mode: 'plan' }),
+      ].join(NL) + NL,
+      'utf8',
+    );
+
+    runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    const exported = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(exported.code, 0, exported.out);
+    const bytes = readZip(path.join(out, fs.readdirSync(out).find((f) => f.endsWith('.zip'))))
+      .map((e) => e.data)
+      .join(NL);
+
+    assert.ok(bytes.includes(KEPT), 'a prompt typed in the allowed directory must survive');
+    assert.ok(!bytes.includes(corpus.private), 'a prompt replaying denied text must not');
+    const types = new Set(
+      bytes.split(NL).filter((l) => l.trim() !== '').map((l) => JSON.parse(l).type),
+    );
+    assert.ok(types.has('last-prompt'), `last-prompt must not be a class at zero: ${[...types]}`);
+    assert.ok(types.has('mode'), 'privacy-tiers count-only promises work mode, so mode must ship');
+    assert.ok(!types.has('queue-operation'), 'the replayed one is the only one dropped');
   }],
 ];
 

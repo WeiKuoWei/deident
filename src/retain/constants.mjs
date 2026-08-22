@@ -53,6 +53,17 @@ export const MIN_ENTITY_LENGTH = 3;
 /** Minimum codepoint length for a CJK-only entity (BRIEF §4.5). */
 export const MIN_CJK_ENTITY_CODEPOINTS = 2;
 
+/**
+ * How long a string has to be before it counts as "the same text".
+ *
+ * A cwd-less record (last-prompt, queue-operation, mode) is dropped only when
+ * it REPLAYS something authored inside an excluded directory, and the test for
+ * that is an exact string match against the excluded lines. Short strings are
+ * useless for it: `"user"`, `"text"` and every JSON key appear on both sides,
+ * so a floor is what keeps the test from matching everything.
+ */
+export const MIN_REPLAY_MATCH_CHARS = 40;
+
 /** How many example occurrences a refusal or a review row prints. */
 export const EXAMPLES_PER_REPORT = 5;
 

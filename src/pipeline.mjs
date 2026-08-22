@@ -63,7 +63,7 @@ import {
 } from './verify/checks.mjs';
 import { writeZip, safeUnlink } from './output/zip.mjs';
 import { writePreview } from './output/preview.mjs';
-import { EXAMPLES_PER_REPORT } from './retain/constants.mjs';
+import { EXAMPLES_PER_REPORT, MIN_REPLAY_MATCH_CHARS } from './retain/constants.mjs';
 
 // ------------------------------------------------------------------- scan
 
@@ -570,6 +570,7 @@ function retainCorpus(
     sessions: 0,
     emptiedSessions: 0,
     droppedCwdless: 0,
+    droppedCwdlessByType: new Map(),
     unreadableRecords: 0,
     unknownTypes: new Map(),
     workspaces: new Set(),
@@ -618,6 +619,42 @@ function retainCorpus(
       (cwd) => !allowLine(cwd, { cwdTiers, allowDenyTokenFor }).allow,
     );
 
+    // ...but only the ones that actually replay it.
+    //
+    // Dropping EVERY cwd-less keep-record destroyed two whole record classes.
+    // Measured over the 39 sessions a default-shaped run exports: 2,162
+    // last-prompt and 613 queue-operation records dropped, 0 kept, and 872 of
+    // those texts (135,668 characters) appear nowhere else in their own
+    // session. Under the most permissive policy the tool supports it still
+    // cost 1,006 and 227. PLAN C2/C3 measure these at 70.3% and 32.2% unique
+    // and the Framing axis is scored from exactly this text, so a class
+    // reduced to zero is not a conservative choice, it is a silent one — the
+    // manifest said only "3,784 records dropped" and "5,821 user messages",
+    // which reads as though the user prose is intact.
+    //
+    // `mode` was worse: 6,976 of them in the corpus, 0 carrying a cwd, so
+    // every one went — and docs/privacy-tiers.md defines the count-only tier
+    // as "session count, work mode and outcome only", which the export
+    // manifest prints verbatim while shipping no work mode at all.
+    //
+    // The real hazard is narrower than the rule: a record that REPLAYS text
+    // typed inside an excluded directory. That is testable rather than
+    // guessable, so it is tested. Everything else is kept.
+    const excludedTexts = touchedExcluded ? new Set() : null;
+    if (excludedTexts !== null) {
+      const strings = [];
+      for (let i = 0; i < session.records.length; i += 1) {
+        if (allowLine(lineCwds[i], { cwdTiers, allowDenyTokenFor }).allow) continue;
+        collectStrings(session.records[i].value, strings);
+      }
+      for (const text of strings) {
+        if (text.length >= MIN_REPLAY_MATCH_CHARS) {
+          excludedTexts.add(text);
+          excludedTexts.add(text.trim());
+        }
+      }
+    }
+
     for (let i = 0; i < session.records.length; i += 1) {
       const verdict = allowLine(lineCwds[i], { cwdTiers, allowDenyTokenFor });
       if (!verdict.allow) {
@@ -631,12 +668,15 @@ function retainCorpus(
       // those here reported 9,086 "dropped records" on the real corpus where
       // the real cost was a fraction of that — a number that overstates its own
       // damage is as untrustworthy as one that hides it.
+      const type = session.records[i].value?.type;
       if (
         touchedExcluded &&
-        RETENTION_TABLE.topLevel[session.records[i].value?.type] === 'keep' &&
-        cwdChangeFrom(session.records[i].value) === null
+        RETENTION_TABLE.topLevel[type] === 'keep' &&
+        cwdChangeFrom(session.records[i].value) === null &&
+        replaysExcluded(session.records[i].value, excludedTexts)
       ) {
         stats.droppedCwdless += 1;
+        stats.droppedCwdlessByType.set(type, (stats.droppedCwdlessByType.get(type) ?? 0) + 1);
         continue;
       }
       let result;
@@ -697,6 +737,27 @@ function retainCorpus(
     cwds: Object.freeze(cwds),
     stats,
   });
+}
+
+/**
+ * Does this cwd-less record carry text that was authored inside an excluded
+ * directory?
+ *
+ * The measured hazard: prose authored only inside a `private` subdirectory
+ * was replayed by three later last-prompt records sitting one level up, at
+ * the ordinary workspace directory. They passed the gate and shipped.
+ * A record that replays
+ * text has that text in it, so the test is an exact match against the strings
+ * on the excluded lines — no attribution guess required.
+ */
+function replaysExcluded(record, excludedTexts) {
+  if (excludedTexts === null || excludedTexts.size === 0) return false;
+  const strings = collectStrings(record, []);
+  for (const text of strings) {
+    if (text.length < MIN_REPLAY_MATCH_CHARS) continue;
+    if (excludedTexts.has(text) || excludedTexts.has(text.trim())) return true;
+  }
+  return false;
 }
 
 /**
@@ -880,6 +941,11 @@ function buildManifest(retained, decisions, serialized, residue, entities) {
     // included directory` asserts a number and then contradicts it.
     droppedByCwd: s.droppedByCwd,
     droppedCwdless: s.droppedCwdless ?? 0,
+    droppedCwdlessByType: Object.freeze(
+      [...(s.droppedCwdlessByType ?? new Map())]
+        .sort((a, b) => b[1] - a[1])
+        .map(([type, count]) => Object.freeze({ type, count })),
+    ),
     emptiedSessions: s.emptiedSessions ?? 0,
     unknownTypes: Object.freeze(
       [...(s.unknownTypes ?? new Map())].map(([type, count]) => Object.freeze({ type, count })),

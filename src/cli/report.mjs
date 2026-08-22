@@ -198,8 +198,14 @@ export function renderManifest(m) {
     // to a turn, and §C3 kept these types precisely because they carry user
     // text found nowhere else — which is what makes guessing them expensive.
     // Reported rather than dropped quietly, because the cost is real.
-    say(`    ${n(m.droppedCwdless)} records dropped: no cwd of their own, in a session that`);
-    say('      worked inside an excluded directory');
+    // Named by CLASS, not as one anonymous number. PLAN C2/C3 measure
+    // queue-operation and last-prompt as carrying user text found nowhere else
+    // 70.3% and 32.2% of the time, and the Framing axis is scored from exactly
+    // that text — so "3,784 records dropped" beside "5,821 user messages" read
+    // as though the user prose was intact while two classes were at zero.
+    const byType = (m.droppedCwdlessByType ?? []).map((t) => `${t.type} (${n(t.count)})`).join(', ');
+    say(`    ${n(m.droppedCwdless)} records dropped: they replay text typed inside an excluded`);
+    say(`      directory and carry no cwd of their own${byType ? `  —  ${byType}` : ''}`);
   }
   if (m.emptiedSessions > 0) {
     // A session that retained nothing used to vanish with no counter at all, so
