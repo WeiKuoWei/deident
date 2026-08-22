@@ -61,15 +61,40 @@ it can read, and the person corrects the rows that are wrong.
 
 | Signal | Proposed tier |
 |---|---|
-| directory name or any per-line `cwd` matches the deny-list (`private`, `identity`, `payroll`, `redacted-name`, `health`, `medical`, `tax`, `finance-personal`) | `exclude` |
-| no git remote, and not under the projects root | `exclude` |
+| the workspace directory name matches the deny-list (`private`, `identity`, `payroll`, `redacted-name`, `health`, `medical`, `tax`, `finance-personal`) | `exclude` |
+| no git remote | `exclude` |
 | git remote is a public repository | `open` |
 | git remote org is not one the user belongs to | `redact` (third-party work) |
 | git remote in the user's own org, private | `redact` |
-| anything else, including every newly seen workspace | **`exclude`** |
+| no `cwd` was ever recorded, so no signal could be read | `unclassified` |
 
-The last row is the important one. **Unclassified fails closed.** A new repo
-appearing between exports is never swept in by default.
+**Unclassified fails closed**, and it is the residue rather than the default. A
+default of unclassified is not a conservative choice, it is 29 questions, and a
+person facing 29 questions answers none of them. Every row that carries a
+readable signal gets a proposal and the person corrects the ones that are wrong.
+
+Three notes on what the table can and cannot do, measured while implementing it
+(2026-08-22, Ray's corpus, 43 workspaces).
+
+**`open` is never proposed.** Repository visibility is not on disk. A remote URL
+says nothing about who may read it, and BRIEF §2 forbids the network call that
+would answer it. `open` is the *weaker* tier (§5), so a wrong guess leaks. Every
+remote is therefore proposed `redact`, and the row says so, which also removes
+any need to work out whether the remote's org is one the user belongs to: both
+of those rows were `redact` anyway.
+
+**The deny-list is read from the workspace's own directory, not from every line
+that passed through it.** Applying it to any per-line `cwd` was tried and
+reverted: it excluded the home directory, `ops-handover` and
+`personal-finance` outright, and labelled the last of those `deny-list matched:
+"redacted-name"`, which is not true of that workspace. §4 below has three levels for
+exactly this reason. The wandering line is caught by level 2, twice over: by its
+own deny token, and because the directory it moved into is itself an excluded
+workspace.
+
+**"Not under the projects root" was dropped from the second row.** It changed
+nothing: a directory with no remote proposes `exclude` whether or not it sits
+under `~/projects`, so the clause only added a machine-specific concept.
 
 The answers are stored at `~/.deident-private/workspaces.json` and reused, so the
 review happens once rather than every export. A workspace whose signals change
@@ -86,7 +111,11 @@ of them, inside a session whose directory slug looked unremarkable. The agent
 So three levels of granularity are all required, and each catches what the level
 above it misses:
 
-1. **Workspace tier** — the coarse decision, made once, remembered.
+1. **Workspace tier** — the coarse decision, made once, remembered. The
+   workspace is the directory the sessions actually worked in, taken from their
+   `cwd` records. It is not the storage slug: 214 of 224 real sessions were
+   launched from the home directory and share one slug, so a slug-shaped
+   workspace would have put 95% of the corpus behind a single decision.
 2. **Per-line `cwd` filter** — catches private subdirectories reached mid-session.
    Already in slice 1.
 3. **Per-session drop, after preview** — the escape hatch. The preview lists each
