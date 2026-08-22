@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { expandVariants, looseVariants, isCjkOnly } from './variants.mjs';
+import { homeDir } from '../corpus/root.mjs';
 
 export const KINDS = Object.freeze([
   'person', 'org', 'workspace', 'client', 'machine', 'secret', 'phone', 'idnumber', 'account',
@@ -40,8 +41,9 @@ export function seedEntities(env, corpus, opts = {}) {
   }
 
   // --- Home directory as a path root, separate from the bare username.
-  const home = os.homedir();
+  const home = homeDir(env);
   if (home) add('workspace', home, 'home directory');
+  else warnings.push('no home directory in this environment; the home path was not seeded');
 
   // --- git identity. Failure is non-fatal (PLAN §4.2: git absent -> exit 0).
   const gitName = gitConfig('user.name', warnings);
@@ -650,9 +652,14 @@ export function parseRemote(url) {
  * or unreadable file is a warning, never a throw (BRIEF §2).
  */
 function mcpServerNames(env, warnings) {
-  const configDir = env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
+  const home = homeDir(env);
+  const configDir = env.CLAUDE_CONFIG_DIR ?? (home === null ? null : path.join(home, '.claude'));
+  if (configDir === null) {
+    warnings.push('no home directory and no CLAUDE_CONFIG_DIR; MCP server names were not seeded');
+    return [];
+  }
   const candidates = [
-    path.join(os.homedir(), '.claude.json'),
+    ...(home === null ? [] : [path.join(home, '.claude.json')]),
     path.join(configDir, 'settings.json'),
     path.join(configDir, '.mcp.json'),
   ];

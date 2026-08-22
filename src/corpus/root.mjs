@@ -13,6 +13,46 @@ import { RefusalError } from '../cli/errors.mjs';
  * report which subdirectory a live session would be writing into; it never
  * becomes a parse target (§4.9).
  */
+/**
+ * The home directory, or null. NEVER throws.
+ *
+ * `os.homedir()` throws `uv_os_homedir returned ENOENT` when HOME and
+ * USERPROFILE are both empty, and it was called unguarded from resolveRoot and
+ * from defaultSaltDir — so `HOME= USERPROFILE= deident scan` printed
+ * `internal error … This is a bug in deident, not a problem with your data`
+ * and told the user to file an issue about their own environment. It is an
+ * environment, it has a remedy, and the remedy is a flag.
+ */
+export function homeDir(env = process.env) {
+  for (const name of ['HOME', 'USERPROFILE']) {
+    const value = env?.[name];
+    if (typeof value === 'string' && value.trim() !== '') return value;
+  }
+  // Present but blank is a deliberate "no home", and it is exactly the state
+  // that makes os.homedir() throw. Absent from the object is not: fall back.
+  if (env && ('HOME' in env || 'USERPROFILE' in env)) return null;
+  try {
+    const home = os.homedir();
+    return typeof home === 'string' && home.trim() !== '' ? home : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The refusal for "there is no home directory and you did not name a path". */
+export function noHomeRefusal(what, flag) {
+  return new RefusalError(`no home directory, so deident cannot find ${what}`, {
+    why: [
+      'HOME and USERPROFILE are both empty or unset, so there is no default path.',
+      'This is the environment deident was started in, not a problem with your data.',
+    ],
+    remedies: [
+      { label: 'Name the path', command: `deident scan ${flag} <path>` },
+      { label: 'Or set the variable', command: 'HOME=<path>' },
+    ],
+  });
+}
+
 export function resolveRoot(env, override = null) {
   // `??` does not treat '' as absent, and `path.resolve('')` is the current
   // directory — so a shell profile that exports CLAUDE_CONFIG_DIR
@@ -20,7 +60,11 @@ export function resolveRoot(env, override = null) {
   // `projects/` happens to sit there. An empty or whitespace-only value is not
   // a setting; it falls through to the default.
   const fromEnv = nonBlank(env.CLAUDE_CONFIG_DIR);
-  const configDir = nonBlank(override) ?? fromEnv ?? path.join(os.homedir(), '.claude');
+  const home = homeDir(env);
+  if (nonBlank(override) === null && fromEnv === null && home === null) {
+    throw noHomeRefusal('your session storage', '--root');
+  }
+  const configDir = nonBlank(override) ?? fromEnv ?? path.join(home, '.claude');
   return Object.freeze({
     configDir: path.resolve(configDir),
     projectsDir: path.resolve(configDir, 'projects'),

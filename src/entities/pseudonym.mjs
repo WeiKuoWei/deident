@@ -15,6 +15,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomBytes } from 'node:crypto';
 import { RefusalError } from '../cli/errors.mjs';
+import { homeDir, noHomeRefusal } from '../corpus/root.mjs';
 
 /** The four families the pseudonym namespace uses. */
 export const NAMESPACE_PREFIXES = Object.freeze([
@@ -123,7 +124,15 @@ function describeSalt(text) {
 }
 
 export function defaultSaltDir(env) {
-  return env.DEIDENT_SALT_DIR ?? path.join(os.homedir(), '.deident-private');
+  // nonBlank, not `??`, for the reason root.mjs gives about CLAUDE_CONFIG_DIR:
+  // an empty DEIDENT_SALT_DIR resolved the salt to `./salt` in the current
+  // directory. That failed safe only by accident (mkdirSync('') is ENOENT) and
+  // would have READ an existing `./salt` in preference to the real one.
+  const override = env.DEIDENT_SALT_DIR;
+  if (typeof override === 'string' && override.trim() !== '') return override;
+  const home = homeDir(env);
+  if (home === null) throw noHomeRefusal('the salt directory', '--salt-dir');
+  return path.join(home, '.deident-private');
 }
 
 /**

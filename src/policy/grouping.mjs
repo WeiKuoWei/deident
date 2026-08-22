@@ -14,8 +14,8 @@
 //   129 sessions genuinely worked in the home directory, 85 regroup into 44
 //   real project directories that each get their own signals and their own row.
 
-import os from 'node:os';
 import { dominantCwd, normalizeCwd } from '../corpus/cwdtrack.mjs';
+import { homeDir } from '../corpus/root.mjs';
 import { matchDenyToken } from './workspaces.mjs';
 
 /** Names for the two rows that are not a project directory. cli-ux §3. */
@@ -30,7 +30,9 @@ export const UNKNOWN_NAME = '<no-cwd>';
  *            isHome, unresolved, denyToken}
  */
 export function groupSessions(sessions, opts = {}) {
-  const homeNorm = normalizeCwd(opts.homedir ?? os.homedir());
+  // homeDir() rather than os.homedir(): an empty HOME must not throw here
+  // either. No home simply means no row is the home row.
+  const homeNorm = normalizeCwd(opts.homedir ?? homeDir() ?? '');
   const groups = new Map();
 
   for (const s of sessions) {
@@ -45,7 +47,7 @@ export function groupSessions(sessions, opts = {}) {
         sessionCount: 0,
         bytes: 0,
         sessionPaths: [],
-        isHome: dom !== null && dom.norm === homeNorm,
+        isHome: dom !== null && homeNorm !== '' && dom.norm === homeNorm,
         unresolved: dom === null,
         denyToken: dom === null ? null : matchDenyToken(dom.raw),
       };

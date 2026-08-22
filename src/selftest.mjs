@@ -58,8 +58,9 @@ import {
   pseudonymGuardPattern,
   pseudonymScanPattern,
   loadOrCreateSalt,
+  defaultSaltDir,
 } from './entities/pseudonym.mjs';
-import { buildZip } from './output/zip.mjs';
+import { buildZip, MAX_ENTRIES } from './output/zip.mjs';
 import { renderPreview } from './output/preview.mjs';
 import { parseReview, parseSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
 import { readEntities } from './entities/tier1.mjs';
@@ -2959,6 +2960,42 @@ const FIXTURES = [
     );
     assert.equal(keep.record.message.content[0].text, '1Password costs less than the team plan.');
     assert.equal(ctx.stats.deniedBlocks, 1, 'and it is not counted as denied');
+  }],
+
+  // F88 — three environment and format ceilings that each arrived as
+  // `internal error … This is a bug in deident, not a problem with your data`,
+  // which is the one shape BRIEF §2 forbids.
+  ['F88', 'an empty HOME and a full archive are named, not reported as bugs', () => {
+    // os.homedir() throws uv_os_homedir ENOENT when HOME and USERPROFILE are
+    // both empty, and it was called unguarded from resolveRoot and
+    // defaultSaltDir.
+    assert.throws(() => resolveRoot({ HOME: '', USERPROFILE: '' }), (err) => {
+      assert.ok(err instanceof RefusalError);
+      assert.match(err.reason, /no home directory/);
+      assert.match(err.remedies[0].command, /--root/);
+      return true;
+    });
+    // Naming a path is the remedy, so naming one has to work.
+    assert.equal(resolveRoot({ HOME: '', USERPROFILE: '' }, 'C:/w/cfg').configDir, path.resolve('C:/w/cfg'));
+    assert.throws(() => defaultSaltDir({ HOME: '', USERPROFILE: '' }), /no home directory/);
+    // An EMPTY DEIDENT_SALT_DIR is not a setting: `??` let it through and the
+    // salt resolved to ./salt in the current directory, where an existing file
+    // would have been read in preference to the real one.
+    assert.throws(() => defaultSaltDir({ HOME: '', USERPROFILE: '', DEIDENT_SALT_DIR: '  ' }), /no home directory/);
+    assert.equal(defaultSaltDir({ DEIDENT_SALT_DIR: 'C:/w/s' }), 'C:/w/s');
+
+    // The zip writer has no ZIP64 path: 65,535 entries is fine, 65,536 threw
+    // RangeError from inside buildZip.
+    const entry = (i) => ({ name: `sessions/w/${i}.jsonl`, data: 'x' });
+    const many = [];
+    for (let i = 0; i < MAX_ENTRIES + 1; i += 1) many.push(entry(i));
+    assert.throws(() => buildZip(many), (err) => {
+      assert.ok(err instanceof RefusalError, `expected a refusal, got ${err.name}: ${err.message}`);
+      assert.match(err.reason, /65,536 entries/);
+      assert.match(err.why.join(' '), /65,535/);
+      return true;
+    });
+    assert.ok(buildZip(many.slice(0, MAX_ENTRIES)).length > 0, 'the documented limit still works');
   }],
 ];
 

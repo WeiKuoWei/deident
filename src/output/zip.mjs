@@ -56,8 +56,33 @@ export function safeUnlink(p) {
   }
 }
 
+/**
+ * The ceiling of the format this writer emits.
+ *
+ * There is no ZIP64 path here: the entry count is a uint16 and the size and
+ * offset fields are uint32. 65,535 entries is fine and 65,536 threw
+ * `RangeError: The value of "value" is out of range` from inside buildZip,
+ * which reached the user as `internal error while running "export"` — the
+ * shape BRIEF §2 forbids. Not reachable on a 218-session corpus, but a limit
+ * that announces itself is a limit; one that throws is a bug.
+ */
+export const MAX_ENTRIES = 65_535;
+export const MAX_ARCHIVE_BYTES = 0xffffffff;
+
 /** Exported separately so the selftest can assert byte-identity without I/O. */
 export function buildZip(entries) {
+  if (entries.length > MAX_ENTRIES) {
+    throw new RefusalError(`this export has ${entries.length.toLocaleString('en-US')} entries`, {
+      why: [
+        `The archive format deident writes caps at ${MAX_ENTRIES.toLocaleString('en-US')} entries,`,
+        'and it has no ZIP64 path. Nothing was written.',
+      ],
+      remedies: [
+        { label: 'Export fewer workspaces', command: `deident scan   # then set tiers in review.md` },
+        { label: 'Or hold sessions back', command: 'set "drop" in the ## sessions section' },
+      ],
+    });
+  }
   const sorted = [...entries].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const locals = [];
   const centrals = [];
@@ -107,6 +132,16 @@ export function buildZip(entries) {
     centrals.push(central);
 
     offset += local.length + compressed.length;
+  }
+
+  if (offset > MAX_ARCHIVE_BYTES) {
+    throw new RefusalError('this export is larger than the archive format can address', {
+      why: [
+        `The uint32 size and offset fields cap the archive at 4 GB, and this one`,
+        `reached ${offset.toLocaleString('en-US')} bytes. Nothing was written.`,
+      ],
+      remedies: [{ label: 'Export fewer workspaces', command: 'deident scan   # then set tiers in review.md' }],
+    });
   }
 
   const centralBuf = Buffer.concat(centrals);
