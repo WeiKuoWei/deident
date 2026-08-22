@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import { expandVariants, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
 import { rejectReason, sweepEmails, projectShaped, basenameOf, buildEntities } from './entities/seed.mjs';
@@ -989,6 +991,42 @@ const FIXTURES = [
       false,
       'an unmatched line fails closed rather than silently defaulting to allow',
     );
+  }],
+
+  // F45 — a closed pipe is ordinary use, not a crash.
+  //
+  // `deident scan | head -0` closes stdout mid-write. The EPIPE arrives as an
+  // ASYNCHRONOUS 'error' event on the socket, so main()'s try/catch cannot see
+  // it and Node's default handler prints a V8 traceback. BRIEF §2 makes that a
+  // failed delivery. Run in a child process because the handler is attached to
+  // this process's real stdout at module load and cannot be faked in-process.
+  ['F45', 'a reader closing the pipe exits 0 with no traceback', () => {
+    const dir = tmpdir();
+    const driver = path.join(dir, 'pipe-driver.cjs');
+    fs.writeFileSync(
+      driver,
+      [
+        "const { spawn } = require('node:child_process');",
+        "const child = spawn(process.execPath, [process.env.DEIDENT_ENTRY, '--help'], {",
+        "  stdio: ['ignore', 'pipe', 'pipe'],",
+        '});',
+        'let err = "";',
+        "child.stdout.destroy();",
+        "child.stderr.on('data', (d) => { err += d; });",
+        "child.on('close', (code) => { process.stdout.write(JSON.stringify({ code, err })); });",
+      ].join('\n'),
+      'utf8',
+    );
+    const entry = fileURLToPath(new URL('../deident.mjs', import.meta.url));
+    const raw = execFileSync(process.execPath, [driver], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: { ...process.env, DEIDENT_ENTRY: entry },
+    });
+    const result = JSON.parse(raw);
+    assert.doesNotMatch(result.err, /Unhandled 'error' event|node:events/, 'no traceback may reach stderr');
+    assert.doesNotMatch(result.err, /EPIPE/, 'EPIPE must be swallowed, not reported');
+    assert.equal(result.code, 0, 'a closed pipe is exit 0, not a crash');
   }],
 ];
 

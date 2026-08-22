@@ -14,6 +14,27 @@ export const VERSION = '0.1.0';
 const OUT = [];
 let capturing = false;
 
+// A closed pipe is ordinary use, not a crash.
+//
+// `deident scan | head -0` closes stdout while we are still writing. The EPIPE
+// arrives as an ASYNCHRONOUS 'error' event on the stdout socket, so it never
+// passes through main()'s try/catch — a synchronous try/catch cannot catch it,
+// and Node's default handler turns it into a full V8 traceback. BRIEF §2: a
+// traceback on Ray's machine is a failed delivery.
+//
+// Attached here rather than in the entry point because this is the only module
+// that writes to either stream, so a future entry point cannot forget.
+let pipeClosed = false;
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (err) => {
+    if (err && (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED')) {
+      pipeClosed = true;
+      return;
+    }
+    throw err;
+  });
+}
+
 /** Capture printed output instead of writing it. Used by the selftest. */
 export function captureOutput(fn) {
   capturing = true;
@@ -32,7 +53,19 @@ function emit(stream, text) {
     OUT.push(text);
     return;
   }
-  stream.write(text + '\n');
+  if (pipeClosed) return;
+  try {
+    stream.write(text + '\n');
+  } catch (err) {
+    // The same failure can also arrive synchronously once the fd is gone.
+    if (err && (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED')) pipeClosed = true;
+    else throw err;
+  }
+}
+
+/** True once the reader closed the pipe. Exported so the selftest can pin it. */
+export function outputPipeClosed() {
+  return pipeClosed;
 }
 
 const say = (text = '') => emit(process.stdout, text);
