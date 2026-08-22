@@ -1,7 +1,7 @@
 <title>Deident Contact Sheet</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap">
 
 <style>
   /* Design tokens lifted from cohort-learning-dashboard
@@ -49,8 +49,15 @@
     --tracking-caps: 0.06em;
     --ease: 150ms ease-in-out;
 
-    --font-ui:   "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* The dashboard ships Geist. Swapped out here on Ray's instruction: it is
+       one of the faces every generated interface has converged on, and a tool
+       whose whole claim is that it is not doing the obvious thing should not
+       open in the obvious typeface. Schibsted Grotesk keeps the grotesque
+       skeleton the tokens assume, with terminals and a double-storey g that
+       read as chosen. Spline Sans Mono is the quiet companion the ledger
+       columns need. */
+    --font-ui:   "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
     --maxw: 1200px;
   }

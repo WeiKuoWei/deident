@@ -349,6 +349,13 @@ export async function runExport(flags, env) {
   const zipPath = path.join(outDir, `deident-export-${today()}.zip`);
   try {
     const written = writeZip(serialized.entries, zipPath);
+    // privacy-tiers 4 level 3 needs attribution: "this entry is that session".
+    // Without it the last look cannot act, because every id in the archive has
+    // already been rewritten and nothing on this machine says which is which.
+    // Local only, never an archive entry, and it maps ids to ids rather than
+    // pseudonyms to real names, so it is not a re-identification key for the
+    // data that left.
+    writeExportMap(serialized.entries, path.join(outDir, EXPORT_MAP_FILENAME));
     report.renderWrote(written.path, written.bytes, path.join(saltDir, 'salt'));
   } catch (err) {
     safeUnlink(zipPath);
@@ -370,6 +377,19 @@ export async function runExport(flags, env) {
  * opposite. A lost tier memo costs one re-edit of review.md, so it is a
  * warning, not a failure.
  */
+export const EXPORT_MAP_FILENAME = 'export-map.txt';
+
+/** Local `<session id>  <archive entry>` lines, one per exported session. */
+function writeExportMap(entries, outPath) {
+  const body = entries.map((e) => `${e.source ?? '?'}  ${e.name}`).join('\n');
+  try {
+    fs.writeFileSync(outPath, `${body}\n`, 'utf8');
+  } catch (err) {
+    // The zip is already on disk and valid; losing the map costs a re-run.
+    report.renderWarning(`could not write ${outPath} (${err.code ?? 'error'}: ${err.message})`);
+  }
+}
+
 function rememberDecisions(saltDir, decisions) {
   try {
     saveDecisions(saltDir, decisions);
@@ -712,7 +732,7 @@ export function serializeSessions(sessions, table, rewriteUuid) {
     );
     const id = rewriteUuid(s.file.sessionId) ?? s.file.sessionId;
     const name = `sessions/${sanitizeEntryName(entryDir(dir, s.workspace.key))}/${sanitizeEntryName(id)}.jsonl`;
-    entries.push({ name, data: body });
+    entries.push({ name, data: body, source: s.file.sessionId });
     parts.push(body, name, '\n');
   }
   return Object.freeze({ entries, allBytes: parts.join('') });
