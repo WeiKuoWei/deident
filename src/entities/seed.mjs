@@ -191,8 +191,23 @@ export function rejectReason(canonical) {
   if (canonical.length < 3 && !isCjkOnly(canonical)) {
     return 'shorter than 3 characters: too collision-prone to substitute safely';
   }
+  if (PATH_ROOT_RE.test(canonical)) return PATH_ROOT_REASON;
   return null;
 }
+
+// A bare filesystem root identifies nobody: every Windows machine has `C:\`.
+// It reaches the seed set because §4.8's per-line cwd can BE the drive root,
+// and `add('workspace', cwd)` does not know the difference.
+//
+// Measured on the real corpus (2026-08-22): one session ran with cwd `C:\`,
+// which seeded the variants `c:\` and `c:/`. In the SERIALIZED bytes the three
+// characters `c:\` occur inside ordinary Python and prose. `if r != c:` newline
+// serializes as `c:` followed by the escape `\n`, so the residual scan reported
+// 12 leaks that were not leaks, and the export was refused. §F7: a scan that
+// cries wolf is the first thing switched off.
+const PATH_ROOT_RE = /^(?:[A-Za-z]:[\\/]?|[\\/]+|\/[A-Za-z]\/?)$/;
+const PATH_ROOT_REASON =
+  'a bare filesystem root, not an identifier: every machine has one, and its escaping variants match ordinary text (§F7)';
 
 // ------------------------------------------------------------------ probes
 
@@ -294,5 +309,10 @@ export function basenameOf(cwd) {
 
 /** Looks like a project name rather than an ordinary English word. */
 export function projectShaped(name) {
+  // No letter at all means a version number or a date (`6.2.0`, `2026-08`),
+  // not a project. Seeding one substitutes every version string in the prose,
+  // which is §F7 over-substitution, and §F4 says leave the version sequence
+  // alone anyway. Non-ASCII names carry no ASCII letter and are kept.
+  if (!/[A-Za-z]/.test(name) && !/[^\x00-\x7F]/.test(name)) return false;
   return /[-_.0-9]/.test(name) || /[^\x00-\x7F]/.test(name);
 }
