@@ -181,7 +181,7 @@ function retainByType(rec, ctx, where) {
 
 function retainTurn(rec, ctx, where) {
   const msg = rec.message;
-  const content = msg && Array.isArray(msg.content) ? retainBlocks(msg.content, ctx, where) : [];
+  const content = retainMessageContent(msg, ctx, where);
 
   // A turn whose every block was dropped carries nothing. Keep it only when it
   // still has content or a distilled result — an empty shell is noise that the
@@ -212,6 +212,33 @@ function retainTurn(rec, ctx, where) {
     },
     toolUseResult: distilled,
   });
+}
+
+/**
+ * `message.content` is a block array OR a plain string, and the string form was
+ * silently dropped.
+ *
+ * Measured over all 225 depth-0 sessions: 3,323 `user` records carry
+ * `message.content` as a string, 2,871,417 characters of user-typed prompt
+ * text, none of them carrying a `toolUseResult` — so all 3,323 fell through to
+ * `records.length === 0` and were counted as "dropped" beside `permission-mode`
+ * and `ai-title`. 207 of the 225 files were affected, and two exported no user
+ * prose at all.
+ *
+ * I7 does not fire on this, because the record type and the block types are all
+ * known: it is the CONTAINER SHAPE that was unhandled, and an unhandled shape
+ * fell through to a silent drop rather than a refusal. That is the one outcome
+ * BRIEF §4.4's retention design forbids, so a third shape raises the same
+ * refusal an unknown record type does.
+ */
+function retainMessageContent(msg, ctx, where) {
+  const content = msg === null || typeof msg !== 'object' ? undefined : msg.content;
+  if (content === undefined || content === null) return [];
+  if (Array.isArray(content)) return retainBlocks(content, ctx, where);
+  if (typeof content === 'string') {
+    return content.length === 0 ? [] : retainBlocks([{ type: 'text', text: content }], ctx, where);
+  }
+  throw unknown(`a message.content that is neither an array nor a string (${typeof content})`, where);
 }
 
 function retainBlocks(blocks, ctx, where) {
@@ -367,7 +394,17 @@ function retainAttachment(rec, ctx, where) {
  */
 function retainPrompt(rec, ctx, kind, text, extra = {}) {
   if (typeof text !== 'string' || text.trim().length === 0) return null;
-  const key = text.slice(0, 120);
+  // Keyed on the WHOLE text, not a 120-character prefix.
+  //
+  // PLAN C2/C3 justify this dedupe by the overlap between `last-prompt` and
+  // `queue-operation`, where the texts are IDENTICAL. A prefix key is strictly
+  // weaker than that justification requires, and the difference is not
+  // theoretical: measured over all 225 sessions, 108 of 2,759 distinct prompts
+  // (77,734 characters) were destroyed because they shared a boilerplate
+  // opening — inter-session relay messages that all begin with the same fixed
+  // envelope. That is the C3 evidence class being thrown away by the very step
+  // meant to protect it.
+  const key = text;
   if (ctx.seenPrompts.has(key)) {
     ctx.stats.dedupedPrompts += 1;
     return null;

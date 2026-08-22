@@ -234,9 +234,9 @@ const FIXTURES = [
     const d = distillToolResult({ filePath: 'x.md', type: 'create' });
     assert.equal(d.code_added_lines, null);
     assert.equal(d.form, 'no-patch');
-    // An EMPTY patch array is a KNOWN zero, which is a different thing.
+    // An EMPTY patch array with nothing else to read is UNKNOWN, not zero.
     const empty = distillToolResult({ structuredPatch: [] });
-    assert.equal(empty.code_added_lines, 0);
+    assert.equal(empty.code_added_lines, null);
     assert.equal(empty.form, 'empty-patch');
     // A malformed hunk must not produce a partial count presented as true.
     assert.equal(distillToolResult({ structuredPatch: [{ lines: 'not an array' }] }).code_added_lines, null);
@@ -1284,6 +1284,84 @@ const FIXTURES = [
       t,
     );
     assert.equal(pretend.ok, false, 'a span set that leaves an entity partly present must FAIL');
+  }],
+
+  // F54 — the Write tool's real corpus shape is `{type:'create', filePath,
+  // content, structuredPatch: []}`: a genuinely empty patch array plus the
+  // whole new file in `content`. Treating the empty array as a measured zero
+  // destroyed 83,211 true added lines across 838 records — 75.9% of every added
+  // line in the corpus — and destroyed them as `0`, the one value BRIEF §4.3
+  // calls dangerous, because `distill.ts` reads `abandoned: === 0`.
+  //
+  // F11 covers `no-patch` (9 records in the corpus). It never touched
+  // `empty-patch` (838 records).
+  ['F54', 'a file creation counts its content, and never reports 0 for unknown', () => {
+    const created = distillToolResult({
+      type: 'create',
+      filePath: 'a.txt',
+      content: ['l1', 'l2', 'l3'].join(NL),
+      structuredPatch: [],
+    });
+    assert.equal(created.code_added_lines, 3, 'three lines were added, not zero');
+    assert.equal(created.form, 'create-content');
+    assert.equal(checkAddedLines(created), null, 'I8 must accept a true count');
+
+    // A trailing newline terminates the last line rather than starting one.
+    assert.equal(
+      distillToolResult({ type: 'create', content: ['a', 'b', ''].join(NL), structuredPatch: [] }).code_added_lines,
+      2,
+    );
+    // A genuinely empty new file adds nothing, and that IS a measured zero.
+    assert.equal(distillToolResult({ type: 'create', content: '', structuredPatch: [] }).code_added_lines, 0);
+    // An empty patch with no content cannot be resolved, so it is null.
+    assert.equal(distillToolResult({ structuredPatch: [] }).code_added_lines, null);
+    assert.match(checkAddedLines({ code_added_lines: 0, form: 'empty-patch' }), /must be null/);
+  }],
+
+  // F55 — a `message.content` that is a plain string is the same user turn as
+  // `[{type:'text',text}]`, and it was dropped whole. 3,323 records, 2,871,417
+  // characters of user-typed prompt text, no refusal and no manifest line.
+  ['F55', 'a string-valued message.content is a user turn, not a silent drop', () => {
+    const ctx = newRetentionContext((u) => u);
+    const rec = {
+      type: 'user',
+      uuid: 'a',
+      sessionId: 's',
+      timestamp: '2026-08-22T10:00:00.000Z',
+      cwd: 'C:/tmp',
+      message: { role: 'user', content: 'rewrite the parser so it handles the empty case' },
+    };
+    const out = retainRecord(rec, ctx, { file: 'f', line: 1 });
+    assert.equal(out.keep, true, 'the turn must be kept');
+    assert.deepEqual(out.record.message.content, [
+      { type: 'text', text: 'rewrite the parser so it handles the empty case' },
+    ]);
+    assert.equal(ctx.stats.userMessages, 1);
+
+    // An unrecognised container shape is a refusal, not another silent drop:
+    // BRIEF §4.4's "do not whitelist by guessing" is about exactly this.
+    assert.throws(
+      () => retainRecord({ ...rec, message: { role: 'user', content: { text: 'x' } } }, ctx, { file: 'f', line: 2 }),
+      /never seen/,
+    );
+  }],
+
+  // F56 — the prompt dedupe keyed on a 120-character prefix, so 108 distinct
+  // prompts (77,734 characters) sharing a boilerplate opening collapsed to one.
+  // PLAN C2/C3 justify removing EXACT duplicates; a prefix key is weaker than
+  // that justification and throws away the evidence class C3 exists to keep.
+  ['F56', 'prompts dedupe on the whole text, not on a 120-character prefix', () => {
+    const ctx = newRetentionContext((u) => u);
+    const preamble = 'RELAY ENVELOPE '.repeat(10); // > 120 characters, identical
+    const one = { type: 'last-prompt', sessionId: 's', timestamp: '2026-08-22T10:00:00.000Z', lastPrompt: preamble + 'first body' };
+    const two = { type: 'last-prompt', sessionId: 's', timestamp: '2026-08-22T10:01:00.000Z', lastPrompt: preamble + 'a completely different body' };
+    assert.ok(preamble.length > 120);
+
+    assert.equal(retainRecord(one, ctx, { file: 'f', line: 1 }).keep, true);
+    assert.equal(retainRecord(two, ctx, { file: 'f', line: 2 }).keep, true, 'a different body is a different prompt');
+    // An exact duplicate is still removed, which is all C2/C3 asked for.
+    assert.equal(retainRecord({ ...two, timestamp: '2026-08-22T10:02:00.000Z' }, ctx, { file: 'f', line: 3 }).keep, false);
+    assert.equal(ctx.stats.dedupedPrompts, 1);
   }],
 ];
 

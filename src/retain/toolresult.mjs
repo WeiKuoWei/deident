@@ -41,10 +41,27 @@ export function distillToolResult(toolUseResult) {
     return frozen(null, null, null, 'no-patch');
   }
   if (patch.length === 0) {
-    // Measured: 3,192 records carry structuredPatch, 2,352 of them non-empty.
-    // An empty patch array means the edit produced no hunks — genuinely zero
-    // added lines, which is a *known* zero and therefore not null.
-    return frozen(0, 0, 0, 'empty-patch');
+    // An empty `structuredPatch` is NOT a measured zero. The Write tool's real
+    // corpus shape is `{type:'create', filePath, content, structuredPatch: []}`
+    // — a genuinely empty patch array plus the whole new file in `content`.
+    //
+    // Measured over all 225 depth-0 sessions: 838 such records carrying 83,211
+    // true added lines, every one of them emitted as 0. Against the 26,459 the
+    // tool counts from real patches that is 75.9% of every added line in the
+    // corpus destroyed, and destroyed as the one value BRIEF §4.3 calls
+    // dangerous: 11 sessions whose only code work is Write-creates exported a
+    // session-wide `code_added_lines: 0`, and distill.ts:137-139 reads
+    // `abandoned: s.code_added_lines === 0`. Those are manufactured abandoned
+    // sessions, and the partition invariant still sums, so no test catches it.
+    //
+    // The true count is in the same record, twice over. Emit it.
+    if (typeof toolUseResult.content === 'string') {
+      return frozen(lineCount(toolUseResult.content), 0, 0, 'create-content');
+    }
+    // No patch and no content: the shape cannot be resolved to a true count,
+    // so it is unknown. §4.3: emit the true count when known, null when not,
+    // never 0.
+    return frozen(null, null, null, 'empty-patch');
   }
 
   let added = 0;
@@ -65,6 +82,17 @@ export function distillToolResult(toolUseResult) {
   }
 
   return frozen(added, removed, hunks, 'patch');
+}
+
+/**
+ * Lines a file's content adds. A trailing newline terminates the last line
+ * rather than starting an empty one, so `a<NL>b<NL>` is two lines, not three.
+ */
+export function lineCount(content) {
+  if (typeof content !== 'string' || content.length === 0) return 0;
+  const NL = String.fromCharCode(10);
+  const n = content.split(NL).length;
+  return content.endsWith(NL) ? n - 1 : n;
 }
 
 function frozen(added, removed, hunks, form) {
@@ -110,7 +138,12 @@ export function checkAddedLines(distilled) {
   if (!Number.isInteger(distilled.code_added_lines) || distilled.code_added_lines < 0) {
     return `code_added_lines is ${distilled.code_added_lines}, which is neither a non-negative integer nor null`;
   }
-  if (distilled.form === 'no-patch' || distilled.form === 'string' || distilled.form === 'absent') {
+  if (
+    distilled.form === 'no-patch' ||
+    distilled.form === 'string' ||
+    distilled.form === 'absent' ||
+    distilled.form === 'empty-patch'
+  ) {
     return `code_added_lines is ${distilled.code_added_lines} for form "${distilled.form}", where the count is unknown and must be null`;
   }
   return null;
