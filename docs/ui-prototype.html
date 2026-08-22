@@ -417,14 +417,22 @@
   }
   .decide p.sub { margin: 0 0 8px; font-size: 13px; color: var(--ink-2); }
   .decide .ws { grid-template-columns: 1fr 74px auto; }
-  .decided { opacity: 0.5; }
-  .decided .act { display: none; }
-  .verdict {
-    font-family: var(--mono); font-size: 11.5px;
-    padding: 3px 9px; border-radius: 2px;
+  /* A decision stays put and stays reversible. Making a row vanish on click
+     gives the reader no way to check what they just did, or undo a misclick. */
+  .ws .act button.sel {
+    background: var(--ink); border-color: var(--ink); color: var(--paper);
+    font-weight: 600;
   }
-  .verdict.in  { background: var(--warn-bg); color: var(--warn); }
-  .verdict.out { background: var(--surface-2); color: var(--ink-3); }
+  .ws .act button.sel:hover { background: var(--ink); }
+  .ws.settled .nm::before {
+    content: "✓ ";
+    color: var(--ok);
+    font-weight: 600;
+  }
+  .ws .chosen {
+    display: block; font-family: var(--mono); font-size: 11.5px;
+    margin-top: 3px; color: var(--ink-2);
+  }
 
   /* summary of what THIS run sends, after de-duplication */
   .thisrun {
@@ -625,6 +633,30 @@
           <div><span class="nm">… 還有 10 個 workspace</span></div>
           <div class="ct">4</div>
           <div class="act"><button onclick="alert('原型:展開全部 15 個')">全部展開</button></div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── grouping: proposed by us, decided by the person who knows ── -->
+    <details>
+      <summary><span>這些 session 屬於哪個專案 · 47 個還沒歸屬</span><span class="cue">展開</span></summary>
+      <div class="body">
+        <p class="note" style="margin:10px 0 4px">
+          有 repo 的自動歸好了。<strong>沒有 repo 的我們不猜</strong> —— 猜錯了會寫進你的
+          passport,而你看不出來是哪裡錯的。標成「未歸屬」是誠實的答案,猜一個不是。
+          你想分就分,不分也可以照樣送出。
+        </p>
+        <div class="ws">
+          <div><span class="nm">payments-api · web-app · cli-tools …</span>
+            <span class="why">從 git remote 判定 · 這個是確定的,不是推測</span></div>
+          <div class="ct">114</div>
+          <div class="act"><span style="font-family:var(--mono);font-size:11.5px;color:var(--ok)">已歸屬</span></div>
+        </div>
+        <div class="ws">
+          <div><span class="nm">未歸屬</span>
+            <span class="why">在家目錄底下跑的,磁碟上沒有任何訊號說得出它屬於什麼</span></div>
+          <div class="ct">47</div>
+          <div class="act"><button onclick="alert('原型:列出這 47 個,每個一行摘要,你把它們拖進專案或新建一個。也可以整批標成未歸屬直接送出。')">我來分</button></div>
         </div>
       </div>
     </details>
@@ -837,19 +869,38 @@
   var pending = 2, inCount = 161, outCount = 64, unCount = 8, runCount = 47;
   var SESS = { dw1: 6, dw2: 2 };
 
+  var chosen = {};   /* id -> 'in' | 'out' | undefined */
+
+  /* The row stays. The chosen button becomes the selected state and the other
+     one stays live, so a misclick is one more click to fix, not a lost row. */
   function decide(id, verdict) {
     var row = document.getElementById(id);
-    if (row.classList.contains('decided')) return;
-    row.classList.add('decided');
     var n = SESS[id];
-    var tag = document.createElement('span');
-    tag.className = 'verdict ' + verdict;
-    tag.textContent = verdict === 'in' ? '會交出去' : '不會交出去';
-    row.appendChild(tag);
+    var was = chosen[id];
+    if (was === verdict) return;
 
-    unCount -= n;
+    if (was === 'in')  { inCount -= n; runCount -= n; }
+    if (was === 'out') { outCount -= n; }
+    if (was === undefined) { unCount -= n; pending -= 1; }
+
     if (verdict === 'in') { inCount += n; runCount += n; } else { outCount += n; }
-    pending -= 1;
+    chosen[id] = verdict;
+
+    row.classList.add('settled');
+    var btns = row.querySelectorAll('.act button');
+    btns[0].classList.toggle('sel', verdict === 'in');
+    btns[1].classList.toggle('sel', verdict === 'out');
+
+    var mark = row.querySelector('.chosen');
+    if (!mark) {
+      mark = document.createElement('span');
+      mark.className = 'chosen';
+      row.querySelector('.why').after(mark);
+    }
+    mark.textContent = verdict === 'in'
+      ? '你選了:交出去 · 隨時可以改回來 · 這個決定會被記住'
+      : '你選了:不交 · 隨時可以改回來 · 這個決定會被記住';
+
     paint();
   }
 
@@ -872,12 +923,19 @@
     document.getElementById('hOut').textContent = outCount;
     document.getElementById('runN').textContent = runCount;
     var b = document.getElementById('next1');
+    var h = document.querySelector('#decide h3');
     if (pending === 0) {
       b.disabled = false;
       b.textContent = '看起來沒問題,繼續';
-      document.getElementById('decide').style.display = 'none';
+      h.textContent = '你決定的 — 隨時可以改';
+      h.style.color = 'var(--ok)';
+      document.getElementById('decide').style.borderTopColor = 'var(--ok)';
     } else {
+      b.disabled = true;
       b.textContent = '先決定上面那 ' + pending + ' 個';
+      h.textContent = '需要你決定 — 決定完才能產出';
+      h.style.color = 'var(--warn)';
+      document.getElementById('decide').style.borderTopColor = 'var(--warn)';
     }
   }
 
