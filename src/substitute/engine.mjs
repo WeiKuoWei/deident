@@ -295,13 +295,16 @@ export function substituteString(s, table) {
     for (let j = i + 1; j < end; j += 1) {
       const inner = table.byFirstChar.get(s[j]);
       if (inner === undefined) continue;
-      const reach = longestMatchAt(s, j, inner, forbidden);
+      // Only a spelling LONGER than the remaining span can reach past it, and
+      // buckets are sorted longest-first, so the search stops as soon as the
+      // entries get short enough to be contained. Without this bound the
+      // absorption pass costs one full bucket walk per character of every
+      // replaced span, which on a corpus whose commonest entity is a long
+      // absolute path is most of the run.
+      const reach = longestMatchAt(s, j, inner, forbidden, end - j);
       if (reach === null) continue;
-      const reachEnd = j + reach.spelling.length;
-      // A match contained by the claimed region is already destroyed by it.
-      if (reachEnd <= end) continue;
       replacement += ` ${reach.pseudonym}`;
-      end = reachEnd;
+      end = j + reach.spelling.length;
     }
 
     out += s.slice(cursor, i) + replacement;
@@ -334,8 +337,11 @@ const EMPTY = Object.freeze([]);
  * `bucket` is already sorted longest-first, so the first valid hit is longest.
  * Exported for the verifier, which needs to ask this question independently.
  */
-export function longestMatchAt(s, at, bucket, forbidden = null) {
+export function longestMatchAt(s, at, bucket, forbidden = null, minLength = 0) {
   for (const entry of bucket) {
+    // Sorted longest-first, so once the entries are short enough there is
+    // nothing left that could satisfy the caller's length floor.
+    if (entry.spelling.length <= minLength) return null;
     const end = at + entry.spelling.length;
     if (end > s.length) continue;
     if (!matchesAt(s, at, entry)) continue;
