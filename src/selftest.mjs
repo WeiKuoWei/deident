@@ -38,7 +38,7 @@ import { resolveRoot } from './corpus/root.mjs';
 import { setCommand, renderRefusal, captureOutput } from './cli/report.mjs';
 import { namespaceCollisions, assignPseudonyms, pseudonymPattern } from './entities/pseudonym.mjs';
 import { buildZip } from './output/zip.mjs';
-import { parseReview, renderReview } from './policy/reviewfile.mjs';
+import { parseReview, parseSessionDrops, renderReview } from './policy/reviewfile.mjs';
 import { readEntities } from './entities/tier1.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { serializeSessions } from './pipeline.mjs';
@@ -1207,6 +1207,83 @@ const FIXTURES = [
     // Precision floor: three characters is below the case-insensitive minimum,
     // so `Ray` at the start of a sentence is not swept up.
     assert.equal(substituteString('Ray and array', t).out, 'Ray and array');
+  }],
+  // F52 - a workspace tier is not fine-grained enough on this corpus: 130 of
+  // 225 sessions share the home directory, so one tier decides 58% of the
+  // export. privacy-tiers 4 calls the per-session hold "level 3"; this is it.
+  //
+  // The two sections must not read each other's lines. `## workspaces` rows
+  // start with a tier and `## sessions` rows start with keep/drop, so a parser
+  // that forgot to stop at the section header would throw "keep is not a tier"
+  // on a file the person edited correctly.
+  ['F52', 'a session held back in review.md round-trips and leaves its workspace alone', () => {
+    const model = {
+      generated: '2026-08-22 00:00',
+      workspaces: [
+        { tier: 'redact', name: '<home>', sessionCount: 2, cwd: 'C:' + String.fromCharCode(92) + 'home', note: null },
+        { tier: 'exclude', name: 'private-archive', sessionCount: 1, cwd: 'C:' + String.fromCharCode(92) + 'redacted-name', note: null },
+      ],
+      sessions: [
+        { id: 'aaaa-1111', date: '2026-08-01', workspace: '<home>', decision: 'keep' },
+        { id: 'bbbb-2222', date: '2026-08-02', workspace: '<home>', decision: 'drop' },
+        { id: 'cccc-3333', date: '2026-08-03', workspace: 'private-archive', decision: 'keep' },
+      ],
+      flaggedSessions: [],
+      entities: [],
+    };
+
+    const text = renderReview(model);
+    const drops = parseSessionDrops(text);
+    assert.deepEqual([...drops], ['bbbb-2222'], 'exactly the held-back session comes back');
+
+    const tiers = parseReview(text);
+    assert.equal(tiers['<home>'], 'redact', 'the session rows do not disturb the workspace tiers');
+    assert.equal(tiers['private-archive'], 'exclude');
+
+    // The workspace section must not be read as session decisions, and the
+    // informational "second look" section must not be either.
+    assert.equal(parseSessionDrops('## workspaces' + NL + 'exclude foo 1 sessions' + NL).size, 0);
+    assert.equal(
+      parseSessionDrops('## sessions worth a second look' + NL + 'drop 2026-08-01 ws cwd touched x' + NL).size,
+      0,
+      'the advisory list is a report, not an input',
+    );
+
+    // An unknown word in column 1 refuses rather than being read as keep.
+    assert.throws(() => parseSessionDrops('## sessions' + NL + 'maybe 2026-08-01 ws aaaa-1111' + NL), RefusalError);
+  }],
+
+  // F53 — two entities where one's suffix is the other's prefix.
+  //
+  // The scan jumped past each replacement, so an entity that STARTS INSIDE the
+  // span just claimed was never examined and its remainder shipped verbatim.
+  // With `the operator` and `Bell Wang Wei` both declared high-confidence persons —
+  // the exact shape the tier-1 schema example invites, two names sharing a
+  // token — the export contained the complete third-party name `Wang Wei`
+  // while the report read `4 replacements, all reversible  ok` and
+  // `known-entity residue  0  ok`. Three gates, all blind to one class.
+  ['F53', 'a partially overlapping entity does not ship its tail', () => {
+    const t = buildTable([
+      entity('P1', 'person', 'the operator', 'PERSON_1'),
+      entity('P2', 'person', 'Bell Wang Wei', 'PERSON_2'),
+    ]);
+    const before = 'intro call: the operator Wang Wei and the team';
+    const r = substituteString(before, t);
+    assert.ok(!r.out.includes('Wang Wei'), `the declared name must not survive: ${r.out}`);
+    assert.ok(!r.out.includes('Kuo'), `no token of either entity may survive: ${r.out}`);
+    assert.equal(r.out, 'intro call: PERSON_1 PERSON_2 and the team');
+    assert.equal(reverseString(r.out, r.spans), before, 'I2 still holds over the covering span');
+
+    // The verifier no longer whitelists a straddling occurrence, so if the
+    // substituter ever stops absorbing, the export refuses instead of shipping.
+    const check = checkSubstitution([{ path: 'x', before, after: r.out, spans: r.spans }], t);
+    assert.ok(check.ok, check.failures.map((f) => f.message).join('; '));
+    const halfDone = substituteString(before, buildTable([entity('P1', 'person', 'the operator', 'PERSON_1')]));
+    const pretend = checkSubstitution(
+      [{ path: 'x', before, after: halfDone.out, spans: halfDone.spans }],
+      t,
+    );
+    assert.equal(pretend.ok, false, 'a span set that leaves an entity partly present must FAIL');
   }],
 ];
 

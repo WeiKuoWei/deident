@@ -55,14 +55,15 @@ export function checkSubstitution(strings, table) {
     const covered = (start, end) => s.spans.some((sp) => sp.start <= start && sp.end >= end);
     for (const occ of occurrences) {
       if (covered(occ.start, occ.end)) continue;
-      // An occurrence not covered by any span is only legitimate if it
-      // straddles a span boundary — i.e. it starts inside a claimed region.
-      const straddles = s.spans.some((sp) => occ.start < sp.end && occ.end > sp.start);
-      if (!straddles) {
-        failures.push(
-          fail(s, `missed "${occ.entry.spelling}" at ${occ.start}: the scan did not replace an occurrence it should have`),
-        );
-      }
+      // A straddling occurrence used to be whitelisted here, which whitelisted
+      // exactly the bug: an entity beginning inside a claimed span and reaching
+      // past it had its remainder shipped verbatim, and this check declared
+      // that legitimate. The substituter absorbs those into the covering span
+      // now, so a straddle reaching this point means the absorption failed and
+      // part of a declared entity is about to leave the machine.
+      failures.push(
+        fail(s, `missed "${occ.entry.spelling}" at ${occ.start}: the scan did not replace an occurrence it should have`),
+      );
     }
     for (const span of s.spans) {
       const longer = occurrences.find(

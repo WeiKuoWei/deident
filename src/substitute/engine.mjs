@@ -259,21 +259,49 @@ export function substituteString(s, table) {
       continue;
     }
 
-    out += s.slice(cursor, i) + hit.pseudonym;
+    // Absorb any entity that STARTS INSIDE the region just claimed and reaches
+    // past its end.
+    //
+    // Without this the scan jumped the whole replaced span, so a longer entity
+    // beginning inside it was never examined and its non-overlapping remainder
+    // shipped verbatim. Declare `the operator` and `Bell Wang Wei` — the shape the
+    // tier-1 schema example invites, two person entities sharing a token — and
+    // `the operator Wang Wei` became `PERSON_A Wang Wei`, with the substitution
+    // invariant reporting "all reversible" and the residual scan reporting
+    // "0 occurrences", because neither looks for a partially present entity.
+    //
+    // The covering span replaces the union and emits both pseudonyms, so
+    // nothing of either entity remains and reversal still restores the exact
+    // original text from `spelling`.
+    let end = i + hit.spelling.length;
+    let replacement = hit.pseudonym;
+    for (let j = i + 1; j < end; j += 1) {
+      const inner = table.byFirstChar.get(s[j]);
+      if (inner === undefined) continue;
+      const reach = longestMatchAt(s, j, inner, forbidden);
+      if (reach === null) continue;
+      const reachEnd = j + reach.spelling.length;
+      // A match contained by the claimed region is already destroyed by it.
+      if (reachEnd <= end) continue;
+      replacement += ` ${reach.pseudonym}`;
+      end = reachEnd;
+    }
+
+    out += s.slice(cursor, i) + replacement;
     spans.push(
       Object.freeze({
         start: i,
-        end: i + hit.spelling.length,
+        end,
         // The TEXT that was there, not the entry's spelling: a case-insensitive
         // entry matches `GitRoll` while its spelling reads `gitroll`, and
         // reversal must restore what the log actually said.
-        spelling: s.slice(i, i + hit.spelling.length),
-        pseudonym: hit.pseudonym,
+        spelling: s.slice(i, end),
+        pseudonym: replacement,
         entityId: hit.entityId,
         tier: hit.tier,
       }),
     );
-    i += hit.spelling.length;
+    i = end;
     cursor = i;
   }
 
@@ -365,6 +393,10 @@ export function reverseString(out, spans) {
  */
 export function allOccurrences(s, table) {
   const found = [];
+  // Regions the substituter was forbidden to touch are not occurrences it
+  // missed. Without this the verifier reports the tier-1 pseudonym guard doing
+  // its job as a bug.
+  const forbidden = table.forbidInside ? collectForbidden(s, table.forbidInside) : null;
   for (let i = 0; i < s.length; i += 1) {
     const bucket = table.byFirstChar.get(s[i]);
     if (bucket === undefined) continue;
@@ -374,6 +406,7 @@ export function allOccurrences(s, table) {
       if (!matchesAt(s, i, entry)) continue;
       if (leftBoundaryBlocks(s, i, entry)) continue;
       if (rightBoundaryBlocks(s, end, entry)) continue;
+      if (forbidden !== null && overlapsForbidden(i, end, forbidden)) continue;
       found.push({ start: i, end, entry });
     }
   }
