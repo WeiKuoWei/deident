@@ -19,7 +19,7 @@
 export const ALWAYS = Object.freeze([
   'device fingerprint: localhost ports, model mix, CLI version sequence',
   'verbatim documents a tool read for you, not only ones you pasted yourself',
-  'third-party names the semantic pass did not recognise',
+  'third-party names the semantic pass missed, and facts that are not names at all: a shareholding, a rate, a balance',
   'your own account inventory: vault item names, login ids, which tokens are live',
   'ids from a service deident does not sweep: a board, document or channel id',
 ]);

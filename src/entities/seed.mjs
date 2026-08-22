@@ -318,7 +318,7 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]*/g;
 // An identity-document number, taken only where the words beside it say what
 // it is. The digit floor is what keeps `U.S. TIN: none` out.
 const ID_NUMBER_RE = new RegExp(
-  '(?:passport|national id|identity card|id card|driver.?s licen[sc]e|social security|ssn|u[.]?s[.]? tin|tax id)' +
+  '(?:passport|national id|identity card|id card|driver.?s licen[sc]e|social security|ssn|u[.]?s[.]? tin|tax id|fein|employer identification(?: number)?)' +
     '[ ]*(?:no[.]?|number|#|card)?[ ]*[:：]?[ ]*([A-Za-z0-9-]{6,14})(?![A-Za-z0-9])',
   'gi',
 );
