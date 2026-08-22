@@ -24,10 +24,13 @@ export function renderReview(model) {
   push(`# Tiers: ${TIERS.join(' | ')}`);
   push('');
   push('## workspaces');
+  push('# name · the directory the sessions actually ran in · why this tier');
   for (const w of model.workspaces) {
-    push(
-      `${w.tier.padEnd(12)} ${w.dirName.padEnd(26)} ${String(w.sessionCount).padStart(3)} sessions   ${w.note ?? ''}`.trimEnd(),
-    );
+    // §4.9: the storage slug never appears here. The name comes from the
+    // resolved cwd and the resolved cwd itself is the reason, because a row a
+    // person cannot recognise is a row they cannot decide about.
+    const because = [w.cwd, w.note].filter((v) => typeof v === 'string' && v !== '').join('  ·  ');
+    push(`${w.tier.padEnd(12)} ${w.name.padEnd(26)} ${String(w.sessionCount).padStart(3)} sessions   ${because}`.trimEnd());
   }
   push('');
 
@@ -139,7 +142,11 @@ export function renderReviewHtml(model) {
     )
     .join('\n');
   const ws = model.workspaces
-    .map((w) => `<tr><td>${esc(w.tier)}</td><td>${esc(w.dirName)}</td><td>${w.sessionCount}</td><td>${esc(w.note ?? '')}</td></tr>`)
+    .map(
+      (w) =>
+        `<tr><td>${esc(w.tier)}</td><td>${esc(w.name)}</td><td>${w.sessionCount}</td>` +
+        `<td>${esc(w.cwd ?? '')}</td><td>${esc(w.note ?? '')}</td></tr>`,
+    )
     .join('\n');
 
   return `<!doctype html>
@@ -159,7 +166,7 @@ This page is for reading. Low-confidence rows are highlighted and listed
 individually; they are never collapsed into a count.
 </div>
 <h2>workspaces</h2>
-<table><tr><th>tier</th><th>workspace</th><th>sessions</th><th>note</th></tr>
+<table><tr><th>tier</th><th>workspace</th><th>sessions</th><th>directory</th><th>why</th></tr>
 ${ws}</table>
 <h2>entities</h2>
 <table><tr><th>pseudonym</th><th>kind</th><th>spellings</th><th>occurrences</th><th>confidence</th><th>source</th></tr>

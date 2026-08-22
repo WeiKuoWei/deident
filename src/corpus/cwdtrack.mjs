@@ -78,3 +78,35 @@ export function normalizeCwd(cwd) {
   if (typeof cwd !== 'string') return '';
   return cwd.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }
+
+/**
+ * The directory a session actually worked in: the effective cwd carrying the
+ * most lines, compared case- and separator-insensitively (§4.8 measured
+ * `projects` and `Projects` as two spellings of one directory).
+ *
+ * The launch directory is not the answer. Measured on the real corpus
+ * 2026-08-22: 214 of 224 sessions sit under the single storage slug
+ * `C--Users-devuser` because Claude Code is launched from the home directory,
+ * and 85 of those spend most of their lines inside a real project.
+ *
+ * @returns {{norm: string, raw: string, count: number}|null} null when the
+ *   session never declared a cwd at all.
+ */
+export function dominantCwd(cwds) {
+  const counts = new Map();
+  for (const cwd of cwds) {
+    if (typeof cwd !== 'string' || cwd === '') continue;
+    const norm = normalizeCwd(cwd);
+    if (norm === '') continue;
+    const hit = counts.get(norm);
+    if (hit === undefined) counts.set(norm, { count: 1, raw: cwd });
+    else hit.count += 1;
+  }
+  let best = null;
+  for (const [norm, v] of counts) {
+    // Strict >, so a tie keeps the spelling seen first. Deterministic output
+    // is a requirement, not a nicety (cli-ux §11).
+    if (best === null || v.count > best.count) best = { norm, raw: v.raw, count: v.count };
+  }
+  return best === null ? null : Object.freeze(best);
+}

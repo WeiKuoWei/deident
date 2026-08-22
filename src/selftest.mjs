@@ -21,7 +21,9 @@ import { distillToolResult, retainToolUseResult, checkAddedLines } from './retai
 import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord } from './retain/records.mjs';
 import { resolveLineCwd, cwdChangeFrom } from './corpus/cwdtrack.mjs';
 import { allowLine } from './policy/linefilter.mjs';
-import { classifyWorkspaces, matchDenyToken } from './policy/workspaces.mjs';
+import { classifyWorkspaces, matchDenyToken, cwdTierIndex, summarizeTiers } from './policy/workspaces.mjs';
+import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
+import { proposeTier } from './policy/signals.mjs';
 import { readSession } from './corpus/reader.mjs';
 import { namespaceCollisions, assignPseudonyms, pseudonymPattern } from './entities/pseudonym.mjs';
 import { buildZip } from './output/zip.mjs';
@@ -590,9 +592,9 @@ const FIXTURES = [
     const model = {
       generated: '2026-08-22 04:00',
       workspaces: [
-        { dirName: 'gitroll', sessionCount: 61, tier: 'redact', note: null, denyToken: null },
-        { dirName: 'private-archive', sessionCount: 4, tier: 'exclude', note: 'deny-list matched: "redacted-name"', denyToken: 'redacted-name' },
-        { dirName: 'passport-viz', sessionCount: 6, tier: 'unclassified', note: 'NEW', denyToken: null },
+        { name: 'gitroll', cwd: 'C:/w/gitroll', sessionCount: 61, tier: 'redact', note: 'git remote g/g', denyToken: null },
+        { name: 'private-archive', cwd: 'C:/w/private-archive', sessionCount: 4, tier: 'exclude', note: 'deny-list matched: "redacted-name"', denyToken: 'redacted-name' },
+        { name: 'passport-viz', cwd: 'C:/w/passport-viz', sessionCount: 6, tier: 'unclassified', note: 'NEW', denyToken: null },
       ],
       flaggedSessions: [],
       entities: [
@@ -638,22 +640,23 @@ const FIXTURES = [
   }],
 
   ['F31', 'the deny-list needs typed confirmation and opt-in is never implicit', () => {
-    const corpus = {
-      workspaceDirs: [
-        { dirName: 'ordinary', dirPath: 'C:/w/ordinary', sessionCount: 3, bytes: 1 },
-        { dirName: 'private-archive', dirPath: 'C:/w/private-archive', sessionCount: 4, bytes: 1 },
-      ],
-    };
-    const plain = classifyWorkspaces(corpus, {}, {});
-    assert.equal(plain[0].tier, 'unclassified', 'an unseen workspace is never swept in');
+    const groups = [
+      { key: 'c:/w/ordinary', name: 'ordinary', cwd: 'C:/w/ordinary', normCwd: 'c:/w/ordinary', sessionCount: 3, bytes: 1, denyToken: null },
+      { key: 'c:/w/private-archive', name: 'private-archive', cwd: 'C:/w/private-archive', normCwd: 'c:/w/private-archive', sessionCount: 4, bytes: 1, denyToken: 'redacted-name' },
+    ];
+    const plain = classifyWorkspaces(groups, {}, {});
+    assert.equal(plain[0].tier, 'unclassified', 'with no signal read, an unseen workspace is never swept in');
     assert.equal(plain[1].tier, 'exclude');
     // A saved decision alone must NOT re-enable a denied workspace.
-    const saved = classifyWorkspaces(corpus, { 'private-archive': 'redact', ordinary: 'redact' }, {});
+    const saved = classifyWorkspaces(groups, { 'private-archive': 'redact', ordinary: 'redact' }, {});
     assert.equal(saved[1].tier, 'exclude', 'review.md alone cannot override the deny-list');
     assert.equal(saved[0].tier, 'redact');
     // Only the typed flag does.
-    const typed = classifyWorkspaces(corpus, { 'private-archive': 'redact' }, { includeDenied: ['private-archive'] });
+    const typed = classifyWorkspaces(groups, { 'private-archive': 'redact' }, { includeDenied: ['private-archive'] });
     assert.equal(typed[1].tier, 'redact');
+    // And a proposal never outranks the deny-list either.
+    const proposed = classifyWorkspaces(groups, {}, { propose: () => ({ tier: 'redact', reason: 'signal' }) });
+    assert.equal(proposed[1].tier, 'exclude');
   }],
 
   ['F32', 'the CLI rejects bad usage without touching anything', () => {
@@ -783,7 +786,7 @@ const FIXTURES = [
     const minted = 'aaaaaaaa-0000-4000-8000-000000000000';
     const rewrite = (u) => (u === real ? minted : null);
     const out = serializeSessions(
-      [{ file: { dirName: `C--Temp-claude-${real}-scratchpad`, sessionId: real }, records: [{ type: 'x' }] }],
+      [{ file: { sessionId: real }, workspace: { key: 'k', name: `${real}/scratchpad` }, records: [{ type: 'x' }] }],
       buildTable([]),
       rewrite,
     );
@@ -826,6 +829,147 @@ const FIXTURES = [
       'authuser%3DPERSON_3%23all',
     );
     assert.equal(substituteString('github.com%2Fgitroll-dev%2Fx', e).out, 'github.com%2FORG_1%2Fx');
+  }],
+
+  // ---- round 2. Four review findings against the shipped slice 1. -------
+  //
+  // All four had one root cause: a "workspace" was a storage slug directory
+  // rather than the directory a person actually worked in.
+
+  ['F40', 'a workspace is named from its resolved cwd, never from the storage slug', () => {
+    const session = (p, cwds) => ({ file: { path: p, sessionId: p, bytes: 1 }, cwds });
+    const groups = groupSessions(
+      [
+        session('s1', [`C:${BS}Users${BS}u${BS}projects${BS}gitroll`]),
+        session('s2', [`C:${BS}Users${BS}u${BS}projects${BS}catalyte-whitepaper${BS}scripts`]),
+      ],
+      { homedir: `C:${BS}Users${BS}u` },
+    );
+    assert.deepEqual(groups.map((g) => g.name), ['gitroll', 'scripts']);
+    for (const g of groups) {
+      assert.ok(!g.name.includes('C--'), 'the slug must never reach a name');
+      assert.ok(g.cwd.startsWith('C:'), 'and the full resolved cwd is carried as the reason');
+    }
+    // The review row shows the short name AND the directory it stands for.
+    const text = renderReview({
+      generated: 'x',
+      workspaces: classifyWorkspaces(groups, {}, { propose: () => ({ tier: 'redact', reason: 'r' }) }),
+      flaggedSessions: [],
+      entities: [],
+    });
+    assert.match(text, /^redact +gitroll +\d+ sessions/m);
+    assert.ok(text.includes(`C:${BS}Users${BS}u${BS}projects${BS}gitroll`), 'the row must name the real directory');
+    assert.ok(!text.includes('C--Users'), 'and never the slug');
+    // Two sessions in one directory spelled two ways are ONE row (§4.8).
+    const one = groupSessions(
+      [session('a', ['C:/Users/u/Projects/x']), session('b', [`C:${BS}Users${BS}u${BS}projects${BS}x`])],
+      { homedir: 'C:/Users/u' },
+    );
+    assert.equal(one.length, 1);
+    assert.equal(one[0].sessionCount, 2);
+    // review.md is whitespace-delimited, so a name may not carry a space.
+    assert.equal(tailSegments('C:/Users/u/My Docs/plan', 2), 'My_Docs/plan');
+  }],
+
+  ['F41', 'tiers are proposed from signals, so unclassified is the residue not the default', () => {
+    const g = (name, extra = {}) => ({
+      key: name, name, cwd: `C:/w/${name}`, normCwd: `c:/w/${name}`,
+      sessionCount: 1, denyToken: null, unresolved: false, ...extra,
+    });
+    const probe = (dir) => (dir === 'C:/w/gitroll' ? { raw: 'gitroll-dev/gitroll' } : null);
+
+    assert.equal(proposeTier(g('gitroll'), probe).tier, 'redact');
+    assert.equal(proposeTier(g('scratch'), probe).tier, 'exclude', 'no remote fails closed');
+    assert.equal(proposeTier(g('private-archive', { denyToken: 'redacted-name' }), probe).tier, 'exclude');
+    assert.equal(proposeTier(g(HOME_NAME), probe).tier, 'exclude');
+    assert.equal(proposeTier(g('x', { unresolved: true }), probe).tier, 'unclassified');
+    // `open` is never proposed: repository visibility is not on disk and
+    // BRIEF §2 forbids the network call that would answer it. Guessing it
+    // wrong leaks, because `open` is the weaker tier (privacy-tiers §5).
+    const reason = proposeTier(g('gitroll'), probe).reason;
+    assert.match(reason, /open/, 'the row must say the person decides that');
+    assert.ok(!reason.includes(String.fromCharCode(0x2014)), 'no em dash in user-facing prose');
+
+    // The census: one unclassified row out of five, not five out of five.
+    const decisions = classifyWorkspaces(
+      [g('gitroll'), g('scratch'), g('private-archive', { denyToken: 'redacted-name' }), g('a'), g('b', { unresolved: true })],
+      {},
+      { propose: (ws) => proposeTier(ws, probe) },
+    );
+    const byTier = Object.fromEntries(summarizeTiers(decisions).map((r) => [r.tier, r.workspaces]));
+    assert.deepEqual(byTier, { exclude: 3, redact: 1, unclassified: 1 });
+  }],
+
+  ['F42', 'a storage directory with no sessions produces no row and no decision', () => {
+    // It can contribute nothing to an export, so it must not consume a
+    // decision. Twenty-six of them padded the real review file.
+    const groups = groupSessions([{ file: { path: 's1', bytes: 1 }, cwds: ['C:/w/real'] }], { homedir: 'C:/h' });
+    assert.deepEqual(groups.map((x) => x.name), ['real']);
+    assert.equal(groupSessions([], { homedir: 'C:/h' }).length, 0, 'no sessions, no rows at all');
+  }],
+
+  ['F43', 'sessions regroup by the directory they worked in, not the one they launched from', () => {
+    // Measured 2026-08-22: 214 of 224 real sessions sit under the single slug
+    // `C--Users-devuser`, because Claude Code is launched from the home
+    // directory. One tier decision controlling 95% of a corpus is not a
+    // decision. Four sessions, one launch directory, three answers.
+    const home = 'C:/Users/u';
+    const s = (p, cwds) => ({ file: { path: p, sessionId: p, bytes: 1 }, cwds });
+    const groups = groupSessions(
+      [
+        s('a', [home, `${home}/projects/gitroll`, `${home}/projects/gitroll`]),
+        s('b', [home, home, `${home}/projects/gitroll`]),
+        s('c', [home, home, home]),
+        s('d', [null, null]),
+      ],
+      { homedir: home },
+    );
+    assert.deepEqual(
+      Object.fromEntries(groups.map((x) => [x.name, x.sessionCount])),
+      { [HOME_NAME]: 2, [UNKNOWN_NAME]: 1, gitroll: 1 },
+    );
+    const homeGroup = groups.find((x) => x.name === HOME_NAME);
+    assert.equal(homeGroup.isHome, true);
+    const proposal = proposeTier(homeGroup, () => null);
+    assert.equal(proposal.tier, 'exclude');
+    assert.match(proposal.reason, /individually undecidable/, 'the home bucket says what it is');
+    assert.equal(groups.find((x) => x.name === UNKNOWN_NAME).unresolved, true);
+  }],
+
+  ['F44', 'the per-line gate resolves a line to its most specific workspace', () => {
+    // The excluded home directory is a prefix of every other workspace on the
+    // machine. Asked "is this line under an excluded directory", the gate
+    // drops the entire corpus; asked "which workspace is this line in", it
+    // drops the right lines and nothing else.
+    const decisions = classifyWorkspaces(
+      [
+        { key: 'c:/users/u', name: HOME_NAME, cwd: 'C:/Users/u', normCwd: 'c:/users/u', sessionCount: 9, denyToken: null },
+        { key: 'c:/users/u/projects/gitroll', name: 'gitroll', cwd: 'C:/Users/u/projects/gitroll', normCwd: 'c:/users/u/projects/gitroll', sessionCount: 1, denyToken: null },
+      ],
+      { [HOME_NAME]: 'exclude', gitroll: 'redact' },
+      {},
+    );
+    const cwdTiers = cwdTierIndex(decisions);
+    assert.equal(cwdTiers[0].name, 'gitroll', 'longest prefix first, or home swallows everything');
+    assert.equal(allowLine('C:/Users/u/projects/gitroll/src', { cwdTiers }).allow, true);
+    assert.equal(allowLine('C:/Users/u', { cwdTiers }).allow, false);
+    assert.equal(
+      allowLine(`C:${BS}Users${BS}u${BS}Projects${BS}gitroll`, { cwdTiers }).allow,
+      true,
+      'case and separator variants are the same directory',
+    );
+    assert.equal(allowLine('D:/elsewhere', { cwdTiers }).allow, false, 'no workspace, no export');
+    // The bug this replaced: the index was built from storage slug paths,
+    // which can never prefix-match a real cwd, so no workspace tier reached
+    // any line at all.
+    const slugIndex = [
+      { prefix: 'c:/users/u/.claude/projects/c--users-u-projects-gitroll', tier: 'exclude', name: 'x' },
+    ];
+    assert.equal(
+      allowLine('C:/Users/u/projects/gitroll', { cwdTiers: slugIndex }).allow,
+      false,
+      'an unmatched line fails closed rather than silently defaulting to allow',
+    );
   }],
 ];
 

@@ -25,8 +25,10 @@ import {
   saveDecisions,
   unclassifiedRefusal,
   exportableTiers,
-  excludedCwdPrefixes,
+  cwdTierIndex,
 } from './policy/workspaces.mjs';
+import { groupSessions } from './policy/grouping.mjs';
+import { proposeTier, makeRemoteProbe } from './policy/signals.mjs';
 import { allowLine, touchedDenied } from './policy/linefilter.mjs';
 import { readReview, writeReview, renderReviewHtml, REVIEW_FILENAME } from './policy/reviewfile.mjs';
 import { seedEntities } from './entities/seed.mjs';
@@ -63,18 +65,17 @@ export async function runScan(flags, env) {
   const corpus = resolveCorpus(env, flags.root);
 
   const loaded = loadCorpus(corpus, flags);
-  const decisions = classifyWorkspaces(corpus, loadSavedDecisions(saltDir), {
-    includeDenied: flags.includeDenied,
-  });
+  const { decisions, workspaceOf } = classify(loaded, loadSavedDecisions(saltDir), flags);
 
-  const model = buildReviewModel(decisions, loaded, [], nowStamp());
+  const model = buildReviewModel(decisions, loaded, workspaceOf, [], nowStamp());
   const written = writeReview(model, path.join(outDir, REVIEW_FILENAME));
 
   report.renderScan({
     fileCount: corpus.files.length,
     bytes: corpus.bytes,
     dateRange: corpusDateRange(corpus.files),
-    workspaceCount: corpus.workspaceDirs.length,
+    workspaceCount: decisions.length,
+    emptyDirs: corpus.workspaceDirs.filter((d) => d.sessionCount === 0).length,
     tiers: summarizeTiers(decisions),
     reviewPath: written.path,
     unreadable: loaded.badLines,
@@ -91,8 +92,8 @@ export async function runReview(flags, env) {
   const corpus = resolveCorpus(env, flags.root);
   const loaded = loadCorpus(corpus, flags);
   const saved = { ...loadSavedDecisions(saltDir), ...readReview(path.join(outDir, REVIEW_FILENAME)) };
-  const decisions = classifyWorkspaces(corpus, saved, { includeDenied: flags.includeDenied });
-  const model = buildReviewModel(decisions, loaded, [], nowStamp());
+  const { decisions, workspaceOf } = classify(loaded, saved, flags);
+  const model = buildReviewModel(decisions, loaded, workspaceOf, [], nowStamp());
 
   if (flags.html) {
     const target = path.join(outDir, 'review.html');
@@ -110,7 +111,9 @@ export async function runReview(flags, env) {
   }
 
   report.renderTranscript(
-    model.workspaces.map((w) => `  ${w.tier.padEnd(12)} ${w.dirName.padEnd(26)} ${w.sessionCount} sessions`),
+    model.workspaces.map(
+      (w) => `  ${w.tier.padEnd(12)} ${w.name.padEnd(26)} ${w.sessionCount} sessions   ${w.cwd ?? ''}`.trimEnd(),
+    ),
   );
   return 0;
 }
@@ -134,7 +137,7 @@ export async function runExport(flags, env) {
 
   //  5  workspace tiers (4 ran inside loadCorpus, per file)
   const saved = { ...loadSavedDecisions(saltDir), ...readReview(path.join(outDir, REVIEW_FILENAME)) };
-  const decisions = classifyWorkspaces(corpus, saved, { includeDenied: flags.includeDenied });
+  const { decisions, workspaceOf } = classify(loaded, saved, flags);
   if (!flags.skipUnclassified) {
     const refusal = unclassifiedRefusal(decisions);
     if (refusal !== null) throw refusal;
@@ -153,8 +156,7 @@ export async function runExport(flags, env) {
   //  6 + 7  per-line cwd gate, then retention
   const salt = loadOrCreateSalt(saltDir);
   const rewriteUuid = makeUuidRewriter(salt);
-  const excluded = excludedCwdPrefixes(decisions);
-  const retained = retainCorpus(loaded, exportable, excluded, rewriteUuid);
+  const retained = retainCorpus(loaded, workspaceOf, exportable, cwdTierIndex(decisions), rewriteUuid);
 
   //  8  seed entities from PRE-substitution values (PLAN §2). Run seeding
   //     after substitution and these values are already pseudonyms: seeding
@@ -300,7 +302,7 @@ function loadCorpus(corpus, flags) {
 }
 
 /** Steps 6 and 7. */
-function retainCorpus(loaded, exportable, excludedPrefixes, rewriteUuid) {
+function retainCorpus(loaded, workspaceOf, exportable, cwdTiers, rewriteUuid) {
   const out = [];
   const cwds = [];
   const stats = {
@@ -320,12 +322,13 @@ function retainCorpus(loaded, exportable, excludedPrefixes, rewriteUuid) {
   };
 
   for (const { file, session, cwds: lineCwds } of loaded.sessions) {
-    if (!exportable.has(file.dirName)) continue;
+    const workspace = workspaceOf.get(file.path);
+    if (workspace === undefined || !exportable.has(workspace.key)) continue;
     const ctx = newRetentionContext(rewriteUuid);
     const records = [];
 
     for (let i = 0; i < session.records.length; i += 1) {
-      const verdict = allowLine(lineCwds[i], { excludedPrefixes });
+      const verdict = allowLine(lineCwds[i], { cwdTiers });
       if (!verdict.allow) {
         stats.droppedByCwd += 1;
         continue;
@@ -345,8 +348,8 @@ function retainCorpus(loaded, exportable, excludedPrefixes, rewriteUuid) {
     }
     if (records.length > 0) {
       stats.sessions += 1;
-      stats.workspaces.add(file.dirName);
-      out.push(Object.freeze({ file, records: Object.freeze(records) }));
+      stats.workspaces.add(workspace.key);
+      out.push(Object.freeze({ file, workspace, records: Object.freeze(records) }));
     }
   }
 
@@ -377,7 +380,7 @@ function substituteAll(sessions, table) {
       records.push(r.record);
       strings.push(...r.strings);
     }
-    out.push(Object.freeze({ file: s.file, records: Object.freeze(records) }));
+    out.push(Object.freeze({ file: s.file, workspace: s.workspace, records: Object.freeze(records) }));
   }
   return Object.freeze({ records: Object.freeze(out), strings: Object.freeze(strings) });
 }
@@ -431,7 +434,7 @@ export function serializeSessions(sessions, table, rewriteUuid) {
     // entity matches it, so it reached the zip's directory listing verbatim
     // and I5 correctly reported three unknown uuids. Same reuse as the record
     // walker, so a slug and a record body cannot disagree.
-    const dir = rewriteUuidsInRecord(substituteString(s.file.dirName, table).out, rewriteUuid);
+    const dir = rewriteUuidsInRecord(substituteString(s.workspace.name, table).out, rewriteUuid);
     const id = rewriteUuid(s.file.sessionId) ?? s.file.sessionId;
     const name = `sessions/${sanitizeEntryName(dir)}/${sanitizeEntryName(id)}.jsonl`;
     entries.push({ name, data: body });
@@ -470,14 +473,40 @@ function buildManifest(retained, decisions, serialized, embedded) {
 
 // ------------------------------------------------------------------ shared
 
-function buildReviewModel(decisions, loaded, entities, generated) {
+/**
+ * Step 5. Sessions are grouped by the directory they actually worked in, not
+ * by the storage slug they were launched from (§4.9, and see grouping.mjs for
+ * the measurement), then each group gets a proposed tier from the signals
+ * privacy-tiers §3 lists.
+ *
+ * @returns {{decisions, workspaceOf: Map<string, {key, name}>}} keyed by
+ *   session file path, because a session's workspace is now a derived fact and
+ *   every later step has to look it up the same way.
+ */
+function classify(loaded, saved, flags) {
+  const groups = groupSessions(loaded.sessions);
+  const probe = makeRemoteProbe();
+  const decisions = classifyWorkspaces(groups, saved, {
+    includeDenied: flags.includeDenied,
+    propose: (g) => proposeTier(g, probe),
+  });
+  const byKey = new Map(decisions.map((d) => [d.key, d]));
+  const workspaceOf = new Map();
+  for (const g of groups) {
+    const d = byKey.get(g.key);
+    for (const p of g.sessionPaths) workspaceOf.set(p, Object.freeze({ key: g.key, name: d.name }));
+  }
+  return { decisions, workspaceOf };
+}
+
+function buildReviewModel(decisions, loaded, workspaceOf, entities, generated) {
   const flagged = [];
   for (const { file, cwds } of loaded.sessions) {
     const token = touchedDenied(cwds);
     if (token !== null) {
       flagged.push({
         date: new Date(file.mtimeMs).toISOString().slice(0, 10),
-        workspace: file.dirName,
+        workspace: workspaceOf.get(file.path)?.name ?? '<no-cwd>',
         reason: `a directory containing "${token}"`,
       });
     }

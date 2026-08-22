@@ -11,7 +11,9 @@ import { normalizeCwd } from '../corpus/cwdtrack.mjs';
 
 /**
  * @param {string|null} cwd  the effective cwd for this record
- * @param {{deniedDirNames?: Set<string>, excludedPrefixes?: string[]}} policy
+ * @param {{allowDenyTokenFor?: Set<string>, cwdTiers?: ReadonlyArray<{prefix,tier,name}>}} policy
+ *   cwdTiers is longest-prefix-first (see cwdTierIndex). Omitted entirely, the
+ *   gate is deny-token only, which is what the unit fixtures exercise.
  * @returns {{allow: boolean, reason: string|null}}
  */
 export function allowLine(cwd, policy = {}) {
@@ -27,18 +29,26 @@ export function allowLine(cwd, policy = {}) {
     return Object.freeze({ allow: false, reason: `cwd matched deny token "${denyToken}"` });
   }
 
+  const index = policy.cwdTiers ?? [];
+  if (index.length === 0) return ALLOW;
+
   const norm = normalizeCwd(cwd);
-  for (const prefix of policy.excludedPrefixes ?? []) {
-    if (prefix !== '' && (norm === prefix || norm.startsWith(`${prefix}/`))) {
-      return Object.freeze({ allow: false, reason: 'cwd is inside an excluded workspace' });
+  for (const entry of index) {
+    // Longest prefix first, so the most specific workspace decides. Testing
+    // "is this under any excluded directory" instead would let the excluded
+    // home directory, a prefix of every workspace on the machine, drop the
+    // entire corpus.
+    if (norm === entry.prefix || norm.startsWith(`${entry.prefix}/`)) {
+      if (entry.tier === 'redact' || entry.tier === 'open') return ALLOW;
+      return Object.freeze({ allow: false, reason: `cwd is inside "${entry.name}" (${entry.tier})` });
     }
   }
-
-  return ALLOW;
+  return DENY_UNMAPPED;
 }
 
 const ALLOW = Object.freeze({ allow: true, reason: null });
 const DENY_UNKNOWN = Object.freeze({ allow: false, reason: 'no cwd could be established for this line' });
+const DENY_UNMAPPED = Object.freeze({ allow: false, reason: 'cwd is outside every workspace you classified' });
 
 /**
  * Apply the gate across a whole session.

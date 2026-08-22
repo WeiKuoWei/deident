@@ -12,7 +12,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { RefusalError } from '../cli/errors.mjs';
-import { normalizeCwd } from '../corpus/cwdtrack.mjs';
 
 export const TIERS = Object.freeze(['exclude', 'count-only', 'redact', 'open']);
 
@@ -32,49 +31,56 @@ export function matchDenyToken(text) {
 }
 
 /**
- * Assign a tier to every workspace directory.
+ * Assign a tier to every workspace.
  *
  * Precedence, highest first:
- *   1. deny-list match  -> exclude, unless the exact dirName is in includeDenied
+ *   1. deny-list match  -> exclude, unless the exact name is in includeDenied
  *   2. a saved decision -> that tier
- *   3. default          -> unclassified (excluded until the user decides)
+ *   3. the signal proposal (privacy-tiers §3)
  *
  * A saved decision never overrides the deny-list without the typed
  * confirmation, so editing review.md cannot quietly re-enable `private-archive`.
+ *
+ * `unclassified` is what is left when no signal could be read at all. It is
+ * the residue, not the default: a default of unclassified means every row is
+ * a question, and a person facing 29 questions answers none of them.
+ *
+ * @param {ReadonlyArray<object>} groups from groupSessions()
  */
-export function classifyWorkspaces(corpus, saved = {}, opts = {}) {
+export function classifyWorkspaces(groups, saved = {}, opts = {}) {
   const includeDenied = new Set(opts.includeDenied ?? []);
+  const propose = opts.propose ?? (() => Object.freeze({ tier: UNCLASSIFIED, reason: 'no signals were read' }));
   const decisions = [];
 
-  for (const ws of corpus.workspaceDirs) {
-    const denyToken = matchDenyToken(ws.dirName);
+  for (const ws of groups) {
+    const denyToken = ws.denyToken ?? null;
+    const proposal = propose(ws);
     let tier;
-    let note = null;
+    let note;
 
-    if (denyToken !== null) {
-      if (includeDenied.has(ws.dirName)) {
-        tier = saved[ws.dirName] && TIERS.includes(saved[ws.dirName]) ? saved[ws.dirName] : 'redact';
-        note = `deny-list "${denyToken}" overridden by --include-denied`;
-      } else {
-        tier = 'exclude';
-        note = `deny-list matched: "${denyToken}"`;
-      }
-    } else if (Object.hasOwn(saved, ws.dirName) && TIERS.includes(saved[ws.dirName])) {
-      tier = saved[ws.dirName];
+    if (denyToken !== null && !includeDenied.has(ws.name)) {
+      tier = 'exclude';
+      note = `deny-list matched: "${denyToken}"`;
+    } else if (Object.hasOwn(saved, ws.name) && TIERS.includes(saved[ws.name])) {
+      tier = saved[ws.name];
+      note = denyToken !== null ? `deny-list "${denyToken}" overridden by --include-denied` : ws.cwd;
     } else {
-      tier = UNCLASSIFIED;
-      note = 'NEW since last export';
+      tier = denyToken !== null ? 'redact' : proposal.tier;
+      note = denyToken !== null ? `deny-list "${denyToken}" overridden by --include-denied` : proposal.reason;
     }
 
     decisions.push(
       Object.freeze({
-        dirName: ws.dirName,
-        dirPath: ws.dirPath,
+        key: ws.key,
+        name: ws.name,
+        cwd: ws.cwd,
+        normCwd: ws.normCwd,
         sessionCount: ws.sessionCount,
         bytes: ws.bytes,
         tier,
         note,
         denyToken,
+        proposed: proposal.tier,
       }),
     );
   }
@@ -115,7 +121,7 @@ export function unclassifiedRefusal(decisions) {
     `${pending.length} workspace${pending.length === 1 ? ' is' : 's are'} unclassified`,
     {
       why: [
-        ...pending.map((d) => `  ${d.dirName}      ${d.sessionCount} sessions`),
+        ...pending.map((d) => `  ${d.name}      ${d.sessionCount} sessions`),
         '',
         'New workspaces are excluded by default and never exported silently.',
         'Set a tier for each in review.md, or confirm you want them left out.',
@@ -164,7 +170,7 @@ export function saveDecisions(saltDir, decisions) {
   const file = savedDecisionsPath(saltDir);
   const map = {};
   for (const d of decisions) {
-    if (d.tier !== UNCLASSIFIED) map[d.dirName] = d.tier;
+    if (d.tier !== UNCLASSIFIED) map[d.name] = d.tier;
   }
   fs.mkdirSync(saltDir, { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(map, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
@@ -172,22 +178,32 @@ export function saveDecisions(saltDir, decisions) {
 }
 
 /**
- * Workspaces whose sessions are actually exported, keyed by dirName.
+ * Workspaces whose sessions are actually exported, keyed by workspace key.
  * `open` and `redact` both export content in slice 1 (BRIEF §7).
  */
 export function exportableTiers(decisions) {
   const map = new Map();
   for (const d of decisions) {
-    if (d.tier === 'redact' || d.tier === 'open') map.set(d.dirName, d.tier);
+    if (d.tier === 'redact' || d.tier === 'open') map.set(d.key, d.tier);
   }
   return map;
 }
 
-/** Directory paths that are excluded, normalised for prefix comparison. */
-export function excludedCwdPrefixes(decisions) {
+/**
+ * The per-line gate's lookup table: every workspace's real cwd with its tier,
+ * longest path first so the most specific workspace wins.
+ *
+ * Longest-first is the whole point. The home directory is excluded and is a
+ * prefix of every other workspace on the machine, so a plain "is this inside
+ * an excluded directory" test would drop every line of every session. What
+ * the gate must ask is which workspace this line is in, and then that
+ * workspace's tier.
+ */
+export function cwdTierIndex(decisions) {
   return Object.freeze(
     decisions
-      .filter((d) => d.tier === 'exclude' || d.tier === UNCLASSIFIED)
-      .map((d) => normalizeCwd(d.dirPath)),
+      .filter((d) => typeof d.normCwd === 'string' && d.normCwd !== '')
+      .map((d) => Object.freeze({ prefix: d.normCwd, tier: d.tier, name: d.name }))
+      .sort((a, b) => b.prefix.length - a.prefix.length),
   );
 }

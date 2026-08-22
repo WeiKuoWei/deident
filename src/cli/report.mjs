@@ -101,10 +101,15 @@ export function renderVersion() {
 // ---------------------------------------------------------------- scan
 
 export function renderScan(census) {
-  const { fileCount, bytes, dateRange, workspaceCount, tiers, reviewPath, unreadable } = census;
+  const { fileCount, bytes, dateRange, workspaceCount, emptyDirs, tiers, reviewPath, unreadable } = census;
   say('');
   say(`  Claude Code sessions   ${n(fileCount)} files · ${humanBytes(bytes)}${dateRange ? ` · ${dateRange}` : ''}`);
-  say(`  Workspaces             ${n(workspaceCount)}`);
+  say(`  Workspaces             ${n(workspaceCount)}   (the directories the sessions ran in, not the storage slugs)`);
+  if (emptyDirs > 0) {
+    // A workspace with no sessions cannot contribute anything to an export, so
+    // it must not consume a decision. One line, not one row each.
+    say(`                         ${n(emptyDirs)} empty storage director${emptyDirs === 1 ? 'y' : 'ies'} held no sessions and are not listed`);
+  }
   say('');
   say('  Proposed tiers');
   for (const t of tiers) {
