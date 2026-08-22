@@ -785,7 +785,7 @@ const FIXTURES = [
     assert.deepEqual(seeded[0].spellings, [], 'a rejected entity carries no spellings');
   }],
 
-  ['F38', 'a uuid inside a workspace slug is rewritten before it becomes an entry name', () => {
+  ['F38', 'a uuid inside a workspace name is rewritten before it becomes an entry name', () => {
     // The slug of a session launched from a scratchpad path embeds a uuid that
     // no entity matches. Substitution alone left it in the zip's directory
     // listing, where I5 correctly reported it as an unknown uuid.
