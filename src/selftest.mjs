@@ -14,7 +14,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
-import { expandVariants, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
+import { expandVariants, looseVariants, squashedForm, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
 import {
   seedEntities,
   rejectReason,
@@ -2594,6 +2594,50 @@ const FIXTURES = [
     ]);
     const assigned = assignPseudonyms(seeded, SALT, null).entities;
     assert.deepEqual(assigned.map((e) => e.pseudonym.replace(/_\d+$/, '')), ['ACCOUNT', 'IDNUM']);
+  }],
+
+  // F82 — a pseudonym whose plaintext original appears in the same string has
+  // done nothing. Three forms reversed one without the salt, measured on a
+  // real export:
+  //   `accountant = X_ORG_1684551 https://www.evansma…ory.com`   x15
+  //   `…authuser%3DX_PERSON_465285%2540gitroll.io`               (a doubly
+  //      percent-encoded @, so §4.6's single-%XX escape rule saw the digit `0`
+  //      and called `gitroll` embedded)
+  //   `…mcgZGV2dXNlckBub3J0aHdpbmQuZXhhbXBsZQ%26…`, base64 of the work address   x30
+  ['F82', 'the domain, the double-encoding and the base64 of an entity are the entity', () => {
+    const withVariants = (id, kind, canonical, pseudonym) => ({
+      ...entity(id, kind, canonical, pseudonym),
+      looseSpellings: looseVariants(canonical),
+    });
+    const t = buildTable([
+      withVariants('O1', 'org', 'gitroll', 'ORG_1'),
+      withVariants('P1', 'person', 'devuser@gitroll.io', 'PERSON_1'),
+      withVariants('O2', 'org', 'Acme Advisory', 'ORG_2'),
+    ]);
+
+    // (a) the domain spelling of a multi-word org.
+    assert.equal(
+      substituteString('accountant = ORG_2 https://www.evansmayadvisory.com', t).out.includes('evansmay'),
+      false,
+    );
+    // A one-word name has no squashed form to confuse with an English word.
+    assert.equal(squashedForm('gitroll'), null);
+    assert.equal(squashedForm('Acme Advisory'), 'evansmayadvisory');
+
+    // (b) a doubly percent-encoded at-sign no longer hides the domain.
+    assert.equal(substituteString('authuser%3DX%2540gitroll.io', t).out, 'authuser%3DX%2540ORG_1.io');
+
+    // (c) base64, at every one of the three alignments, and still reversible.
+    for (const prefix of ['', 'x', 'xy']) {
+      const blob = `q${Buffer.from(`${prefix}devuser@gitroll.io&z`, 'utf8').toString('base64')}`;
+      const r = substituteString(blob, t);
+      assert.equal(r.spans.length > 0, true, `alignment "${prefix}" was missed`);
+      assert.equal(reverseString(r.out, r.spans), blob, 'reversal must still be exact');
+    }
+    // The loose exemption applies to base64 needles and to nothing else: an
+    // ordinary spelling still obeys §4.5, so `ray` inside `array` is untouched.
+    const strict = buildTable([entity('P9', 'person', 'ray', 'PERSON_9')]);
+    assert.equal(substituteString('array index', strict).out, 'array index');
   }],
 ];
 

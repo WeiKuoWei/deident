@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { expandVariants, isCjkOnly } from './variants.mjs';
+import { expandVariants, looseVariants, isCjkOnly } from './variants.mjs';
 
 export const KINDS = Object.freeze([
   'person', 'org', 'workspace', 'client', 'machine', 'secret', 'phone', 'idnumber', 'account',
@@ -519,6 +519,8 @@ export function buildEntities(collected) {
         kind: e.kind,
         canonical: e.canonical,
         spellings: rejected ? Object.freeze([]) : expandVariants(e.canonical),
+        // Matched with no boundary test (see looseVariants).
+        looseSpellings: rejected ? Object.freeze([]) : looseVariants(e.canonical),
         sources: Object.freeze([...e.sources]),
         source: e.sources[0],
         confidence: rejected ? 'flagged' : e.confidence,

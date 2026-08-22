@@ -37,8 +37,27 @@ export function expandVariants(spelling) {
     if (enc !== spelling) {
       out.add(enc);
       out.add(enc.replace(/%([0-9A-F]{2})/g, (m, h) => `%${h.toLowerCase()}`));
+      // DOUBLE percent-encoding, which is what a URL that was itself put in a
+      // query string looks like. Measured on a real export:
+      // `…authuser%3DX_PERSON_465285%2540gitroll.io` — `%2540` is an encoded
+      // `%40`, so the domain sat in plaintext beside the pseudonym of the
+      // person whose address it is.
+      const dbl = enc.replace(/%/g, '%25');
+      out.add(dbl);
+      out.add(dbl.replace(/%25([0-9A-F]{2})/g, (m, h) => `%25${h.toLowerCase()}`));
     }
   }
+
+  // The domain/URL spelling of a multi-word name.
+  //
+  // Measured on a real export: `accountant = X_ORG_1684551
+  // https://www.evansma…ory.com` — 15 occurrences of the pseudonym and the
+  // plaintext identity of the same org on one line. A pseudonym whose original
+  // appears in the same sentence has done nothing. The squashed form is what a
+  // company writes as its domain and as its handle, and at eight characters or
+  // more it cannot collide with an ordinary word.
+  const squashed = squashedForm(spelling);
+  if (squashed !== null) out.add(squashed);
 
   // Backslash-u escaping of any non-ASCII codepoint, as seen inside embedded
   // JSON that was itself stored as a string. Applied to the original spelling
@@ -91,6 +110,61 @@ function pathForms(spelling) {
   }
 
   return forms;
+}
+
+const MIN_SQUASHED_LENGTH = 8;
+const MIN_BASE64_LENGTH = 10;
+
+/**
+ * `Acme Advisory` -> `evansmayadvisory`, the form that becomes a domain,
+ * a handle or a slug. Null when the spelling is one word, a path, or too short
+ * for the squashed form to be distinctive.
+ */
+export function squashedForm(spelling) {
+  if (looksLikePath(spelling) || !/[ .'&-]/.test(spelling)) return null;
+  const squashed = spelling.replace(/[^A-Za-z0-9]+/g, '').toLowerCase();
+  if (squashed.length < MIN_SQUASHED_LENGTH || squashed === spelling.toLowerCase()) return null;
+  return squashed;
+}
+
+/**
+ * Variants that must match WITHOUT the word-boundary rule.
+ *
+ * A base64 needle lives inside a longer base64 run by construction, so both of
+ * its neighbours are word characters and §4.5's boundary rule refuses it every
+ * time. These are kept in their own list, and buildTable applies them with no
+ * boundary test, so the exemption is explicit and applies to nothing else.
+ *
+ * Only spellings carrying an at-sign: the measured case is an address inside a
+ * URL (`…mcgZGV2dXNlckBub3J0aHdpbmQuZXhhbXBsZQ%26…`, 30 occurrences, decoding to the
+ * uploader's own work address), and base64-expanding every entity would
+ * multiply a 2,778-spelling table for forms that do not occur (§F7).
+ */
+export function looseVariants(spelling) {
+  if (typeof spelling !== 'string' || !spelling.includes('@') || spelling.length < MIN_BASE64_LENGTH) {
+    return Object.freeze([]);
+  }
+  return Object.freeze(base64Forms(spelling));
+}
+
+/**
+ * Substrings guaranteed to appear in ANY base64 encoding that contains `s`.
+ *
+ * base64 packs three bytes into four characters, so where `s` starts inside
+ * the encoded stream decides the alignment. Encoding it at each of the three
+ * offsets and trimming the partial characters at both ends gives one needle
+ * per alignment, and one of the three always matches.
+ */
+export function base64Forms(s) {
+  const out = new Set();
+  for (let pad = 0; pad < 3; pad += 1) {
+    const encoded = Buffer.from('#'.repeat(pad) + s, 'utf8').toString('base64');
+    const core = encoded.slice(Math.ceil((pad * 4) / 3)).replace(/=+$/, '');
+    // The last character encodes bits of whatever follows, so drop it.
+    const needle = core.slice(0, Math.max(0, core.length - 1));
+    if (needle.length >= MIN_BASE64_LENGTH) out.add(needle);
+  }
+  return [...out];
 }
 
 const PERCENT_MAP = Object.freeze({

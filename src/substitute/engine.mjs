@@ -127,7 +127,12 @@ export function rightBoundaryBlocks(s, end, entry) {
 }
 
 // The tail of a JSON escape or a percent-encoding, at the end of the window.
-const ESCAPE_TAIL_RE = /(?:\\(?:u[0-9a-fA-F]{4}|[bfnrtv])|%[0-9A-Fa-f]{2})$/;
+// `%25XX` is a DOUBLY percent-encoded byte, which is what a URL put inside
+// another URL's query string looks like. Measured on a real export:
+// `%2540gitroll.io` — the window ends in `540`, so the digit `0` made
+// `gitroll` look embedded and the domain shipped in plaintext beside the
+// pseudonym of the person whose address it is.
+const ESCAPE_TAIL_RE = /(?:\\(?:u[0-9a-fA-F]{4}|[bfnrtv])|%(?:25)?[0-9A-Fa-f]{2})$/;
 
 /**
  * Is the character to the LEFT of `at` a word character in the sense the
@@ -186,7 +191,15 @@ export function buildTable(entities, opts = {}) {
       if (e.rejected) flagged.push(Object.freeze({ id: e.id, canonical: e.canonical, reason: e.rejected }));
       continue;
     }
-    for (const spelling of e.spellings) {
+    // `looseSpellings` are matched with NO boundary test. They are base64
+    // needles, which by construction sit inside a longer base64 run, so both
+    // neighbours are word characters and the boundary rule refuses every one.
+    // The exemption is per-spelling and explicit; nothing else gets it.
+    const all = [
+      ...e.spellings.map((spelling) => ({ spelling, loose: false })),
+      ...(e.looseSpellings ?? []).map((spelling) => ({ spelling, loose: true })),
+    ];
+    for (const { spelling, loose } of all) {
       if (typeof spelling !== 'string' || spelling.length === 0) continue;
       entries.push(
         Object.freeze({
@@ -199,8 +212,8 @@ export function buildTable(entities, opts = {}) {
           // Precomputed boundary requirements: only applied where the spelling
           // itself ends in a word character, which is exactly what the
           // lookaround form means.
-          needsLeft: isWordChar(spelling[0]),
-          needsRight: isWordChar(spelling[spelling.length - 1]),
+          needsLeft: !loose && isWordChar(spelling[0]),
+          needsRight: !loose && isWordChar(spelling[spelling.length - 1]),
           // Precomputed inputs to the two token-boundary exceptions above.
           sepBoundary: spelling.length >= SEPARATOR_BOUNDARY_MIN,
           lower: caseInsensitive(spelling) ? spelling.toLowerCase() : null,

@@ -19,7 +19,7 @@
 
 import fs from 'node:fs';
 import { RefusalError } from '../cli/errors.mjs';
-import { expandVariants } from './variants.mjs';
+import { expandVariants, looseVariants } from './variants.mjs';
 import { rejectReason } from './seed.mjs';
 import { CANDIDATE_EXCERPT_CHARS } from '../retain/constants.mjs';
 import { residualScan, entityExamples } from '../verify/residual.mjs';
@@ -210,6 +210,9 @@ export function readEntities(filePath) {
           : Object.freeze([...new Set(spellings.flatMap((s) => expandVariants(s)))].sort(
               (a, b) => b.length - a.length || (a < b ? -1 : 1),
             )),
+        looseSpellings: rejected
+          ? Object.freeze([])
+          : Object.freeze([...new Set(spellings.flatMap((v) => looseVariants(v)))]),
         sources: Object.freeze(['semantic pass']),
         source: 'semantic pass',
         // §F6: low confidence stays low, and is never merged into a count.
