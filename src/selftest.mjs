@@ -3032,6 +3032,47 @@ const FIXTURES = [
     assert.equal(result.replacements, 20_000);
     assert.ok(Date.now() - started < 10_000, `20,000 spans took ${Date.now() - started} ms`);
   }],
+
+  // F90 — two things the report was silent about while every gate read green.
+  //
+  // (a) BRIEF §4.5 asks for length >= 2 AND a flag for CJK entities, "because
+  //     the lookaround does not prevent over-matching inside a longer CJK
+  //     word". The length rule shipped, the flag did not: 小明 matched inside
+  //     小明天 and mangled a sentence that named nobody.
+  // (b) Two overlapping declared entities collapse to one span, and the token
+  //     they SHARE disappears — so `the operator Wang` and `the operator Kuo Wang` come
+  //     out identical. I2 passes because reverseString is fed the spans, but
+  //     §3 forbids persisting them, so the reversal path that actually exists
+  //     (regenerate the list, hash candidates) cannot tell the two apart.
+  ['F90', 'a CJK match and an absorbed overlap are counted, not passed off as clean', () => {
+    const cjk = buildTable([entity('P1', 'person', '小明', 'PERSON_1')]);
+    const over = substituteString('明天小明天氣很好', cjk);
+    assert.equal(over.out, '明天PERSON_1天氣很好', 'BRIEF §4.5: the lookaround cannot stop this');
+    assert.equal(over.spans[0].cjk, true, 'so the occurrence has to be counted');
+    // A Latin entity is not flagged, or the count means nothing.
+    const latin = buildTable([entity('P2', 'person', 'Jake', 'PERSON_2')]);
+    assert.equal(substituteString('因為Dean他他', latin).spans[0].cjk, false);
+
+    const pair = buildTable([
+      entity('P3', 'person', 'the operator', 'PERSON_3'),
+      entity('O1', 'org', 'Kuo Wang', 'ORG_1'),
+    ]);
+    const a = substituteString('A: the operator Wang', pair);
+    const b = substituteString('B: the operator Kuo Wang', pair);
+    assert.equal(a.spans.some((sp) => sp.absorbed), true, 'the overlap is recorded as absorbed');
+    assert.equal(a.out.slice(3), b.out.slice(3), 'two different inputs, one output — this is the point');
+    // Span-relative reversal still works, which is exactly the distinction the
+    // manifest now has to draw.
+    assert.equal(reverseString(a.out, a.spans), 'A: the operator Wang');
+    assert.equal(reverseString(b.out, b.spans), 'B: the operator Kuo Wang');
+
+    const printed = captureOutput(() => renderManifest({
+      sessions: 1, workspaces: 1, userMessages: 1, zeros: [], droppedByCwd: 0, emptiedSessions: 0,
+      absorbedSpans: 2, cjkSpans: 5, embedded: 0, unknownTypes: [], countOnly: { sessions: 0, workspaces: 0 },
+    }));
+    assert.match(printed, /2 replacements merged two overlapping entities/);
+    assert.match(printed, /5 CJK entity occurrences replaced/);
+  }],
 ];
 
 export function selftest() {

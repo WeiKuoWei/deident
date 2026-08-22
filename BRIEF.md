@@ -48,7 +48,7 @@ abstractions are worth keeping, not which features get built now.
 
 | Question | Decision |
 |---|---|
-| Pseudonyms reversible? | **Stable salted hash, no plaintext map file.** `pseudonym = hash(salt + entity)`, salt at `~/.deident-private/salt`. Reversal is done by regenerating the local entity list and hashing candidates. A plaintext map is a portable re-identification key for data that has already left the machine; the raw logs are not. Do not write one. |
+| Pseudonyms reversible? | **Stable salted hash, no plaintext map file.** `pseudonym = hash(salt + entity)`, salt at `~/.deident-private/salt`. Reversal is done by regenerating the local entity list and hashing candidates. A plaintext map is a portable re-identification key for data that has already left the machine; the raw logs are not. Do not write one. **Qualified 2026-08-22:** where two declared entities OVERLAP in the text the substituter replaces the union and emits both tokens, so the token they shared is gone and two different inputs (`the operator Wang`, `the operator Kuo Wang`) produce identical output. That collapse is not reversible by the documented path, because the spans that would resolve it exist in memory only. The invariant in §4.7(a) is span-relative and still holds; the export prints the count of merged replacements so the caveat is visible rather than implied. |
 | Salt shared across people? | **Per-uploader salt.** Seven teammates uploading to one recipient who also holds the roster is a seven-way guess; a shared salt means cracking one cracks all. AI fluency is scored per person, so cross-uploader entity joins have no consumer. |
 | Semantic (LLM) entity discovery | **Mandatory, not optional.** Without it the tool cannot honestly claim safety (see F1 below). If it did not run, **refuse to emit the zip**. |
 | Code content | **Never exported.** Replaced by a count. There is no per-workspace "is this client code" question and no UI for it. |
@@ -150,7 +150,10 @@ entity in either runtime.
 
 **Use `(?<![A-Za-z0-9_])X(?![A-Za-z0-9_])`, never `\b`.** For CJK entities
 require length >= 2 and flag them for review, because the lookaround does not
-prevent over-matching inside a longer CJK word. Both cases go in the self-check
+prevent over-matching inside a longer CJK word. The length rule shipped and the
+flag did not, so `小明` matched inside `小明天` and corrupted a sentence naming
+nobody with every gate green. Each CJK occurrence is counted, and the count is in
+the manifest. Both cases go in the self-check
 with `因為Dean他他` and `林先生` as fixtures.
 
 **Correction, measured 2026-08-22 over a real export.** `_` in that character
@@ -205,7 +208,10 @@ by construction. Two separate invariants:
 
 - **(a) Substitution invariant.** At the string level, before serialization, for
   every retained string `s`: `reverse(substitute(s)) === s`. This is the one that
-  catches ordering, overlap and collision bugs.
+  catches ordering, overlap and collision bugs. It is **span-relative**: it
+  reverses using the spans the pass produced, and §3 forbids persisting those, so
+  a green result is not a claim that the documented reversal path can undo an
+  absorbed overlap. Say so in the report, and count the merges.
 - **(b) Serialization invariant.** Per line, `stringify(parse(line)) === line`
   on the untouched input. Abort if it ever fails.
 - **(c) Namespace collision check.** Reversal is ambiguous if the log already

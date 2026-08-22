@@ -415,7 +415,7 @@ export async function runExport(flags, env) {
   if (unmatched.length > 0) {
     report.renderUnmatched(unmatched.map((e) => ({ id: e.id, kind: e.kind, canonical: e.canonical })));
   }
-  const manifest = buildManifest(retained, decisions, serialized, residue, entities);
+  const manifest = buildManifest(retained, decisions, serialized, residue, entities, spanCaveats(allStrings));
   report.renderManifest(manifest);
 
   // 17  the only step that writes an output artifact
@@ -437,6 +437,7 @@ export async function runExport(flags, env) {
   }
 
   const zipPath = path.join(outDir, `deident-export-${today()}.zip`);
+  const mapPath = path.join(outDir, EXPORT_MAP_FILENAME);
   try {
     const written = writeZip(serialized.entries, zipPath);
     // privacy-tiers 4 level 3 needs attribution: "this entry is that session".
@@ -445,10 +446,14 @@ export async function runExport(flags, env) {
     // Local only, never an archive entry, and it maps ids to ids rather than
     // pseudonyms to real names, so it is not a re-identification key for the
     // data that left.
-    writeExportMap(serialized.entries, path.join(outDir, EXPORT_MAP_FILENAME));
+    writeExportMap(serialized.entries, mapPath);
     report.renderWrote(written.path, written.bytes, path.join(saltDir, 'salt'));
   } catch (err) {
+    // Both artifacts, not just the zip. The map was written INSIDE this try
+    // and after writeZip, so a throw between them removed the zip and left a
+    // map pointing at a file that no longer exists (cli-ux §10).
     safeUnlink(zipPath);
+    safeUnlink(mapPath);
     throw err;
   }
   return 0;
@@ -969,7 +974,7 @@ function sanitizeEntryName(name) {
 }
 
 /** Step 16. */
-function buildManifest(retained, decisions, serialized, residue, entities) {
+function buildManifest(retained, decisions, serialized, residue, entities, caveats = { absorbed: 0, cjk: 0 }) {
   const s = retained.stats;
   const num = (v) => v.toLocaleString('en-US');
   const occurrencesOf = (kind) =>
@@ -1011,6 +1016,8 @@ function buildManifest(retained, decisions, serialized, residue, entities) {
     unknownTypes: Object.freeze(
       [...(s.unknownTypes ?? new Map())].map(([type, count]) => Object.freeze({ type, count })),
     ),
+    absorbedSpans: caveats.absorbed,
+    cjkSpans: caveats.cjk,
     embedded: residue.scan.embedded,
     escapeArtifacts: residue.scan.escapeArtifacts ?? 0,
     // The residue line belongs beside the limits, not only in the checks
@@ -1134,6 +1141,19 @@ function mergeCheckResults(a, b) {
     failures: Object.freeze(failures),
     replacements,
   });
+}
+
+/** Spans that need a caveat in the manifest: see engine.mjs's span fields. */
+function spanCaveats(strings) {
+  let absorbed = 0;
+  let cjk = 0;
+  for (const s of strings) {
+    for (const span of s.spans) {
+      if (span.absorbed) absorbed += 1;
+      if (span.cjk) cjk += 1;
+    }
+  }
+  return Object.freeze({ absorbed, cjk });
 }
 
 function withOccurrences(entities, strings) {

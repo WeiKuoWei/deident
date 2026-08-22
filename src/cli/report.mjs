@@ -228,6 +228,20 @@ export function renderManifest(m) {
     say(`    ${n(m.droppedCwdless)} records dropped: they replay text typed inside an excluded`);
     say(`      directory and carry no cwd of their own${byType ? `  —  ${byType}` : ''}`);
   }
+  if (m.absorbedSpans > 0) {
+    // BRIEF §4.7(a) presents I2 as the invariant that catches overlap bugs. It
+    // does, at span level — and the spans are never persisted (§3 forbids a
+    // map file), so the only reversal path that exists cannot distinguish two
+    // inputs that collapsed to the same output. Saying "all reversible" and
+    // nothing else would let that pass as green.
+    say(`    ${n(m.absorbedSpans)} replacements merged two overlapping entities: those spans`);
+    say('      reverse from the span record only, not from the entity list');
+  }
+  if (m.cjkSpans > 0) {
+    // BRIEF §4.5 asks for length >= 2 AND a flag. This is the flag.
+    say(`    ${n(m.cjkSpans)} CJK entity occurrences replaced: the boundary rule cannot`);
+    say('      prove they were not inside a longer CJK word');
+  }
   if (m.emptiedSessions > 0) {
     // A session that retained nothing used to vanish with no counter at all, so
     // the shipped session count silently disagreed with the count in review.md.

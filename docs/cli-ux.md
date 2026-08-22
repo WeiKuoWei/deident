@@ -258,13 +258,24 @@ reaching the terminal is a bug, tracked as such.
 **Any non-zero exit leaves no output file behind.** Verification happens before
 anything is written, never after.
 
-One deliberate exception, stated rather than hidden: the semantic-pass refusal
-writes `deident-candidates.txt` and then points at it, because the whole remedy
-is "read this file and write an entity list". It is written on that refusal path
+Two deliberate exceptions, stated rather than hidden.
+
+The first: the semantic-pass refusal writes `deident-candidates.txt` and then
+points at it, because the whole remedy is "read this file and write an entity
+list". It is written on that refusal path
 and on no other, it holds tier-0-cleaned prose that the semantic pass has not
 seen yet — third-party names included, by design — and the tier-0 residual scan
 runs over it before it is written. Treat it the way you treat `review.md`: local
 only, never shared, never committed.
+
+The second: a SUCCESSFUL export writes `export-map.txt` beside the zip, one
+`<real session id>  <archive entry>` line per exported session. privacy-tiers §4
+level 3 is the last look, and a last look cannot act without attribution: every
+id inside the archive has already been rewritten, so nothing on the machine
+otherwise says which entry is which session. It maps a local id to a local id
+rather than a pseudonym to a name, so it is not a re-identification key for the
+data that left — but it is local only, never shared, never committed, and it is
+removed along with the zip if anything after it fails.
 
 ## 11. Idempotence and the second run
 

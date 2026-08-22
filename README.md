@@ -42,7 +42,14 @@ you what it would do.
 |---|---|---|
 | `scan` | `review.md` | A census plus a proposed tier per workspace. |
 | `review` | `review.html` with `--html` | Read in the browser, decide in the text file. No local server is ever started. |
-| `export` | the zip, or a `.diff` with `--preview` | Runs every check first. Any failure means nothing is written. |
+| `export` | the zip and `export-map.txt`, or a `.diff` with `--preview` | Runs every check first. Any failure means nothing is written. |
+
+`export-map.txt` sits beside the zip and holds one `<real session id>  <archive
+entry>` line per exported session. It exists so you can act on the last look:
+every id inside the archive has been rewritten, so without it nothing on your
+machine says which entry is which session. It pairs a local id with a local id,
+never a pseudonym with a name — but treat it like `review.md`: **local only,
+never shared, never committed.** A failed export removes it along with the zip.
 
 `review.md` is both the report and the config. The decision is made by editing a
 text file, not by answering prompts: an engineer trusts a file they can grep,
@@ -192,6 +199,15 @@ There is deliberately **no plaintext entity-to-pseudonym map**. Such a file is a
 portable re-identification key for data that has already left the machine, and
 the raw logs are not. To reverse, regenerate the entity list locally and hash the
 candidates.
+
+**That reversal path has one blind spot, and the manifest names it.** Where two
+declared entities overlap in the text, the substituter replaces the union and
+emits both tokens, so the token they shared is gone: `the operator Wang` and
+`the operator Kuo Wang` produce the same output. The substitution invariant still
+passes, because it reverses from the spans the pass produced — but the spans
+live in memory and are never written down, so regenerating the entity list
+cannot tell those two inputs apart. The export prints the count of merged
+replacements for exactly this reason.
 
 ## Limits: what deident does NOT protect against
 

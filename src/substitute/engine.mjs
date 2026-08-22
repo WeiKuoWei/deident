@@ -13,6 +13,7 @@
 // `\b` in the file to drift back to.
 
 import { pseudonymGuardPattern } from '../entities/pseudonym.mjs';
+import { isCjkOnly } from '../entities/variants.mjs';
 
 const WORD_RE = /[A-Za-z0-9_]/;
 
@@ -216,6 +217,13 @@ export function buildTable(entities, opts = {}) {
           needsRight: !loose && isWordChar(spelling[spelling.length - 1]),
           // Precomputed inputs to the two token-boundary exceptions above.
           sepBoundary: spelling.length >= SEPARATOR_BOUNDARY_MIN,
+          // BRIEF §4.5: "For CJK entities require length >= 2 and FLAG them
+          // for review, because the lookaround does not prevent over-matching
+          // inside a longer CJK word." The length rule was implemented and the
+          // flag was not, so a two-character entity matching inside a longer
+          // word (小明 inside 小明天) corrupted a sentence that named nobody,
+          // with every gate green and nothing in the manifest saying so.
+          cjk: isCjkOnly(spelling),
           lower: caseInsensitive(spelling) ? spelling.toLowerCase() : null,
         }),
       );
@@ -321,6 +329,7 @@ export function substituteString(s, table, forbidOverride = undefined) {
     // original text from `spelling`.
     let end = i + hit.spelling.length;
     let replacement = hit.pseudonym;
+    let absorbed = false;
     for (let j = i + 1; j < end; j += 1) {
       const inner = table.byFirstChar.get(s[j]);
       if (inner === undefined) continue;
@@ -334,6 +343,7 @@ export function substituteString(s, table, forbidOverride = undefined) {
       if (reach === null) continue;
       replacement += ` ${reach.pseudonym}`;
       end = j + reach.spelling.length;
+      absorbed = true;
     }
 
     out += s.slice(cursor, i) + replacement;
@@ -348,6 +358,17 @@ export function substituteString(s, table, forbidOverride = undefined) {
         pseudonym: replacement,
         entityId: hit.entityId,
         tier: hit.tier,
+        // Two overlapping entities collapsed into one span. The token they
+        // SHARED is gone, so `A: the operator Wang` and `B: the operator Kuo Wang` both
+        // come out as `PERSON_a ORG_b` — identical output from different
+        // input. I2 still passes because reverseString is fed the spans, which
+        // carry the original text; but BRIEF §3 forbids persisting a map, so
+        // the only reversal path that actually exists is regenerating the
+        // entity list and hashing candidates, and that path cannot tell the
+        // two apart. Counted so the manifest can say so rather than letting
+        // "all reversible" imply more than it delivers.
+        absorbed,
+        cjk: hit.cjk === true,
       }),
     );
     i = end;
