@@ -51,9 +51,18 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
   for (const entry of table.entries) {
     for (const form of new Set([entry.spelling, jsonEscaped(entry.spelling)])) {
       if (form.length === 0) continue;
-      const key = form[0];
-      if (!byFirst.has(key)) byFirst.set(key, []);
-      byFirst.get(key).push({ form, entry });
+      // A case-insensitive entry is matched, and therefore scanned for, in any
+      // casing. Indexing it under one case only would let `GitRoll` through a
+      // scan whose table knows `gitroll` — the exact shape of the 1,804-
+      // occurrence leak this pairing exists to make impossible.
+      const probe = entry.lower ? { form, entry, lower: form.toLowerCase() } : { form, entry, lower: null };
+      const keys = entry.lower
+        ? new Set([form[0], form[0].toLowerCase(), form[0].toUpperCase()])
+        : new Set([form[0]]);
+      for (const key of keys) {
+        if (!byFirst.has(key)) byFirst.set(key, []);
+        byFirst.get(key).push(probe);
+      }
     }
   }
   for (const bucket of byFirst.values()) bucket.sort((a, b) => b.form.length - a.form.length);
@@ -74,8 +83,10 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
   for (let i = 0; i < bytes.length && entityHits.length <= 10_000; i += 1) {
     const bucket = byFirst.get(bytes[i]);
     if (bucket === undefined) continue;
-    for (const { form, entry } of bucket) {
-      if (!bytes.startsWith(form, i)) continue;
+    for (const { form, entry, lower } of bucket) {
+      if (lower === null ? !bytes.startsWith(form, i) : bytes.slice(i, i + form.length).toLowerCase() !== lower) {
+        continue;
+      }
       // A match that begins inside a JSON escape sequence is an artifact of
       // reading serialized bytes as flat text, not a leak.
       //
@@ -92,6 +103,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       if (startsInsideEscape(bytes, i)) continue;
       // Same boundary rule as the substituter, for the same reason.
       const end = i + form.length;
+      if (end > bytes.length) continue;
       if (leftBoundaryBlocks(bytes, i, entry) || rightBoundaryBlocks(bytes, end, entry)) {
         embedded += 1;
         break;

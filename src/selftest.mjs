@@ -1174,6 +1174,40 @@ const FIXTURES = [
     assert.equal(scan.entityCount, 2, 'both must be reported as residue, not counted as embedded');
     assert.equal(residualScan('an array index', t, new Set()).entityCount, 0);
   }],
+
+  // F51 — the org entity is seeded from the git remote `gitroll-dev/gitroll`,
+  // i.e. lowercase, and the company writes itself `GitRoll` everywhere. That
+  // spelling survived 1,804 times in a real export and the scan had no idea it
+  // existed. Enumerating lower/UPPER/Title does not help: `GitRoll` is none of
+  // them. F06 passes today only because both its fixtures are lowercase.
+  ['F51', 'a non-path entity matches in any casing, and reversal restores the original', () => {
+    const t = buildTable([
+      entity('O1', 'org', 'gitroll', 'ORG_1'),
+      entity('P1', 'person', 'Ada', 'PERSON_1'),
+      entity('P2', 'person', 'ray', 'PERSON_2'),
+    ]);
+    for (const [before, after] of [
+      ['GitRoll x CatalyteAI Exchange', 'ORG_1 x CatalyteAI Exchange'],
+      ['the GITROLL repo', 'the ORG_1 repo'],
+      ['gitroll', 'ORG_1'],
+      ['ADA wang', 'PERSON_1 wang'],
+    ]) {
+      assert.equal(substituteString(before, t).out, after, before);
+    }
+
+    // I2 still holds: the span records the text that was there, not the
+    // entity's own spelling, so reversal is exact.
+    const r = substituteString('GitRoll and gitroll', t);
+    assert.equal(reverseString(r.out, r.spans), 'GitRoll and gitroll');
+
+    // The residual scan is matched to the substituter, or the pairing that
+    // makes I4 meaningful would let the same 1,804 occurrences through.
+    assert.equal(residualScan('GitRoll here', t, new Set()).entityCount, 1);
+
+    // Precision floor: three characters is below the case-insensitive minimum,
+    // so `Ray` at the start of a sentence is not swept up.
+    assert.equal(substituteString('Ray and array', t).out, 'Ray and array');
+  }],
 ];
 
 export function selftest() {

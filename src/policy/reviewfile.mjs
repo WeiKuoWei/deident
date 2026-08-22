@@ -35,6 +35,19 @@ export function renderReview(model) {
   }
   push('');
 
+  // privacy-tiers §4 level 3: the last look. A workspace tier is a coarse
+  // decision and the home directory proves why one is not enough — 130 of this
+  // corpus's sessions share it, and they are not one decision. Every session
+  // gets a line so any single one can be held back without excluding the
+  // directory it ran in.
+  push('## sessions');
+  push('# Set column 1 to drop to hold back one session. Default keep.');
+  push('# A session whose workspace is excluded is already out; this is on top of that.');
+  for (const s of model.sessions ?? []) {
+    push(`${s.decision.padEnd(6)} ${s.date}  ${s.workspace.padEnd(26)} ${s.id}`);
+  }
+  push('');
+
   push('## sessions worth a second look');
   if (model.flaggedSessions.length === 0) {
     push('# (none — no session touched a deny-listed directory)');
@@ -102,6 +115,66 @@ export function parseReview(text) {
   }
 
   return Object.freeze(decisions);
+}
+
+export const SESSION_DECISIONS = Object.freeze(['keep', 'drop']);
+
+/**
+ * Parse the per-session decisions back out of `## sessions`. Separate from
+ * parseReview because the two answer different questions and every caller of
+ * parseReview wants only the workspace map; widening that return value would
+ * have made four call sites care about a thing three of them do not.
+ *
+ * Only `drop` is returned. A missing section, or a session nobody touched,
+ * means keep — the workspace tier already decided whether it leaves at all,
+ * and this level only ever subtracts.
+ *
+ * @returns {ReadonlySet<string>} session ids to hold back
+ */
+export function parseSessionDrops(text) {
+  const drops = new Set();
+  let inSessions = false;
+
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.replace(/\r$/, '');
+    if (line.startsWith('## ')) {
+      inSessions = line.trim() === '## sessions';
+      continue;
+    }
+    if (!inSessions) continue;
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) continue;
+
+    const parts = trimmed.split(/\s+/);
+    const decision = parts[0];
+    const id = parts[parts.length - 1];
+    if (!SESSION_DECISIONS.includes(decision)) {
+      throw new RefusalError(`"${decision}" is not a session decision`, {
+        why: [
+          `In review.md:  ${trimmed.slice(0, 60)}`,
+          `Session decisions are: ${SESSION_DECISIONS.join(', ')}.`,
+        ],
+        remedies: [{ label: 'Fix the line', command: `notepad ${REVIEW_FILENAME}` }],
+      });
+    }
+    if (decision === 'drop' && id) drops.add(id);
+  }
+
+  return Object.freeze(drops);
+}
+
+/** Missing review.md means nothing has been held back yet, not an error. */
+export function readSessionDrops(filePath) {
+  try {
+    return parseSessionDrops(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    if (err instanceof RefusalError) throw err;
+    if (err.code === 'ENOENT') return Object.freeze(new Set());
+    throw new RefusalError(`could not read ${filePath}`, {
+      why: [`${err.code}: ${err.message}`],
+      remedies: [{ label: 'Regenerate it', command: 'deident scan' }],
+    });
+  }
 }
 
 export function writeReview(model, outPath) {

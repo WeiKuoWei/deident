@@ -62,6 +62,37 @@ export function leftBoundaryBlocks(s, at, entry) {
   return leftIsWordChar(s, at);
 }
 
+// Case-insensitive matching, for spellings long enough that a case variant
+// cannot be a different word.
+//
+// BRIEF §4.6 lists "case-variant only 7" as an observed form and PLAN §1 says
+// variants.mjs expands case variants. It did not, for anything but a path's
+// drive letter — so the org entity seeded from the git remote `gitroll-dev/
+// gitroll` was the lowercase spelling, the company writes itself `GitRoll`
+// everywhere, and `GitRoll` survived 1,804 times in a real export while the
+// scan had no idea it existed. Enumerating lower/UPPER/Title does not help:
+// `GitRoll` is none of them. Matching case-insensitively does.
+//
+// §F7's precision argument does not apply here: matching `GitRoll` when
+// `gitroll` is a known entity cannot be a false positive.
+const CASE_INSENSITIVE_MIN = 4;
+
+function caseInsensitive(spelling) {
+  return spelling.length >= CASE_INSENSITIVE_MIN && /[A-Za-z]/.test(spelling);
+}
+
+/**
+ * Does `entry` match `s` at `at`? The matched TEXT may differ from the entry's
+ * spelling, which is why every caller records `s.slice(at, end)` as the span's
+ * spelling rather than the entry's — reversal has to restore what was there.
+ */
+export function matchesAt(s, at, entry) {
+  const end = at + entry.spelling.length;
+  if (end > s.length) return false;
+  if (!entry.lower) return s.startsWith(entry.spelling, at);
+  return s.slice(at, end).toLowerCase() === entry.lower;
+}
+
 /** Does the character at `end` block a match of `entry`? */
 export function rightBoundaryBlocks(s, end, entry) {
   if (!entry.needsRight) return false;
@@ -150,6 +181,7 @@ export function buildTable(entities, opts = {}) {
           sepBoundary: spelling.length >= SEPARATOR_BOUNDARY_MIN,
           firstUpper: isUpper(spelling[0]),
           lastLowerish: isLowerish(spelling[spelling.length - 1]),
+          lower: caseInsensitive(spelling) ? spelling.toLowerCase() : null,
         }),
       );
     }
@@ -165,9 +197,15 @@ export function buildTable(entities, opts = {}) {
   // touches the entry list only where it could possibly match.
   const byFirstChar = new Map();
   for (const entry of entries) {
-    const key = entry.spelling[0];
-    if (!byFirstChar.has(key)) byFirstChar.set(key, []);
-    byFirstChar.get(key).push(entry);
+    // A case-insensitive entry is reachable from either case of its first
+    // character, or the index would silently undo the whole point of it.
+    const keys = entry.lower
+      ? new Set([entry.spelling[0], entry.spelling[0].toLowerCase(), entry.spelling[0].toUpperCase()])
+      : new Set([entry.spelling[0]]);
+    for (const key of keys) {
+      if (!byFirstChar.has(key)) byFirstChar.set(key, []);
+      byFirstChar.get(key).push(entry);
+    }
   }
 
   const byPseudonym = new Map();
@@ -226,7 +264,10 @@ export function substituteString(s, table) {
       Object.freeze({
         start: i,
         end: i + hit.spelling.length,
-        spelling: hit.spelling,
+        // The TEXT that was there, not the entry's spelling: a case-insensitive
+        // entry matches `GitRoll` while its spelling reads `gitroll`, and
+        // reversal must restore what the log actually said.
+        spelling: s.slice(i, i + hit.spelling.length),
         pseudonym: hit.pseudonym,
         entityId: hit.entityId,
         tier: hit.tier,
@@ -252,7 +293,7 @@ export function longestMatchAt(s, at, bucket, forbidden = null) {
   for (const entry of bucket) {
     const end = at + entry.spelling.length;
     if (end > s.length) continue;
-    if (!s.startsWith(entry.spelling, at)) continue;
+    if (!matchesAt(s, at, entry)) continue;
     if (leftBoundaryBlocks(s, at, entry)) continue;
     if (rightBoundaryBlocks(s, end, entry)) continue;
     if (forbidden !== null && overlapsForbidden(at, end, forbidden)) continue;
@@ -330,7 +371,7 @@ export function allOccurrences(s, table) {
     for (const entry of bucket) {
       const end = i + entry.spelling.length;
       if (end > s.length) continue;
-      if (!s.startsWith(entry.spelling, i)) continue;
+      if (!matchesAt(s, i, entry)) continue;
       if (leftBoundaryBlocks(s, i, entry)) continue;
       if (rightBoundaryBlocks(s, end, entry)) continue;
       found.push({ start: i, end, entry });
