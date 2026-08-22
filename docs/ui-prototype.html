@@ -1,285 +1,323 @@
 <title>Deident Contact Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;500;600&display=swap">
 
 <style>
+  /* Design tokens lifted from cohort-learning-dashboard
+     (app/components/shell/tokens.module.css), which lifts them from Wise's
+     shipped Neptune packages. Pinned light, as that app is: the neutrals are
+     forest green at 8% rather than grey, and inverting them produces a palette
+     Wise does not ship. Every colour is painted explicitly so the page holds on
+     any host background. */
   :root {
-    --paper:      #F5F7FA;
-    --surface:    #FFFFFF;
-    --surface-2:  #EBEFF5;
-    --ink:        #131824;
-    --ink-2:      #4A5468;
-    --ink-3:      #7E8899;
-    --rule:       #DCE1EA;
-    --rule-2:     #C2CAD8;
-    --accent:     #2F5FD0;
-    --accent-ink: #FFFFFF;
-    --ok:         #146B52;
-    --ok-bg:      #E1F0EA;
-    --warn:       #8A5D12;
-    --warn-bg:    #F8EEDA;
-    --cut:        #B03A2E;
-    --cut-bg:     #FBE9E7;
-    --mark:       #FFE08A;
+    --content-primary:   #0e0f0c;
+    --content-secondary: #454745;
+    --content-tertiary:  #6a6c6a;
 
-    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
-    --sans: ui-sans-serif, system-ui, "Segoe UI", "Noto Sans TC", "PingFang TC",
-            "Microsoft JhengHei", sans-serif;
-  }
+    --interactive-primary:       #163300;
+    --interactive-primary-hover: #0d1f00;
+    --interactive-accent:        #9fe870;
+    --interactive-accent-active: #65cf21;
 
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --paper: #0C0F15; --surface: #141922; --surface-2: #1C2330;
-      --ink: #E7EBF2; --ink-2: #A5AFC0; --ink-3: #6E7A8D;
-      --rule: #242C39; --rule-2: #36404E;
-      --accent: #7099F0; --accent-ink: #0C0F15;
-      --ok: #5FCBA4; --ok-bg: #10281E;
-      --warn: #D8A84C; --warn-bg: #2A2113;
-      --cut: #E8796A; --cut-bg: #2C1614;
-      --mark: #6B5410;
-    }
-  }
-  :root[data-theme="dark"] {
-    --paper: #0C0F15; --surface: #141922; --surface-2: #1C2330;
-    --ink: #E7EBF2; --ink-2: #A5AFC0; --ink-3: #6E7A8D;
-    --rule: #242C39; --rule-2: #36404E;
-    --accent: #7099F0; --accent-ink: #0C0F15;
-    --ok: #5FCBA4; --ok-bg: #10281E;
-    --warn: #D8A84C; --warn-bg: #2A2113;
-    --cut: #E8796A; --cut-bg: #2C1614;
-    --mark: #6B5410;
+    --bg-screen:        #ffffff;
+    --bg-screen-hover:  #16330014;
+    --bg-screen-active: #16330021;
+    --bg-neutral:       #16330014;
+    --bg-neutral-hover: #16330021;
+    --border-neutral:   #0e0f0c1f;
+
+    --s-success-content: #054d28;
+    --s-success-surface: #e2f6d5;
+    --s-warning-content: #4a3b1c;
+    --s-warning-surface: #fff7d7;
+    --s-negative-content:#cb272f;
+    --s-negative-surface:#fbeaea;
+    --s-prop-content:    #054d4d;
+    --s-prop-surface:    #e0f7f7;
+
+    --radius-small: 10px;
+    --radius-medium: 16px;
+    --radius-full: 9999px;
+
+    --size-4: 4px;  --size-8: 8px;   --size-12: 12px; --size-16: 16px;
+    --size-24: 24px; --size-32: 32px; --size-40: 40px; --size-48: 48px;
+
+    --control-sm: 32px;
+    --control-md: 40px;
+    --lh-control: 1.2;
+    --tracking-caps: 0.06em;
+    --ease: 150ms ease-in-out;
+
+    --font-ui:   "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    --maxw: 1200px;
   }
 
   * { box-sizing: border-box; }
 
   body {
     margin: 0;
-    background: var(--paper);
-    color: var(--ink);
-    font-family: var(--sans);
-    font-size: 15px;
-    line-height: 1.5;
+    background: var(--bg-screen);
+    color: var(--content-primary);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 155%;
     -webkit-font-smoothing: antialiased;
   }
 
-  /* ══════════ pinned bar: search is the loudest thing on the page ══════════ */
+  .eyebrow {
+    font-size: 12px; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--content-tertiary);
+  }
+  .link {
+    background: none; border: 0; padding: 0;
+    font-family: inherit; font-size: 12px; font-weight: 500;
+    color: var(--content-tertiary); cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px;
+    transition: color var(--ease);
+  }
+  .link:hover { color: var(--content-primary); }
+  :focus-visible { outline: 2px solid var(--interactive-primary); outline-offset: 2px; }
+
+  /* ─────────────── pinned bar ─────────────── */
   .bar {
     position: sticky; top: 0; z-index: 20;
-    background: var(--surface);
-    border-bottom: 1px solid var(--rule-2);
+    background: var(--bg-screen);
+    border-bottom: 1px solid var(--border-neutral);
   }
   .bar .inner {
-    max-width: 1080px; margin: 0 auto;
-    padding: 12px 20px 10px;
-    display: flex; flex-direction: column; gap: 9px;
+    max-width: var(--maxw); margin: 0 auto;
+    padding: var(--size-16) var(--size-24) var(--size-12);
+    display: flex; flex-direction: column; gap: var(--size-12);
   }
-  .seek { display: flex; gap: 9px; align-items: stretch; }
-  .seek input {
-    flex: 1; min-width: 0;
-    font-family: var(--sans); font-size: 15px;
-    padding: 10px 13px;
-    border: 1px solid var(--rule-2); border-radius: 3px;
-    background: var(--paper); color: var(--ink);
+  #q {
+    width: 100%; height: var(--control-md);
+    font-family: var(--font-ui); font-size: 14px; line-height: var(--lh-control);
+    padding: 0 var(--size-16);
+    border: 1px solid var(--border-neutral); border-radius: var(--radius-small);
+    background: var(--bg-neutral); color: var(--content-primary);
+    transition: background var(--ease), border-color var(--ease);
   }
-  .seek input::placeholder { color: var(--ink-3); }
-  .seek input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+  #q::placeholder { color: var(--content-tertiary); }
+  #q:focus { background: var(--bg-screen); border-color: var(--interactive-primary); outline: none; }
 
-  .filters {
-    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-    font-family: var(--mono); font-size: 12px;
-  }
+  .filters { display: flex; gap: var(--size-8); align-items: center; flex-wrap: wrap; font-size: 12px; }
   .filters select, .filters label.chk {
-    font-family: var(--mono); font-size: 12px;
-    padding: 4px 8px; border: 1px solid var(--rule); border-radius: 2px;
-    background: var(--paper); color: var(--ink-2); cursor: pointer;
+    height: var(--control-sm); display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-ui); font-size: 12px; line-height: var(--lh-control);
+    padding: 0 var(--size-12);
+    border: 1px solid var(--border-neutral); border-radius: var(--radius-full);
+    background: var(--bg-screen); color: var(--content-secondary); cursor: pointer;
   }
-  .filters label.chk { display: inline-flex; align-items: center; gap: 6px; }
-  .filters label.chk input { accent-color: var(--accent); margin: 0; }
+  .filters select:hover, .filters label.chk:hover { background: var(--bg-screen-hover); }
+  .filters label.chk input { accent-color: var(--interactive-primary); margin: 0; }
   .tally {
-    margin-left: auto; color: var(--ink-2);
+    margin-left: auto; font-size: 12px; color: var(--content-tertiary);
     font-variant-numeric: tabular-nums; white-space: nowrap;
   }
-  .tally b { color: var(--ink); font-weight: 600; }
-  .tally .cutn { color: var(--cut); }
+  .tally b { font-weight: 600; color: var(--content-primary); }
+  .tally .neg { color: var(--s-negative-content); font-weight: 600; }
 
-  /* ══════════ the list ══════════ */
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px 120px; }
+  /* ─────────────── page ─────────────── */
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--size-24) var(--size-48); }
 
   .lede {
-    font-size: 13.5px; color: var(--ink-2);
-    padding: 14px 2px 12px; margin: 0;
-    border-bottom: 1px solid var(--rule);
+    margin: 0; padding: var(--size-16) 0;
+    font-size: 14px; color: var(--content-secondary);
+    border-bottom: 1px solid var(--border-neutral);
   }
+  .lede b { font-weight: 600; color: var(--content-primary); }
 
+  /* ─────────────── the list ─────────────── */
   .row {
-    display: grid;
-    grid-template-columns: 20px 58px 1fr auto auto;
-    gap: 12px; align-items: baseline;
-    padding: 9px 4px;
-    border-bottom: 1px solid var(--rule);
-    cursor: pointer;
+    display: grid; grid-template-columns: 18px 54px 1fr auto auto;
+    gap: var(--size-12); align-items: baseline;
+    padding: var(--size-12) var(--size-8);
+    border-bottom: 1px solid var(--border-neutral);
+    border-radius: var(--radius-small);
+    cursor: pointer; transition: background var(--ease);
   }
-  .row:hover { background: var(--surface); }
-  .row .mk { font-family: var(--mono); font-size: 13px; color: var(--ok); }
-  .row.out .mk { color: var(--cut); }
-  .row .dt { font-family: var(--mono); font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-  .row .q {
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font-size: 14.5px;
+  .row:hover { background: var(--bg-screen-hover); }
+  .row.opened { background: var(--bg-neutral); }
+  .row .mk {
+    font-size: 12px; font-weight: 600;
+    color: var(--s-success-content);
   }
-  .row.out .q { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1px; }
-  .row .rz { font-family: var(--mono); font-size: 11.5px; color: var(--cut); white-space: nowrap; }
+  .row.out .mk { color: var(--s-negative-content); }
+  .row .dt {
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--content-tertiary); font-variant-numeric: tabular-nums;
+  }
+  .row .q { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+  .row.out .q { color: var(--content-tertiary); }
+  .row .q mark { background: var(--s-warning-surface); color: var(--s-warning-content); padding: 0 2px; border-radius: 3px; }
+  .row .rz {
+    font-size: 12px; white-space: nowrap;
+    color: var(--s-negative-content);
+    background: var(--s-negative-surface);
+    padding: 2px var(--size-8); border-radius: var(--radius-full);
+  }
   .row .go {
-    font-family: var(--mono); font-size: 11.5px;
-    padding: 3px 9px; border-radius: 2px;
-    border: 1px solid var(--rule-2); background: var(--surface); color: var(--ink-2);
-    cursor: pointer; white-space: nowrap;
+    height: var(--control-sm); font-family: var(--font-ui); font-size: 12px;
+    font-weight: 500; line-height: var(--lh-control); padding: 0 var(--size-12);
+    border: 1px solid var(--border-neutral); border-radius: var(--radius-full);
+    background: var(--bg-screen); color: var(--content-secondary);
+    cursor: pointer; white-space: nowrap; transition: background var(--ease);
   }
-  .row .go:hover { background: var(--surface-2); color: var(--ink); }
-  .row.opened { background: var(--surface); }
-  .row .q mark { background: var(--mark); color: var(--ink); padding: 0 1px; }
+  .row .go:hover { background: var(--bg-screen-active); color: var(--content-primary); }
 
   /* the expanded transcript, in released form */
   .tx {
-    border-bottom: 1px solid var(--rule);
-    background: var(--surface);
-    padding: 4px 4px 16px 90px;
+    background: var(--bg-neutral); border-radius: var(--radius-medium);
+    padding: var(--size-16) var(--size-24);
+    margin: 0 var(--size-8) var(--size-12) 84px;
   }
   .tx .t {
-    display: grid; grid-template-columns: 56px 1fr; gap: 12px;
-    padding: 5px 0; font-size: 14px; align-items: baseline;
+    display: grid; grid-template-columns: 60px 1fr;
+    gap: var(--size-16); padding: 5px 0; align-items: baseline;
   }
-  .tx .who { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
-  .tx .sub { font-family: var(--mono); background: var(--surface-2); padding: 0 4px; border-radius: 2px; font-size: 12.5px; }
-  .tx .tool { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+  .tx .who { font-size: 12px; font-weight: 600; color: var(--content-tertiary); }
+  .tx .tool { font-family: var(--font-mono); font-size: 12px; color: var(--content-tertiary); }
+  .tx .sub {
+    font-family: var(--font-mono); font-size: 12.5px;
+    background: var(--s-prop-surface); color: var(--s-prop-content);
+    padding: 1px 5px; border-radius: 5px;
+  }
   .tx .foot {
-    margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--rule);
-    font-family: var(--mono); font-size: 11.5px; color: var(--ink-3);
-    display: flex; gap: 16px; flex-wrap: wrap;
+    margin-top: var(--size-12); padding-top: var(--size-12);
+    border-top: 1px solid var(--border-neutral);
+    display: flex; gap: var(--size-24); flex-wrap: wrap;
+    font-size: 12px; color: var(--content-tertiary);
   }
+  .tx .foot b { font-weight: 600; color: var(--content-primary); font-variant-numeric: tabular-nums; }
 
-  .more {
-    padding: 14px 4px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-3);
-    border-bottom: 1px solid var(--rule);
-  }
+  .more { padding: var(--size-16) var(--size-8); font-size: 12px; color: var(--content-tertiary); }
 
-  /* ══════════ hit banner from the search box ══════════ */
+  /* ─────────────── search hit ─────────────── */
   .hit {
-    border: 1px solid var(--warn); border-radius: 3px;
-    background: var(--warn-bg); color: var(--warn);
-    padding: 11px 14px; margin: 14px 0 0;
-    font-size: 14px; display: none;
-    align-items: baseline; gap: 12px; flex-wrap: wrap;
+    display: none; align-items: center; gap: var(--size-16); flex-wrap: wrap;
+    margin-top: var(--size-16); padding: var(--size-12) var(--size-16);
+    border-radius: var(--radius-medium);
+    background: var(--s-warning-surface); color: var(--s-warning-content);
+    font-size: 14px;
   }
   .hit.on { display: flex; }
-  .hit b { font-family: var(--mono); }
+  .hit b { font-family: var(--font-mono); font-weight: 600; }
   .hit button {
-    font-family: var(--sans); font-size: 13px; padding: 5px 12px;
-    border: 1px solid var(--warn); border-radius: 2px;
-    background: transparent; color: var(--warn); cursor: pointer; margin-left: auto;
+    margin-left: auto; height: var(--control-sm);
+    font-family: var(--font-ui); font-size: 12px; font-weight: 600;
+    line-height: var(--lh-control); padding: 0 var(--size-16);
+    border: 0; border-radius: var(--radius-full);
+    background: var(--interactive-primary); color: #fff; cursor: pointer;
   }
-  .hit button:hover { background: var(--surface); }
+  .hit button:hover { background: var(--interactive-primary-hover); }
 
-  /* ══════════ low-confidence names, per item, never collapsed ══════════ */
-  .sect { margin-top: 40px; }
-  .sect > h2 {
-    margin: 0 0 3px;
-    font-family: var(--mono); font-size: 11.5px; font-weight: 600;
-    letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3);
-  }
-  .sect > p { margin: 0 0 12px; font-size: 13.5px; color: var(--ink-2); }
+  /* ─────────────── sections ─────────────── */
+  .sect { margin-top: var(--size-48); }
+  .sect .head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--size-16); flex-wrap: wrap; }
+  .sect p.note { margin: var(--size-8) 0 var(--size-16); font-size: 14px; color: var(--content-secondary); max-width: 68ch; }
 
   .cand {
-    display: grid; grid-template-columns: 150px 1fr auto;
-    gap: 14px; align-items: baseline;
-    padding: 10px 4px; border-bottom: 1px solid var(--rule);
+    display: grid; grid-template-columns: 168px 1fr auto;
+    gap: var(--size-16); align-items: baseline;
+    padding: var(--size-12) var(--size-8);
+    border-bottom: 1px solid var(--border-neutral);
   }
-  .cand .nm { font-family: var(--mono); font-size: 13.5px; font-weight: 500; }
-  .cand .nm small { display: block; font-weight: 400; color: var(--ink-3); font-size: 11.5px; margin-top: 2px; }
-  .cand .ctx { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
-  .cand .ctx em { font-style: normal; background: var(--mark); color: var(--ink); padding: 0 2px; border-radius: 1px; }
+  .cand .nm { font-size: 14px; font-weight: 600; }
+  .cand .nm small {
+    display: block; font-family: var(--font-mono); font-weight: 400;
+    font-size: 11.5px; color: var(--content-tertiary); margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .cand .ctx { font-family: var(--font-mono); font-size: 12.5px; color: var(--content-secondary); }
+  .cand .ctx em {
+    font-style: normal; background: var(--s-warning-surface);
+    color: var(--s-warning-content); padding: 1px 3px; border-radius: 4px;
+  }
   .cand .pick { display: flex; gap: 6px; }
   .cand .pick button {
-    font-family: var(--mono); font-size: 11.5px; padding: 4px 10px;
-    border: 1px solid var(--rule-2); border-radius: 2px;
-    background: var(--surface); color: var(--ink-2); cursor: pointer; white-space: nowrap;
+    height: var(--control-sm); font-family: var(--font-ui); font-size: 12px;
+    font-weight: 500; line-height: var(--lh-control); padding: 0 var(--size-12);
+    border: 1px solid var(--border-neutral); border-radius: var(--radius-full);
+    background: var(--bg-screen); color: var(--content-secondary);
+    cursor: pointer; white-space: nowrap; transition: all var(--ease);
   }
-  .cand .pick button:hover { background: var(--surface-2); color: var(--ink); }
+  .cand .pick button:hover { background: var(--bg-screen-hover); }
   .cand .pick button.sel {
-    background: var(--ink); border-color: var(--ink); color: var(--paper); font-weight: 600;
+    background: var(--interactive-accent); border-color: var(--interactive-accent);
+    color: var(--interactive-primary); font-weight: 600;
   }
 
-  /* ══════════ attestation ══════════ */
+  /* ─────────────── attestation ─────────────── */
   .att {
-    margin-top: 44px;
-    border-top: 2px solid var(--ink-2);
-    padding-top: 18px;
+    margin-top: var(--size-48);
+    background: var(--bg-neutral); border-radius: var(--radius-medium);
+    padding: var(--size-24);
   }
-  .att h2 {
-    margin: 0 0 12px;
-    font-family: var(--mono); font-size: 11.5px; font-weight: 600;
-    letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3);
-  }
-  .att dl { margin: 0; display: grid; grid-template-columns: 132px 1fr; gap: 7px 16px; font-size: 14px; }
-  .att dt { font-family: var(--mono); font-size: 12px; color: var(--ink-3); padding-top: 2px; }
-  .att dd { margin: 0; color: var(--ink); }
-  .att dd .q { font-variant-numeric: tabular-nums; font-family: var(--mono); }
-  .att dd.thin { color: var(--warn); }
-  .att .unchecked { color: var(--ink-2); }
+  .att dl { margin: var(--size-16) 0 0; display: grid; grid-template-columns: 148px 1fr; gap: var(--size-12) var(--size-24); }
+  .att dt { font-size: 12px; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--content-tertiary); padding-top: 3px; }
+  .att dd { margin: 0; font-size: 14px; color: var(--content-primary); }
+  .att dd b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .att dd.thin { color: var(--s-warning-content); }
+  .att dd.unchecked { color: var(--content-secondary); }
   .att .sign {
-    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule);
-    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    margin-top: var(--size-24); padding-top: var(--size-16);
+    border-top: 1px solid var(--border-neutral);
+    display: flex; align-items: center; gap: var(--size-16); flex-wrap: wrap;
   }
-  .att .sign .who { font-size: 14px; }
-  .att .sign .stamp { font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin-left: auto; }
+  .att .stamp { font-family: var(--font-mono); font-size: 12px; color: var(--content-tertiary); margin-left: auto; font-variant-numeric: tabular-nums; }
 
   button.primary {
-    font-family: var(--sans); font-size: 15px; font-weight: 500;
-    padding: 11px 22px; border-radius: 3px;
-    background: var(--accent); border: 1px solid var(--accent); color: var(--accent-ink);
-    cursor: pointer;
+    height: var(--control-md); font-family: var(--font-ui);
+    font-size: 14px; font-weight: 600; line-height: var(--lh-control);
+    padding: 0 var(--size-24); border: 0; border-radius: var(--radius-full);
+    background: var(--interactive-accent); color: var(--interactive-primary);
+    cursor: pointer; transition: background var(--ease);
   }
-  button.primary:hover { filter: brightness(1.08); }
-  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary:hover { background: var(--interactive-accent-active); }
+  button.primary:disabled { background: var(--bg-neutral-hover); color: var(--content-tertiary); cursor: default; }
 
   .done {
-    display: none; margin-top: 20px;
-    font-family: var(--mono); font-size: 16px; font-weight: 600;
-    padding: 16px 18px; background: var(--surface-2);
-    border: 1px solid var(--rule); border-radius: 3px;
+    display: none; margin-top: var(--size-16);
+    padding: var(--size-16); border-radius: var(--radius-small);
+    background: var(--s-success-surface); color: var(--s-success-content);
+    font-family: var(--font-mono); font-size: 15px; font-weight: 600;
   }
   .done.on { display: block; }
-  .done span { display: block; font-weight: 400; font-size: 12.5px; color: var(--ink-3); margin-top: 5px; }
+  .done span { display: block; font-weight: 400; font-size: 12px; margin-top: 5px; }
 
-  @media (max-width: 620px) {
-    .row { grid-template-columns: 18px 1fr auto; }
+  @media (max-width: 720px) {
+    .row { grid-template-columns: 16px 1fr auto; }
     .row .dt, .row .rz { display: none; }
-    .tx { padding-left: 12px; }
+    .tx { margin-left: var(--size-8); }
     .cand { grid-template-columns: 1fr; }
     .att dl { grid-template-columns: 1fr; gap: 2px 0; }
-    .att dt { padding-top: 8px; }
+    .att dt { padding-top: var(--size-12); }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
 <div class="bar">
   <div class="inner">
-    <div class="seek">
-      <input id="q" type="search" autocomplete="off"
-             placeholder="搜尋你自己知道、但工具可能不知道的名字　例如:Kaito">
-    </div>
+    <input id="q" type="search" autocomplete="off"
+           placeholder="Search for a name you know but the tool might not. Try: Kaito">
     <div class="filters">
       <select id="fws">
-        <option value="">所有 workspace</option>
+        <option value="">All workspaces</option>
         <option>payments-api</option>
         <option>web-app</option>
         <option>northwind-integration</option>
         <option>&lt;home&gt;</option>
       </select>
       <select id="fdate">
-        <option value="">所有日期</option>
-        <option>過去 7 天</option>
-        <option>過去 30 天</option>
+        <option value="">Any date</option>
+        <option>Last 7 days</option>
+        <option>Last 30 days</option>
       </select>
-      <label class="chk"><input type="checkbox" id="fnew"> 只看上次之後的新對話</label>
+      <label class="chk"><input type="checkbox" id="fnew"> New since last export</label>
       <div class="tally" id="tally"></div>
     </div>
   </div>
@@ -290,45 +328,52 @@
   <div class="hit" id="hit"></div>
 
   <p class="lede">
-    下面每一列是一個 session,顯示的是<strong>你當時打的第一句話,已經套用替換</strong>。
-    打勾的會出去,打叉的不會。點任何一列展開它的完整逐字稿,看到的就是對方會看到的樣子。
+    Every row is one session, showing <b>the first thing you typed in it, already
+    substituted</b>. A tick leaves this machine, a cross does not. Open any row to
+    read the whole conversation exactly as the recipient will see it.
   </p>
 
   <div id="list"></div>
 
   <div class="sect">
-    <h2>工具不確定的名字 · 8 個</h2>
-    <p>
-      這些不是路徑、不是 email、也不是金鑰,所以自動規則抓不到。
-      模型先判過了,你只要看有沒有判錯。取消替換會被記住,下次不會再問同一個字。
+    <div class="head">
+      <div class="eyebrow">Names the tool is unsure about · 8</div>
+    </div>
+    <p class="note">
+      None of these is a path, an address or a key, so no automatic rule catches
+      them. A model has already judged each one. You are checking its work, and
+      anything you turn off stays off on every future export.
     </p>
     <div id="cands"></div>
   </div>
 
   <div class="att">
-    <h2>具結</h2>
+    <div class="eyebrow">Attestation</div>
     <dl>
-      <dt>要出去的是</dt>
+      <dt>Leaving</dt>
       <dd id="a-scope"></dd>
-      <dt>你實際看過</dt>
+      <dt>You read</dt>
       <dd id="a-read"></dd>
-      <dt>自動檢查</dt>
-      <dd>序列化 27,545 / 27,545 行位元組相同 · 1,284 次替換全部可還原 ·
-          代號沒有跟原文撞名 · <b>已知實體殘留 0 命中</b>(共 54 個實體)</dd>
-      <dt>沒有檢查到</dt>
+      <dt>Checked</dt>
+      <dd>Serialization identical on 27,545 of 27,545 lines. All 1,284
+          substitutions reverse. No pseudonym collides with existing text.
+          <b>Known-entity residue: 0</b> across 54 entities.</dd>
+      <dt>Not checked</dt>
       <dd class="unchecked">
-        工具不認識的人名。「已知實體殘留 0」的意思是「我們知道的那些沒漏」,
-        不是「沒有東西外洩」。<br>
-        裝置指紋:你裝的 MCP server 名稱、模型使用比例、CLI 版本序列。<br>
-        你自己貼進訊息裡的整份文件。名字換掉了,那段文字還在。
+        Names the tool never knew. "Known-entity residue: 0" means the ones we
+        know about did not survive. It does not mean nothing did.<br>
+        Device fingerprint: your MCP server names, your model mix, your CLI
+        version history.<br>
+        Whole documents you pasted into your own messages. The names in them are
+        replaced. The text is still there.
       </dd>
     </dl>
     <div class="sign">
-      <div class="who">簽下去的是你。這份具結會跟檔案一起出去。</div>
+      <div>You are the one signing. This attestation ships inside the archive.</div>
       <div class="stamp" id="stamp"></div>
     </div>
     <div class="sign">
-      <button class="primary" id="ship">我看過上面這些,產出檔案</button>
+      <button class="primary" id="ship">I have read this. Build the archive.</button>
     </div>
     <div class="done" id="done">
       deident-2026-08-22.zip
@@ -338,38 +383,37 @@
 </div>
 
 <script>
-/* One state table. Every figure on the page is derived from it, never stored. */
+/* One state table. Every figure on the page is a derivation of it, never a
+   stored total that can drift from what the rows say. */
 var SESSIONS = [
-  { id:'s1',  d:'08-14', ws:'payments-api', q:'幫我看一下這個月薪水怎麼算', out:true, reason:'碰到私密目錄', denied:true, days:8,
-    tx:[['你','幫我看一下這個月薪水怎麼算'],['Claude','我讀了 <PATH_88>,先確認幾個欄位…'],['tool','讀了 2 個檔案 · 已清理'],['你','那 <PERSON_07> 那筆呢']] },
-  { id:'s2',  d:'08-13', ws:'<home>', q:'幫我改一下這封給房東的信', out:true, reason:'碰到私密目錄', denied:true, days:9,
-    tx:[['你','幫我改一下這封給房東的信'],['Claude','語氣可以再收一點…']] },
-  { id:'s3',  d:'08-16', ws:'payments-api', q:'這個 residual scan 要怎麼寫比較好', out:false, days:6, isnew:true,
-    tx:[['你','這個 residual scan 要怎麼寫比較好'],['Claude','先在序列化之後的位元組上跑,不要在物件上跑…'],['tool','Bash: node test.mjs · exit 0'],['你','那 <PERSON_03> 說的那個 case 呢']] },
-  { id:'s4',  d:'08-15', ws:'web-app', q:'把 passport 的 hero section 重做', out:false, days:7, isnew:true,
-    tx:[['你','把 passport 的 hero section 重做'],['Claude','七個數字擠在一行,先砍到四個…'],['tool','Edit: <PATH_204> · +164 / -43']] },
-  { id:'s5',  d:'08-14', ws:'payments-api', q:'CI 一直在 flaky,幫我找根因', out:false, days:8, isnew:true,
-    tx:[['你','CI 一直在 flaky,幫我找根因'],['Claude','先看 <PATH_412> 這支測試的 setup…'],['tool','Bash: pytest -x · exit 1'],['你','跟 <PERSON_03> 約禮拜四,<PERSON_03> 說她下週交']] },
-  { id:'s6',  d:'08-12', ws:'northwind-integration', q:'把 domain 分類的成本壓下來', out:false, days:10,
-    tx:[['你','把 domain 分類的成本壓下來'],['Claude','by-turn 換成 by-session,大概三倍…'],['tool','讀了 6 個檔案 · 已清理'],
-        ['你','Kaito 那邊要的是逐月還是逐週']] },
-  { id:'s7',  d:'08-11', ws:'web-app', q:'這個 migration 會不會鎖表', out:false, days:11,
-    tx:[['你','這個 migration 會不會鎖表'],['Claude','會,ALTER 在這個版本是 full rewrite…'],
-        ['你','先跟 Kaito 確認再上']] },
-  { id:'s8',  d:'08-09', ws:'<home>', q:'幫我把這份合約的重點列出來', out:true, reason:'無 repo,不可判斷', denied:true, days:13,
-    tx:[['你','幫我把這份合約的重點列出來'],['Claude','第 4 條的賠償上限…']] },
+  { id:'s1', d:'08-14', ws:'payments-api', q:"Work out what my pay should be this month", out:true, reason:'Entered a private directory', denied:true, days:8,
+    tx:[['You',"Work out what my pay should be this month"],['Claude','I read <PATH_88>. Confirming a few columns first.'],['tool','Read 2 files · cleaned'],['You',"What about <PERSON_07>'s line?"]] },
+  { id:'s2', d:'08-13', ws:'<home>', q:"Rewrite this letter to my landlord", out:true, reason:'Entered a private directory', denied:true, days:9,
+    tx:[['You',"Rewrite this letter to my landlord"],['Claude','The tone can come down a little.']] },
+  { id:'s3', d:'08-16', ws:'payments-api', q:"What is the right way to write this residual scan", out:false, days:6, isnew:true,
+    tx:[['You',"What is the right way to write this residual scan"],['Claude','Run it on the serialized bytes, not on the object.'],['tool','Bash: node test.mjs · exit 0'],['You',"What about the case <PERSON_03> raised?"]] },
+  { id:'s4', d:'08-15', ws:'web-app', q:"Rebuild the passport hero section", out:false, days:7, isnew:true,
+    tx:[['You',"Rebuild the passport hero section"],['Claude','Seven figures in one row. Cutting to four.'],['tool','Edit: <PATH_204> · +164 / -43']] },
+  { id:'s5', d:'08-14', ws:'payments-api', q:"CI keeps going flaky, find the root cause", out:false, days:8, isnew:true,
+    tx:[['You',"CI keeps going flaky, find the root cause"],['Claude','Starting with the setup in <PATH_412>.'],['tool','Bash: pytest -x · exit 1'],['You',"Booked Thursday with <PERSON_03>. <PERSON_03> ships hers next week."]] },
+  { id:'s6', d:'08-12', ws:'northwind-integration', q:"Bring the domain classification cost down", out:false, days:10,
+    tx:[['You',"Bring the domain classification cost down"],['Claude','By-session instead of by-turn is roughly a third of it.'],['tool','Read 6 files · cleaned'],['You',"Does Kaito want this monthly or weekly?"]] },
+  { id:'s7', d:'08-11', ws:'web-app', q:"Will this migration lock the table", out:false, days:11,
+    tx:[['You',"Will this migration lock the table"],['Claude','Yes. ALTER is a full rewrite on this version.'],['You',"Check with Kaito before it ships."]] },
+  { id:'s8', d:'08-09', ws:'<home>', q:"Pull out the key terms of this contract", out:true, reason:'No repository, undecidable', denied:true, days:13,
+    tx:[['You',"Pull out the key terms of this contract"],['Claude','Clause 4 caps the indemnity at.']] },
 ];
-var HIDDEN = 153;   /* rows not rendered in this prototype */
+var HIDDEN = 153;
 
 var CANDS = [
-  { n:'Paul Kedrosky',    hint:'4 次 · 3 個 session', ctx:'…看了 <em>Paul Kedrosky</em> 那篇講折舊的…',  on:true },
-  { n:'Rosa Barnard',  hint:'2 次 · 1 個 session', ctx:'…跟 <em>Rosa Barnard</em> 約禮拜四…',      on:true },
-  { n:'Northwind Health', hint:'11 次 · 6 個 session',ctx:'…<em>Northwind Health</em> 那邊的 schema…',   on:true },
-  { n:'Marta Alvarez',    hint:'6 次 · 2 個 session', ctx:'…<em>Marta Alvarez</em> 說她下週交…',         on:true },
-  { n:'Ridgeline Capital',hint:'3 次 · 2 個 session', ctx:'…寄給 <em>Ridgeline Capital</em> 的 deck…',   on:true },
-  { n:'Good Friday',      hint:'1 次 · 1 個 session', ctx:'…<em>Good Friday</em> 放假所以…',             on:false },
-  { n:'Brex Card',        hint:'3 次 · 2 個 session', ctx:'…用 <em>Brex Card</em> 付掉了…',              on:false },
-  { n:'M1019757',         hint:'1 次 · 1 個 session', ctx:'…換 <em>M1019757</em> 這條散熱膏…',           on:false },
+  { n:'Paul Kedrosky',     hint:'4 times · 3 sessions',  ctx:'…read <em>Paul Kedrosky</em> on depreciation…',   on:true },
+  { n:'Rosa Barnard',   hint:'2 times · 1 session',   ctx:'…Thursday with <em>Rosa Barnard</em>…',        on:true },
+  { n:'Northwind Health',  hint:'11 times · 6 sessions', ctx:"…<em>Northwind Health</em>'s schema…",            on:true },
+  { n:'Marta Alvarez',     hint:'6 times · 2 sessions',  ctx:'…<em>Marta Alvarez</em> ships hers next week…',   on:true },
+  { n:'Ridgeline Capital', hint:'3 times · 2 sessions',  ctx:'…the deck we sent <em>Ridgeline Capital</em>…',   on:true },
+  { n:'Good Friday',       hint:'1 time · 1 session',    ctx:'…<em>Good Friday</em> is a holiday so…',          on:false },
+  { n:'Brex Card',         hint:'3 times · 2 sessions',  ctx:'…paid it on the <em>Brex Card</em>…',             on:false },
+  { n:'M1019757',          hint:'1 time · 1 session',    ctx:'…swap in <em>M1019757</em> thermal paste…',       on:false },
 ];
 
 /* What the reader actually did. The attestation reports this, not a claim. */
@@ -379,7 +423,7 @@ function visible() {
   var ws = document.getElementById('fws').value;
   var dr = document.getElementById('fdate').value;
   var nw = document.getElementById('fnew').checked;
-  var days = dr === '過去 7 天' ? 7 : dr === '過去 30 天' ? 30 : 9999;
+  var days = dr === 'Last 7 days' ? 7 : dr === 'Last 30 days' ? 30 : 9999;
   return SESSIONS.filter(function (s) {
     if (ws && s.ws !== ws) return false;
     if (s.days > days) return false;
@@ -388,7 +432,7 @@ function visible() {
   });
 }
 
-function esc(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
 
 function mark(text, term) {
   if (!term) return esc(text);
@@ -401,7 +445,7 @@ function mark(text, term) {
 function render() {
   var term = document.getElementById('q').value.trim();
   var rows = visible().slice().sort(function (a, b) {
-    if (a.out !== b.out) return a.out ? -1 : 1;   /* worst first */
+    if (a.out !== b.out) return a.out ? -1 : 1;      /* the refusals read first */
     return a.d < b.d ? 1 : -1;
   });
 
@@ -413,48 +457,50 @@ function render() {
       '<div class="mk">' + (s.out ? '✕' : '✓') + '</div>' +
       '<div class="dt">' + s.d + '</div>' +
       '<div class="q">' + mark(s.q, term) + '</div>' +
-      '<div class="rz">' + (s.out ? esc(s.reason) : '') + '</div>' +
+      '<div>' + (s.out ? '<span class="rz">' + esc(s.reason) + '</span>' : '') + '</div>' +
       '<button class="go" data-flip="' + s.id + '">' +
-        (s.out ? '其實要送' : '改成不送') + '</button>' +
+        (s.out ? 'Send it anyway' : 'Hold it back') + '</button>' +
       '</div>';
     if (op) {
       html += '<div class="tx">';
       s.tx.forEach(function (t) {
         if (t[0] === 'tool') {
-          html += '<div class="t"><div class="who"></div><div class="tool">[ ' + esc(t[1]) + ' ]</div></div>';
+          html += '<div class="t"><div class="who"></div><div class="tool">' + esc(t[1]) + '</div></div>';
         } else {
           html += '<div class="t"><div class="who">' + esc(t[0]) + '</div><div>' +
                   esc(t[1]).replace(/&lt;([A-Z_]+\d*)&gt;/g, '<span class="sub">&lt;$1&gt;</span>') +
                   '</div></div>';
         }
       });
-      html += '<div class="foot"><span>' + s.ws + '</span><span>程式碼 0 行(算過 88 行)</span>' +
-              '<span>圖片 0 張</span><span>路徑 0 條(換掉 31 處)</span></div></div>';
+      html += '<div class="foot"><span>' + esc(s.ws) + '</span>' +
+              '<span><b>0</b> lines of code <i>(88 counted)</i></span>' +
+              '<span><b>0</b> images</span>' +
+              '<span><b>0</b> file paths <i>(31 replaced)</i></span></div></div>';
     }
   });
 
   if (!term && !document.getElementById('fws').value) {
-    html += '<div class="more">…還有 ' + HIDDEN + ' 列,同樣的形狀,往下捲</div>';
+    html += '<div class="more">' + HIDDEN + ' more rows, same shape, keep scrolling</div>';
   }
   document.getElementById('list').innerHTML = html;
 
   var vis = visible();
   var out = vis.filter(function (s) { return s.out; }).length;
-  var extra = document.getElementById('fws').value || term ? 0 : HIDDEN;
+  var extra = (document.getElementById('fws').value || term) ? 0 : HIDDEN;
   document.getElementById('tally').innerHTML =
-    '顯示 <b>' + (vis.length + extra) + '</b> 筆 · 選進 <b>' + (vis.length + extra - out) +
-    '</b> · <span class="cutn">不送 ' + out + '</span>';
+    'Showing <b>' + (vis.length + extra) + '</b> · sending <b>' +
+    (vis.length + extra - out) + '</b> · <span class="neg">holding ' + out + '</span>';
   paintAtt();
 }
 
 function renderCands() {
   document.getElementById('cands').innerHTML = CANDS.map(function (c, i) {
     return '<div class="cand">' +
-      '<div class="nm">' + esc(c.n) + '<small>' + c.hint + '</small></div>' +
+      '<div class="nm">' + esc(c.n) + '<small>' + esc(c.hint) + '</small></div>' +
       '<div class="ctx">' + c.ctx + '</div>' +
       '<div class="pick">' +
-        '<button data-c="' + i + '" data-v="1" class="' + (c.on ? 'sel' : '') + '">換掉</button>' +
-        '<button data-c="' + i + '" data-v="0" class="' + (c.on ? '' : 'sel') + '">保留原文</button>' +
+        '<button data-c="' + i + '" data-v="1" class="' + (c.on ? 'sel' : '') + '">Replace</button>' +
+        '<button data-c="' + i + '" data-v="0" class="' + (c.on ? '' : 'sel') + '">Leave as written</button>' +
       '</div></div>';
   }).join('');
 }
@@ -464,38 +510,36 @@ function paintAtt() {
   var ship = SESSIONS.length - out + HIDDEN;
   var repl = CANDS.filter(function (c) { return c.on; }).length + 46;
   document.getElementById('a-scope').innerHTML =
-    '<span class="q">' + ship + '</span> 個 session,<span class="q">2,178</span> 則你自己打的訊息,' +
-    '<span class="q">' + repl + '</span> 個實體換成代號。程式碼 0 行,圖片 0 張。';
+    '<b>' + ship + '</b> sessions, <b>2,178</b> messages you typed, <b>' + repl +
+    '</b> entities replaced by pseudonyms. No code, no images.';
 
-  /* Reports what the reader did, not what they claim. Reading and searching are
-     counted separately, because doing only one of them is still doing one. */
   var n = Object.keys(seen).length;
   var el = document.getElementById('a-read');
   el.className = (n === 0 && !searches.length) ? 'thin' : '';
-  var read = n === 0 ? '沒有打開過任何一個 session 的全文'
-                     : '<span class="q">' + n + '</span> 個 session 的全文';
-  var look = !searches.length ? '沒有搜尋過任何名字'
-    : '搜尋了 <span class="q">' + searches.length + '</span> 個詞' +
-      (searchHits ? '(其中 <span class="q">' + searchHits + '</span> 個有命中,已加入替換)'
-                  : '(都沒有命中)');
-  el.innerHTML = read + ',' + look + '。';
+  var read = n === 0
+    ? 'No session in full'
+    : '<b>' + n + '</b> session' + (n === 1 ? '' : 's') + ' in full';
+  var look = !searches.length
+    ? 'and searched for no names'
+    : 'and searched <b>' + searches.length + '</b> term' + (searches.length === 1 ? '' : 's') +
+      (searchHits ? ' (<b>' + searchHits + '</b> found something, now replaced)' : ' (none found anything)');
+  el.innerHTML = read + ', ' + look + '.';
 
-  var d = new Date(2026, 7, 22, 14, 7);
-  document.getElementById('stamp').textContent =
-    d.getFullYear() + '-08-22 14:07 · ' + ship + ' sessions';
+  document.getElementById('stamp').textContent = '2026-08-22 14:07 · ' + ship + ' sessions';
 }
 
-/* Excluding is one click. Including something the rules denied costs a typed
-   confirmation, because that direction is the one that leaks. */
+/* Holding something back is one click. Sending something the rules refused costs
+   a typed confirmation, because that is the direction that leaks. */
 document.getElementById('list').addEventListener('click', function (e) {
   var f = e.target.closest('[data-flip]');
   if (f) {
     e.stopPropagation();
     var s = SESSIONS.find(function (x) { return x.id === f.dataset.flip; });
     if (s.out && s.denied) {
-      var t = prompt('把這個 session 改成會送出。\n\n它被排除的理由是:' + s.reason +
-                     '\n\n往「送出更多」的方向改要打字確認,請輸入:送出');
-      if (t !== '送出') return;
+      var t = prompt('Send this session after all.\n\nIt was held back because: ' +
+                     s.reason + '\n\nSending more than the rules allow needs a typed ' +
+                     'confirmation. Type:  send');
+      if (t !== 'send') return;
     }
     s.out = !s.out;
     render();
@@ -521,25 +565,27 @@ document.getElementById('q').addEventListener('input', function () {
     var hit = document.getElementById('hit');
     if (term.length < 2) { hit.className = 'hit'; return; }
     var found = SESSIONS.filter(function (s) {
-      return (s.q + ' ' + s.tx.map(function (t) { return t[1]; }).join(' '))
+      return !s.out && (s.q + ' ' + s.tx.map(function (t) { return t[1]; }).join(' '))
         .toLowerCase().includes(term.toLowerCase());
     });
+    hit.className = 'hit on';
     if (!found.length) {
-      hit.className = 'hit on';
-      hit.innerHTML = '「<b>' + esc(term) + '</b>」在要送出的內容裡找不到。';
+      hit.innerHTML = 'Nothing leaving this machine still says <b>' + esc(term) + '</b>.';
+      if (searches.indexOf(term) < 0) searches.push(term);
+      paintAtt();
     } else {
-      hit.className = 'hit on';
-      hit.innerHTML = '「<b>' + esc(term) + '</b>」在 <b>' + found.length +
-        '</b> 個要送出的 session 裡還在。這是工具不認識的東西。' +
-        '<button id="addent">把它加進替換清單</button>';
+      hit.innerHTML = '<b>' + esc(term) + '</b> survives in <b>' + found.length +
+        '</b> session' + (found.length === 1 ? '' : 's') +
+        ' you are about to send. The tool does not know this one.' +
+        '<button id="addent">Replace it everywhere</button>';
       document.getElementById('addent').onclick = function () {
-        if (searches.indexOf(term) < 0) { searches.push(term); searchHits++; }
+        if (searches.indexOf(term) < 0) searches.push(term);
+        searchHits++;
         hit.className = 'hit';
         document.getElementById('q').value = '';
         render();
       };
     }
-    if (searches.indexOf(term) < 0 && !found.length) searches.push(term);
   }, 220);
 });
 
@@ -548,14 +594,15 @@ document.getElementById('q').addEventListener('input', function () {
 });
 
 document.getElementById('ship').addEventListener('click', function () {
-  var n = Object.keys(seen).length;
-  if (n === 0 && !confirm('你一個 session 的全文都沒打開過。\n\n具結書會照實寫「你實際看過 0 個」。要繼續嗎?')) return;
+  if (!Object.keys(seen).length &&
+      !confirm('You have not opened a single session in full.\n\nThe attestation will ' +
+               'say so, in those words, and it ships inside the archive. Continue?')) return;
   var out = SESSIONS.filter(function (s) { return s.out; }).length;
   document.getElementById('done').className = 'done on';
   document.getElementById('donemeta').textContent =
-    '約 16.2 MB · ' + (SESSIONS.length - out + HIDDEN) + ' 個 session · 具結書已附在裡面';
+    '16.2 MB · ' + (SESSIONS.length - out + HIDDEN) + ' sessions · attestation enclosed';
   this.disabled = true;
-  this.textContent = '已產出';
+  this.textContent = 'Built';
 });
 
 renderCands();
