@@ -24,14 +24,33 @@ export function substituteRecord(record, table) {
   return { record: out, spans: allSpans, strings: changed };
 }
 
+// Substitution runs to a FIXPOINT, not once.
+//
+// A replacement changes the text around the next candidate, and the boundary
+// rule reads that text. Measured on a real export: `devusergitroll.onmicrosoft`
+// held the username handle glued to the org name, so the handle was a correct
+// embedded non-match on the first pass — and once the org became `X_ORG_7252582`
+// the handle stood at a camel-case boundary in the output, plainly visible. The
+// residual scan reads the FINAL bytes, so it saw the leak and the substituter
+// never could: two passes that legitimately disagree because the text changed
+// between them, which is a permanently red gate rather than a bug in either.
+//
+// Every pass after the first runs under the pseudonym guard, so the fixpoint
+// can never eat its own output, and each pass records its own before/after so
+// I2 is proved per pass exactly as it is for tier 0 versus tier 1.
+const MAX_PASSES = 3;
+
 function walk(value, table, keyPath, changed, allSpans) {
   if (typeof value === 'string') {
-    const { out, spans } = substituteString(value, table);
-    if (spans.length > 0) {
-      changed.push(Object.freeze({ path: keyPath, before: value, after: out, spans }));
+    let current = value;
+    for (let pass = 0; pass < MAX_PASSES; pass += 1) {
+      const { out, spans } = substituteString(current, table, pass === 0 ? undefined : table.repassGuard);
+      if (spans.length === 0) break;
+      changed.push(Object.freeze({ path: keyPath, before: current, after: out, spans }));
       allSpans.push(...spans);
+      current = out;
     }
-    return out;
+    return current;
   }
 
   if (Array.isArray(value)) {
@@ -48,10 +67,13 @@ function walk(value, table, keyPath, changed, allSpans) {
     let mutated = false;
     const next = {};
     for (const [k, v] of Object.entries(value)) {
-      const { out: nextKey, spans: keySpans } = substituteString(k, table);
-      if (keySpans.length > 0) {
-        changed.push(Object.freeze({ path: `${keyPath}.<key>`, before: k, after: nextKey, spans: keySpans }));
-        allSpans.push(...keySpans);
+      let nextKey = k;
+      for (let pass = 0; pass < MAX_PASSES; pass += 1) {
+        const r = substituteString(nextKey, table, pass === 0 ? undefined : table.repassGuard);
+        if (r.spans.length === 0) break;
+        changed.push(Object.freeze({ path: `${keyPath}.<key>`, before: nextKey, after: r.out, spans: r.spans }));
+        allSpans.push(...r.spans);
+        nextKey = r.out;
         mutated = true;
       }
       const nextValue = walk(v, table, `${keyPath}.${k}`, changed, allSpans);

@@ -12,6 +12,8 @@
 // implemented as direct character tests rather than a regex so there is no
 // `\b` in the file to drift back to.
 
+import { pseudonymPattern } from '../entities/pseudonym.mjs';
+
 const WORD_RE = /[A-Za-z0-9_]/;
 
 function isWordChar(ch) {
@@ -57,7 +59,11 @@ export function leftBoundaryBlocks(s, at, entry) {
   if (!entry.needsLeft) return false;
   const ch = s[at - 1];
   if (ch === undefined) return false;
-  if (entry.firstUpper && isLowerish(ch)) return false;
+  // The case of the MATCHED TEXT, not of the entry's spelling. Matching is
+  // case-insensitive, so the entry for `GitRoll` reads `gitroll` — and asking
+  // the spelling whether it starts a hump would answer for a casing that is not
+  // the one in the file.
+  if (isUpper(s[at]) && isLowerish(ch)) return false;
   if (entry.sepBoundary && ch === '_') return false;
   return leftIsWordChar(s, at);
 }
@@ -115,7 +121,7 @@ export function rightBoundaryBlocks(s, end, entry) {
   if (!entry.needsRight) return false;
   const ch = s[end];
   if (ch === undefined) return false;
-  if (entry.lastLowerish && isUpper(ch)) return false;
+  if (isLowerish(s[end - 1]) && isUpper(ch)) return false;
   if (entry.sepBoundary && ch === '_') return false;
   return isWordChar(ch);
 }
@@ -171,6 +177,7 @@ export function leftIsWordChar(s, at) {
  * @returns {Readonly<object>} the table
  */
 export function buildTable(entities, opts = {}) {
+
   const entries = [];
   const flagged = [];
 
@@ -196,8 +203,6 @@ export function buildTable(entities, opts = {}) {
           needsRight: isWordChar(spelling[spelling.length - 1]),
           // Precomputed inputs to the two token-boundary exceptions above.
           sepBoundary: spelling.length >= SEPARATOR_BOUNDARY_MIN,
-          firstUpper: isUpper(spelling[0]),
-          lastLowerish: isLowerish(spelling[spelling.length - 1]),
           lower: caseInsensitive(spelling) ? spelling.toLowerCase() : null,
         }),
       );
@@ -236,6 +241,9 @@ export function buildTable(entities, opts = {}) {
     byPseudonym,
     flagged: Object.freeze(flagged),
     forbidInside: opts.forbidInside ?? null,
+    // The guard a REPEAT pass runs under: whatever the first pass emitted is
+    // off limits, so re-running to a fixpoint can never eat its own output.
+    repassGuard: opts.forbidInside ?? pseudonymPattern(opts.namespace ?? null),
     size: entries.length,
   });
 }
@@ -250,13 +258,14 @@ export function buildTable(entities, opts = {}) {
  *
  * @returns {{out: string, spans: ReadonlyArray<object>}}
  */
-export function substituteString(s, table) {
+export function substituteString(s, table, forbidOverride = undefined) {
   if (typeof s !== 'string' || s.length === 0 || table.size === 0) {
     return { out: s, spans: EMPTY };
   }
 
   // Regions the caller has forbidden (already-emitted pseudonyms, for tier 1).
-  const forbidden = table.forbidInside ? collectForbidden(s, table.forbidInside) : null;
+  const pattern = forbidOverride === undefined ? table.forbidInside : forbidOverride;
+  const forbidden = pattern ? collectForbidden(s, pattern) : null;
 
   let out = '';
   let cursor = 0;

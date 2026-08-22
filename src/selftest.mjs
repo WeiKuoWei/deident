@@ -2029,6 +2029,39 @@ const FIXTURES = [
     });
     assert.equal(real.ok, true);
   }],
+
+  // F71 — a replacement changes the text the boundary rule reads.
+  //
+  // Measured on a real export: `devuserGitRoll.onmicrosoft.com` glued the
+  // uploader's handle to the org name. Two things were wrong. The camel-hump
+  // test asked the ENTRY's spelling whether it started a hump, and matching is
+  // case-insensitive, so the entry for `GitRoll` reads `gitroll` and answered
+  // for a casing that is not the one in the file. And once a replacement lands,
+  // the text around the next candidate is different — so the substituter and
+  // the residual scan can legitimately disagree, which is a permanently red
+  // gate rather than a bug in either.
+  ['F71', 'the boundary reads the matched text, and substitution runs to a fixpoint', () => {
+    const t = buildTable(
+      [entity('P1', 'person', 'devuser', 'X_PERSON_147'), entity('O1', 'org', 'gitroll', 'X_ORG_725')],
+      { namespace: 'X' },
+    );
+    const before = 'mail devuserGitRoll.onmicrosoft.com here';
+    const r = substituteRecord({ text: before }, t);
+    assert.equal(r.record.text, 'mail X_PERSON_147X_ORG_725.onmicrosoft.com here');
+    assert.ok(!r.record.text.includes('devuser'), 'the handle must not survive');
+    // The residual scan agrees, which is the whole point of the pairing.
+    assert.equal(residualScan(r.record.text, t, new Set()).entityCount, 0);
+
+    // I2 per pass, exactly as the pipeline proves it for tier 0 versus tier 1.
+    for (const str of r.strings) assert.equal(reverseString(str.after, str.spans), str.before);
+    assert.ok(checkSubstitution(r.strings, t).ok);
+
+    // A repeat pass runs under the pseudonym guard, so the fixpoint can never
+    // eat its own output: a spelling that matches an emitted token is refused.
+    const selfEating = buildTable([entity('P2', 'person', 'X_ORG_725', 'X_PERSON_9')], { namespace: 'X' });
+    const second = substituteString('X_ORG_725 stays', selfEating, selfEating.repassGuard);
+    assert.equal(second.out, 'X_ORG_725 stays');
+  }],
 ];
 
 export function selftest() {

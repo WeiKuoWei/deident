@@ -221,7 +221,7 @@ export async function runExport(flags, env) {
 
   //  9  pseudonyms
   const tier0 = assignPseudonyms(seeded.entities, salt, flags.namespace);
-  const tier0Table = buildTable(tier0.entities);
+  const tier0Table = buildTable(tier0.entities, { namespace: flags.namespace });
 
   // 10  tier-0 substitution -> `cleaned`
   const cleaned = substituteAll(retained.records, tier0Table);
@@ -274,7 +274,9 @@ export async function runExport(flags, env) {
   );
 
   // 14  serialize
-  const mergedTable = buildTable([...tier0.entities, ...tier1Assigned.entities]);
+  const mergedTable = buildTable([...tier0.entities, ...tier1Assigned.entities], {
+    namespace: flags.namespace,
+  });
   const serialized = serializeSessions(final.records, mergedTable, rewriteUuid);
 
   // 15  residual scan on the serialized bytes
