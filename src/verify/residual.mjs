@@ -16,6 +16,11 @@
 
 import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
 
+const WORD_RE = /[A-Za-z0-9_]/;
+function isWordChar(ch) {
+  return ch !== undefined && WORD_RE.test(ch);
+}
+
 const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
 
 /**
@@ -27,31 +32,77 @@ const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-
 export function residualScan(bytes, table, knownUuids = new Set()) {
   const entityHits = [];
 
+  // The serialized form of a spelling is what actually lands in the file. Both
+  // are searched: the decoded form (present wherever the text needed no
+  // escaping) and JSON.stringify's own escaping of it, which is how a CJK
+  // entity or a Windows path re-enters the bytes in a shape the in-memory scan
+  // never saw.
+  //
+  // Indexed by first character and swept in ONE pass. An indexOf loop per form
+  // is O(forms x bytes): with a few hundred entity spellings over tens of
+  // megabytes of output that is tens of gigabytes of scanning, and a check
+  // nobody is willing to wait for is a check that gets switched off (§F7's
+  // failure mode, arriving as latency instead of noise).
+  const byFirst = new Map();
   for (const entry of table.entries) {
-    // The serialized form of a spelling is what actually lands in the file.
-    // Both are searched: the decoded form (present in raw JSON body text that
-    // needed no escaping) and JSON.stringify's own escaping of it.
-    const forms = new Set([entry.spelling, jsonEscaped(entry.spelling)]);
-    for (const form of forms) {
-      let from = 0;
-      for (;;) {
-        const at = bytes.indexOf(form, from);
-        if (at === -1) break;
-        entityHits.push(
-          Object.freeze({
-            entityId: entry.entityId,
-            spelling: entry.spelling,
-            form,
-            offset: at,
-            excerpt: excerptAt(bytes, at, form.length),
-          }),
-        );
-        from = at + form.length;
-        if (entityHits.length > 10_000) break;
-      }
-      if (entityHits.length > 10_000) break;
+    for (const form of new Set([entry.spelling, jsonEscaped(entry.spelling)])) {
+      if (form.length === 0) continue;
+      const key = form[0];
+      if (!byFirst.has(key)) byFirst.set(key, []);
+      byFirst.get(key).push({ form, entry });
     }
-    if (entityHits.length > 10_000) break;
+  }
+  for (const bucket of byFirst.values()) bucket.sort((a, b) => b.form.length - a.form.length);
+
+  // Embedded occurrences — a spelling sitting inside a longer word — are
+  // counted but do NOT fail the export.
+  //
+  // BRIEF §4.5 row 4 labels `ray` inside `array index` a CORRECT non-match, so
+  // a gate that failed on it would refuse every export forever over behaviour
+  // the brief demands. That is §F7's "a scan that cries wolf is the first
+  // thing switched off", arriving as a permanently red gate.
+  //
+  // The honest handling is that they are a different finding class: reported
+  // as a number the reader can see, and covered by the "NOT protected against"
+  // block, rather than either silently ignored or treated as a leak.
+  let embedded = 0;
+
+  for (let i = 0; i < bytes.length && entityHits.length <= 10_000; i += 1) {
+    const bucket = byFirst.get(bytes[i]);
+    if (bucket === undefined) continue;
+    for (const { form, entry } of bucket) {
+      if (!bytes.startsWith(form, i)) continue;
+      // A match that begins inside a JSON escape sequence is an artifact of
+      // reading serialized bytes as flat text, not a leak.
+      //
+      // Measured on the real corpus: one session records an ENOENT whose path
+      // a tool had already double-decoded, so the retained string genuinely
+      // holds CR + "ayku". Serialized, that is the two bytes `\` `r` followed
+      // by `ayku` — and the literal substring "devuser" therefore appears in the
+      // byte stream while appearing nowhere in the decoded text. Failing the
+      // export on it is §F7 exactly: a scan that cries wolf.
+      //
+      // The test is the standard one: a backslash is an escape introducer only
+      // when preceded by an even number of backslashes, so a match starting
+      // immediately after an ODD run is inside an escape.
+      if (startsInsideEscape(bytes, i)) continue;
+      // Same boundary rule as the substituter, for the same reason.
+      const end = i + form.length;
+      if ((entry.needsLeft && isWordChar(bytes[i - 1])) || (entry.needsRight && isWordChar(bytes[end]))) {
+        embedded += 1;
+        break;
+      }
+      entityHits.push(
+        Object.freeze({
+          entityId: entry.entityId,
+          spelling: entry.spelling,
+          form,
+          offset: i,
+          excerpt: excerptAt(bytes, i, form.length),
+        }),
+      );
+      break;
+    }
   }
 
   // §F5: account UUIDs match no detector — not path-shaped, not name-shaped,
@@ -70,9 +121,21 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
     entityHits: Object.freeze(entityHits),
     uuidHits: Object.freeze(uuidHits),
     entityCount: entityHits.length,
+    embedded,
     uuidCount: uuidHits.length,
     entitiesScanned: table.entries.length,
   });
+}
+
+/**
+ * True when position `at` is the character immediately after an odd-length run
+ * of backslashes — i.e. inside a JSON escape sequence rather than at the start
+ * of real content. Exported so the selftest can pin it directly.
+ */
+export function startsInsideEscape(bytes, at) {
+  let backslashes = 0;
+  for (let j = at - 1; j >= 0 && bytes[j] === '\\'; j -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
 }
 
 /** How JSON.stringify would write this text inside a string literal. */
@@ -82,10 +145,12 @@ export function jsonEscaped(s) {
 }
 
 function excerptAt(bytes, at, len) {
-  const start = Math.max(0, at - 30);
-  const end = Math.min(bytes.length, at + len + 30);
+  const start = Math.max(0, at - EXCERPT_CONTEXT);
+  const end = Math.min(bytes.length, at + len + EXCERPT_CONTEXT);
   return bytes.slice(start, end).replace(/\s+/g, ' ');
 }
+
+const EXCERPT_CONTEXT = Number(process.env.DEIDENT_EXCERPT_CONTEXT ?? 30);
 
 /** The report line. cli-ux §7: this exact wording, never "safe". */
 export function residueLine(scan) {

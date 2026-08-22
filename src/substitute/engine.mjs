@@ -211,28 +211,31 @@ export function reverseString(out, spans) {
 }
 
 /**
- * Every boundary-valid occurrence of every spelling in `s`, found by a
- * deliberately different algorithm: an exhaustive indexOf sweep per entry
- * rather than one indexed left-to-right pass.
+ * EVERY boundary-valid occurrence of EVERY spelling in `s`, including
+ * overlapping and nested ones.
  *
- * checks.mjs uses this to assert that the fast scan missed nothing and chose
- * the longest match everywhere. Two implementations that agree is evidence;
- * one implementation agreeing with itself is not.
+ * This is the verifier's algorithm and it is deliberately not the
+ * substituter's. substituteString stops at the first hit in a bucket (relying
+ * on the sort to make that the longest) and then jumps past it; this one
+ * collects all candidates at every offset and never skips, so it can see both
+ * a match the fast scan missed and a longer match the fast scan passed over.
+ * A wrong sort order, a released mask interval or a bad jump shows up as a
+ * disagreement between the two. One implementation agreeing with itself would
+ * not be evidence of anything.
  */
 export function allOccurrences(s, table) {
   const found = [];
-  for (const entry of table.entries) {
-    let from = 0;
-    for (;;) {
-      const at = s.indexOf(entry.spelling, from);
-      if (at === -1) break;
-      const end = at + entry.spelling.length;
-      const leftOk = !entry.needsLeft || !isWordChar(s[at - 1]);
-      const rightOk = !entry.needsRight || !isWordChar(s[end]);
-      if (leftOk && rightOk) found.push({ start: at, end, entry });
-      from = at + 1;
+  for (let i = 0; i < s.length; i += 1) {
+    const bucket = table.byFirstChar.get(s[i]);
+    if (bucket === undefined) continue;
+    for (const entry of bucket) {
+      const end = i + entry.spelling.length;
+      if (end > s.length) continue;
+      if (!s.startsWith(entry.spelling, i)) continue;
+      if (entry.needsLeft && isWordChar(s[i - 1])) continue;
+      if (entry.needsRight && isWordChar(s[end])) continue;
+      found.push({ start: i, end, entry });
     }
   }
-  found.sort((a, b) => a.start - b.start || b.end - a.end);
   return found;
 }

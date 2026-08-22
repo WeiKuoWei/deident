@@ -210,7 +210,7 @@ function retainBlocks(blocks, ctx, where) {
     if (decision === 'drop-counted') {
       if (block.type === 'image') ctx.stats.images += 1;
       else ctx.stats.documents += 1;
-      out.push({ type: block.type, deident: 'replaced with a placeholder' });
+      out.push({ type: block.type, redacted: 'replaced with a placeholder' });
       continue;
     }
     const kept = retainBlock(block, ctx);
@@ -250,7 +250,7 @@ function retainBlock(block, ctx) {
         // before and independently of any truncation.
         is_error: block.is_error === true ? true : null,
         content: text,
-        deident_omitted_bytes: omitted > 0 ? omitted : null,
+        redacted_omitted_bytes: omitted > 0 ? omitted : null,
       });
     }
 
@@ -266,7 +266,7 @@ function stripCodeParams(input, ctx) {
   for (const [k, v] of Object.entries(input)) {
     if (CODE_VALUED_TOOL_PARAMS.includes(k)) {
       ctx.stats.codeParamsDropped += 1;
-      out[k] = { deident: 'code removed', lines: countLines(v), bytes: byteLength(v) };
+      out[k] = { redacted: 'code removed', lines: countLines(v), bytes: byteLength(v) };
       continue;
     }
     out[k] = v;
@@ -392,6 +392,40 @@ function retainSystem(rec, ctx, where) {
 }
 
 // ------------------------------------------------------------------ shared
+
+const UUID_IN_TEXT = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
+
+/**
+ * Rewrite every UUID inside retained STRINGS, not only in uuid-shaped fields.
+ *
+ * §F5: account UUIDs match no detector — not path-shaped, not name-shaped, not
+ * high-entropy-secret-shaped — so the residual scan is seeded with "any UUID
+ * that is not a known message or session uuid". Measured on this corpus, ~10k
+ * UUIDs appear inside tool output and prose (agent ids, scratchpad paths,
+ * session references). If those are left alone, I5 can never pass and the gate
+ * is permanently red, which is the §F7 failure mode again.
+ *
+ * Rewriting them deterministically costs nothing: a UUID carries no scoring
+ * value, correlation between occurrences survives, and every UUID in the
+ * output is then one deident minted — which is exactly what makes I5 a real
+ * check rather than a wish.
+ */
+export function rewriteUuidsInRecord(value, rewriteUuid) {
+  if (typeof value === 'string') {
+    if (!value.includes('-')) return value;
+    UUID_IN_TEXT.lastIndex = 0;
+    return value.replace(UUID_IN_TEXT, (u) => rewriteUuid(u) ?? u);
+  }
+  if (Array.isArray(value)) return value.map((v) => rewriteUuidsInRecord(v, rewriteUuid));
+  if (value !== null && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[rewriteUuidsInRecord(k, rewriteUuid)] = rewriteUuidsInRecord(v, rewriteUuid);
+    }
+    return out;
+  }
+  return value;
+}
 
 /** §F4: millisecond stamps fingerprint the device. Quantise to the minute. */
 export function quantise(timestamp) {

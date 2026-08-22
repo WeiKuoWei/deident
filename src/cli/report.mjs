@@ -150,6 +150,14 @@ export function renderManifest(m) {
   say('    device fingerprint: MCP server names, model mix, CLI version sequence');
   say('    verbatim documents you pasted into your own messages');
   say('    third-party names the semantic pass did not recognise');
+  if (m.embedded > 0) {
+    // Honest, not reassuring: these are occurrences of a known entity sitting
+    // inside a longer word, where the boundary rule correctly does not fire
+    // (BRIEF §4.5 row 4 — `ray` inside `array` is a CORRECT non-match). They
+    // are not leaks of that entity, but the reader is told the number rather
+    // than being left to assume the count is zero.
+    say(`    ${n(m.embedded)} known-entity spellings sit inside longer words and were left alone`);
+  }
   say('');
 }
 
