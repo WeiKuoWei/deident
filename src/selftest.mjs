@@ -2834,6 +2834,132 @@ const FIXTURES = [
       'a repeat pass must not substitute inside its own token',
     );
   }],
+
+  // F87 — three retention defects that all report something untrue.
+  ['F87', 'one line count, a codepoint-safe cut, and no silent nested drop', () => {
+    const ctx = newRetentionContext((u) => u);
+    const at = { file: 'a', line: 1 };
+
+    // (1) The stripped Write parameter reported one more line than
+    // code_added_lines for the same file: 907 of 908 pairs in the corpus
+    // disagreed by exactly 1, one JSONL line apart in the same export.
+    const body = ['l1', 'l2', 'l3'].join(NL) + NL;
+    const write = retainRecord(
+      {
+        type: 'assistant', uuid: 'u1', sessionId: 's',
+        message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Write', input: { file_path: 'C:/w/a.txt', content: body } }] },
+      },
+      ctx,
+      at,
+    );
+    const stripped = write.record.message.content[0].input.content;
+    const counted = distillToolResult({ type: 'create', filePath: 'C:/w/a.txt', content: body, structuredPatch: [] });
+    assert.equal(stripped.lines, 3, 'a trailing newline terminates the last line');
+    assert.equal(stripped.lines, counted.code_added_lines, 'the two figures in one export must agree');
+
+    // (2) The head/tail cut split a multi-byte character, and toString then
+    // substituted U+FFFD: 196 of 1,217 truncated blocks in the corpus gained
+    // one. This tool only removes; it must not insert.
+    const FFFD = String.fromCharCode(0xfffd);
+    const cjk = '中'.repeat(9000);
+    const capped = retainRecord(
+      {
+        type: 'user', uuid: 'u2', sessionId: 's',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: cjk }] },
+      },
+      ctx,
+      at,
+    );
+    const text = capped.record.message.content[0].content;
+    assert.ok(text.includes('omitted by deident'), 'it was truncated');
+    assert.equal(text.includes(FFFD), false, 'and no replacement character was invented');
+    assert.equal(Buffer.from(text, 'utf8').includes(Buffer.from(FFFD, 'utf8')), false);
+
+    // (3) A nested block type nobody has decided about is a refusal, the same
+    // as at the top level (I7). Today's instance carries only an MCP tool name
+    // and is dropped by name; anything else raises.
+    const known = retainRecord(
+      {
+        type: 'user', uuid: 'u3', sessionId: 's',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't2', content: [{ type: 'tool_reference', name: 'mcp__x__y' }, { type: 'text', text: 'result' }] }],
+        },
+      },
+      ctx,
+      at,
+    );
+    assert.equal(known.record.message.content[0].content, 'result');
+    assert.throws(
+      () => retainRecord(
+        {
+          type: 'user', uuid: 'u4', sessionId: 's',
+          message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't3', content: [{ type: 'brand_new_thing', payload: 'user text nobody reviewed' }] }] },
+        },
+        newRetentionContext((u) => u),
+        at,
+      ),
+      /never seen/,
+      'a silent drop is how the highest-value turns get lost (BRIEF §4.4)',
+    );
+  }],
+  // F86 - a presigned URL's session token is a credential, and prose whose
+  // subject is a recovery kit goes as a block.
+  //
+  // Both come from the same 2026-08-22 finding. An AWS SigV4 query token
+  // carries no vendor prefix, is not a JWT and has no `Bearer` before it, so
+  // all three existing sweeps walked past it while the manifest printed
+  // `0 secrets`. And a reviewer looking at an Emergency Kit could only say the
+  // quotes were truncated, so exact removal could not be promised - which is
+  // how a whole session gets dropped for something a block rule removes.
+  ['F86', 'an AWS session token is swept, and credential prose is withheld as a block', () => {
+    const token = 'FQoGZXIvYXdzEBYaDExhbXBs' + 'x'.repeat(40);
+    const url = `https://s3.amazonaws.com/b/k?X-Amz-Security-Token=${token}&X-Amz-Signature=abc`;
+    const swept = sweepSecrets([`fetch ${url} now`]);
+    assert.ok(swept.includes(token), 'the token value is taken');
+    assert.ok(!swept.some((v) => v.includes('X-Amz-Security-Token')), 'the parameter name is not');
+
+    // The temporary key id shares AKIA's shape with a different first letter.
+    assert.ok(sweepSecrets(['id ASIA' + 'Q'.repeat(16) + ' here']).length === 1);
+
+    // A signed URL with no credential parameters is not a secret.
+    assert.deepEqual(sweepSecrets(['https://s3.amazonaws.com/bucket/key?versionId=3']), []);
+
+    // Block rule: prose about a recovery kit leaves as a byte count.
+    const ctx = newRetentionContext((u) => u);
+    const rec = retainRecord(
+      {
+        type: 'assistant',
+        uuid: 'u1',
+        sessionId: 's',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Your 1Password Emergency Kit is in Downloads and holds the account key.' }],
+        },
+      },
+      ctx,
+      { file: 'a', line: 1 },
+    );
+    const out = rec.record.message.content[0].text;
+    assert.match(out, /withheld by deident/);
+    assert.ok(!out.includes('Downloads'), 'the whole block goes, not the matched phrase');
+    assert.equal(ctx.stats.deniedBlocks, 1);
+
+    // Ordinary prose that merely names the product is untouched: a session
+    // comparing password managers is exactly the work worth exporting.
+    const keep = retainRecord(
+      {
+        type: 'assistant',
+        uuid: 'u2',
+        sessionId: 's',
+        message: { role: 'assistant', content: [{ type: 'text', text: '1Password costs less than the team plan.' }] },
+      },
+      ctx,
+      { file: 'a', line: 2 },
+    );
+    assert.equal(keep.record.message.content[0].text, '1Password costs less than the team plan.');
+    assert.equal(ctx.stats.deniedBlocks, 1, 'and it is not counted as denied');
+  }],
 ];
 
 export function selftest() {

@@ -9,7 +9,7 @@
 // Counts in the comments were measured over the full depth-0 corpus.
 
 import { RefusalError } from '../cli/errors.mjs';
-import { retainToolUseResult, distillToolResult } from './toolresult.mjs';
+import { retainToolUseResult, distillToolResult, lineCount } from './toolresult.mjs';
 import {
   TOOL_RESULT_HEAD_BYTES,
   TOOL_RESULT_TAIL_BYTES,
@@ -21,6 +21,7 @@ import {
   DENIED_PATH_RE,
   DENIED_PATH_REASON,
   DENIED_MARKER,
+  DENIED_TEXT,
   INJECTED_SPANS,
 } from './constants.mjs';
 
@@ -262,18 +263,26 @@ function retainBlocks(blocks, ctx, where) {
       out.push({ type: block.type, redacted: 'replaced with a placeholder' });
       continue;
     }
-    const kept = retainBlock(block, ctx);
+    const kept = retainBlock(block, ctx, where);
     if (kept !== null) out.push(kept);
   }
   return out;
 }
 
-function retainBlock(block, ctx) {
+function retainBlock(block, ctx, where) {
   switch (block.type) {
     case 'text': {
       if (typeof block.text !== 'string' || block.text.length === 0) return null;
       const text = stripInjected(block.text, ctx);
-      return text.length > 0 ? { type: 'text', text } : null;
+      if (text.length === 0) return null;
+      const credential = deniedTextReason(text);
+      if (credential !== null) {
+        const bytes = Buffer.byteLength(text, 'utf8');
+        ctx.stats.deniedBlocks += 1;
+        ctx.stats.deniedBytes += bytes;
+        return { type: 'text', text: DENIED_MARKER(bytes, credential) };
+      }
+      return { type: 'text', text };
     }
 
     case 'thinking':
@@ -309,7 +318,7 @@ function retainBlock(block, ctx) {
     }
 
     case 'tool_result': {
-      const denied = denyToolResult(block.content, ctx);
+      const denied = denyToolResult(block.content, ctx, where);
       if (denied !== null) {
         return prune({
           type: 'tool_result',
@@ -319,7 +328,7 @@ function retainBlock(block, ctx) {
           redacted_omitted_bytes: null,
         });
       }
-      const { text, omitted } = capToolResult(block.content, ctx);
+      const { text, omitted } = capToolResult(block.content, ctx, where);
       return prune({
         type: 'tool_result',
         tool_use_id: ctx.rewriteUuid(block.tool_use_id),
@@ -365,14 +374,35 @@ function stripCodeParams(input, ctx) {
   return out;
 }
 
+/**
+ * ONE definition of a line, shared with toolresult.mjs.
+ *
+ * This used to be `split(NL).length` with no trailing-newline adjustment while
+ * `lineCount` subtracted one and documented why, so the stripped Write
+ * parameter reported one more line than `code_added_lines` for the same file:
+ * 907 of 908 pairs in the corpus disagreed by exactly 1, one JSONL line apart
+ * in the same export. A reader who picks the tool_use figure inflates every
+ * Write by a line.
+ */
 function countLines(v) {
-  if (typeof v === 'string') return v.length === 0 ? 0 : v.split('\n').length;
+  if (typeof v === 'string') return lineCount(v);
   if (Array.isArray(v)) return v.reduce((a, x) => a + countLines(x?.new_string ?? x?.newString ?? ''), 0);
   return null;
 }
 
 function byteLength(v) {
   return typeof v === 'string' ? Buffer.byteLength(v, 'utf8') : null;
+}
+
+/** The first DENIED_TEXT pattern this prose trips, or null. */
+export function deniedTextReason(text) {
+  if (typeof text !== 'string' || text.length === 0) return null;
+  for (const re of DENIED_TEXT) {
+    re.lastIndex = 0;
+    const m = re.exec(text);
+    if (m !== null) return m[0].trim();
+  }
+  return null;
 }
 
 /** The first DENIED_CONTENT pattern this text trips, or null. */
@@ -416,8 +446,8 @@ function stripInjected(text, ctx) {
  * The whole result goes, not the matching line: a file listing is denied by
  * one entry in it, and half a private file is still a private file.
  */
-function denyToolResult(content, ctx) {
-  const text = flattenContent(content);
+function denyToolResult(content, ctx, where) {
+  const text = flattenContent(content, where);
   const why = deniedReason(text);
   if (why === null) return null;
   ctx.stats.deniedBlocks += 1;
@@ -431,21 +461,52 @@ function denyToolResult(content, ctx) {
  * constants.mjs are generous and the omission is stated in the record rather
  * than being silent.
  */
-function capToolResult(content, ctx) {
-  const text = flattenContent(content);
+function capToolResult(content, ctx, where) {
+  const text = flattenContent(content, where);
   if (text === null) return { text: null, omitted: 0 };
   const bytes = Buffer.byteLength(text, 'utf8');
   if (bytes <= TOOL_RESULT_HEAD_BYTES + TOOL_RESULT_TAIL_BYTES) return { text, omitted: 0 };
 
   const buf = Buffer.from(text, 'utf8');
-  const head = buf.subarray(0, TOOL_RESULT_HEAD_BYTES).toString('utf8');
-  const tail = buf.subarray(buf.length - TOOL_RESULT_TAIL_BYTES).toString('utf8');
-  const omitted = bytes - TOOL_RESULT_HEAD_BYTES - TOOL_RESULT_TAIL_BYTES;
+  // Snapped to a codepoint boundary. Slicing the buffer at a fixed byte offset
+  // splits a multi-byte character whenever the cut lands inside one, and
+  // toString then substitutes U+FFFD: measured over the corpus, 196 of 1,217
+  // truncated blocks (16.1%) gained a replacement character at the seam. This
+  // is the tool INSERTING a character that was never in the log, into an
+  // export whose selling point is that it only removes.
+  const headEnd = snapBack(buf, TOOL_RESULT_HEAD_BYTES);
+  const tailStart = snapBack(buf, buf.length - TOOL_RESULT_TAIL_BYTES);
+  const head = buf.subarray(0, headEnd).toString('utf8');
+  const tail = buf.subarray(tailStart).toString('utf8');
+  const omitted = tailStart - headEnd;
   ctx.stats.toolResultBytesOmitted += omitted;
   return { text: head + TRUNCATION_MARKER(omitted) + tail, omitted };
 }
 
-function flattenContent(content) {
+/**
+ * The nearest codepoint boundary at or before `at`.
+ * A UTF-8 continuation byte is 10xxxxxx, so walk back while that holds.
+ */
+function snapBack(buf, at) {
+  let i = Math.max(0, Math.min(at, buf.length));
+  while (i > 0 && (buf[i] & 0xc0) === 0x80) i -= 1;
+  return i;
+}
+
+/**
+ * Nested content blocks inside a tool_result.
+ *
+ * `retainBlocks` refuses an unknown block type at the top level (I7) precisely
+ * because a silent drop is how the highest-value user turns get lost, and that
+ * discipline stopped one level down: anything that was not a string, not an
+ * object with `.text` and not an image fell off the end of the loop with no
+ * counter and no refusal. Measured over the corpus: 1,361 `tool_reference`
+ * blocks today, carrying only an MCP tool name — and any new sub-block type
+ * tomorrow, carrying whatever Claude Code decides to put there.
+ */
+const NESTED_BLOCK_DROP = Object.freeze(['tool_reference']);
+
+function flattenContent(content, where = null) {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return content === null || content === undefined ? null : JSON.stringify(content);
   const parts = [];
@@ -453,6 +514,10 @@ function flattenContent(content) {
     if (typeof b === 'string') parts.push(b);
     else if (b && typeof b === 'object' && typeof b.text === 'string') parts.push(b.text);
     else if (b && typeof b === 'object' && b.type === 'image') parts.push('[image removed by deident]');
+    else if (b && typeof b === 'object' && NESTED_BLOCK_DROP.includes(b.type)) continue;
+    else if (b !== null && b !== undefined) {
+      throw unknown(`a nested content block of type "${b && b.type}"`, where, `nested ${b && b.type}`);
+    }
   }
   return parts.join('\n');
 }

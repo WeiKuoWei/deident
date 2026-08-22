@@ -148,3 +148,26 @@ export const INJECTED_SPANS = Object.freeze([
   /<local-command-stdout>[^]*?<[/]local-command-stdout>/g,
   /<local-command-stderr>[^]*?<[/]local-command-stderr>/g,
 ]);
+
+/**
+ * Prose whose subject is a live credential, withheld as a whole block.
+ *
+ * String-level substitution needs the exact literal, and a reviewer looking at
+ * a recovery kit or a vault map cannot promise to have enumerated every way it
+ * is written across a long session. On 2026-08-22 that gap is what forced two
+ * sessions out whole: "truncated in the quotes, so complete string removal
+ * cannot be guaranteed".
+ *
+ * A block is coarser than a string and that is the point. Losing a paragraph
+ * is cheap; a key that leaves cannot be recalled, and it does not care who was
+ * holding it.
+ */
+export const DENIED_TEXT = Object.freeze([
+  /1Password[- ]?Emergency[- ]?Kit/i,
+  /Emergency Kit/i,
+  /Secret Key[ ]*[:：]/i,
+  /master password/i,
+  /(recovery|backup) codes?[ ]*[:：]/i,
+  /備份碼|復原碼/,
+  /X-Amz-Security-Token/i,
+]);
