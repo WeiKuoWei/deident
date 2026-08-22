@@ -697,6 +697,31 @@ const FIXTURES = [
     assert.equal(allOccurrences(s2, t).length, 2);
   }],
 
+  // Regression guard for the two types the live gate caught mid-run. If
+  // either is ever re-classified as KEEP, the account uuid §F5 names comes
+  // straight back into the export on a record type the brief never listed.
+  ['F36', 'the artifact-comment record types are dropped, account uuid and all', () => {
+    const ctx = newRetentionContext((u) => u);
+    const monitor = {
+      type: 'artifact-comment-monitor',
+      v: 1,
+      sessionId: 's',
+      artifacts: { 'aaaaaaaa-0000-4000-8000-000000000000': { state: 'armed', writtenAtMs: 1787376269019, title: 'Q3 Payroll Review' } },
+    };
+    const ledger = {
+      type: 'artifact-autoreact-ledger',
+      v: 1,
+      sessionId: 's',
+      accountUuid: '7594939e-0000-4000-8000-000000000000',
+      artifacts: {},
+    };
+    for (const rec of [monitor, ledger]) {
+      const out = retainRecord(rec, ctx, null);
+      assert.equal(out.keep, false, `${rec.type} must be dropped`);
+      assert.equal(out.record, null);
+    }
+  }],
+
   ['F35', 'the serialized-form scan catches an escaped CJK entity (§4.6)', () => {
     const t = buildTable([entity('P1', 'person', '郭大明', 'PERSON_1')]);
     // JSON.stringify does not escape CJK by default, so the decoded form is

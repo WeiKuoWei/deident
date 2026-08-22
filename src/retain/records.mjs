@@ -41,6 +41,20 @@ const TOP_LEVEL = Object.freeze({
   'pr-link': 'drop',
   relocated: 'drop-after-use',
   'worktree-state': 'drop-after-use',
+
+  // These two did not exist when BRIEF §4.4 was written. They appeared in the
+  // live corpus DURING the acceptance run and were caught by I7 — the refusal
+  // is the mechanism working, not a defect in it.
+  //
+  // Both are artifact-comment bookkeeping and neither carries a user turn.
+  // `artifact-comment-monitor` holds an artifact uuid, its human title and a
+  // millisecond stamp. `artifact-autoreact-ledger` holds `accountUuid`, and
+  // the value on this machine is the SAME `7594939e-…` that §F5 names
+  // verbatim as the identifier no detector matches — arriving on a record
+  // type the brief never saw. Dropping `bridge-session` alone would no longer
+  // have been enough.
+  'artifact-comment-monitor': 'drop',
+  'artifact-autoreact-ledger': 'drop',
 });
 
 // PLAN §3.2. Only three of the 26 carry user text.
