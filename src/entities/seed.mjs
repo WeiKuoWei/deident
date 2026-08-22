@@ -120,9 +120,29 @@ export function seedEntities(env, corpus, opts = {}) {
   // only the personal address — so the local part survived tier 0 in 46
   // places. An email regex is also precisely the shape §F7 asks for: it
   // cannot match a thermal-paste part number.
+  const ownHandles = new Set();
   for (const email of sweepEmails(opts.texts ?? [])) {
     add('person', email, 'email found in session text');
+    // The bare local part, but ONLY when it contains the OS username — i.e.
+    // when it is demonstrably one of the uploader's own handles.
+    //
+    // Measured on a real export: `devuser` survived six times as a bare handle,
+    // because the seeded spelling is the full address and `devuser` inside
+    // `devuser` is a correct embedded non-match (F07's nested collision). The
+    // guard is what keeps this from being §F7 over-substitution: seeding every
+    // local part would make entities of `legal`, `info`, `support` and `admin`
+    // and substitute them throughout the prose.
+    const local = email.split('@')[0];
+    if (
+      username &&
+      local.length >= 5 &&
+      local.toLowerCase() !== username.toLowerCase() &&
+      local.toLowerCase().includes(username.toLowerCase())
+    ) {
+      ownHandles.add(local);
+    }
   }
+  for (const handle of ownHandles) add('person', handle, 'your own handle, from an email in the text');
 
   // --- Credentials. cli-ux §6 prints a `0 secrets   N replaced` line, so the
   // contract already promised this; nothing in the pipeline looked for one.

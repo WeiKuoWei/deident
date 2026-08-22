@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { expandVariants, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
 import {
+  seedEntities,
   rejectReason,
   sweepEmails,
   sweepSecrets,
@@ -740,6 +741,30 @@ const FIXTURES = [
     assert.ok(!out.text.includes('006033ea'), 'the uuid must not survive in prose');
     assert.ok(out.text.includes('00000000-0000-4000-8000-'));
     assert.equal(out.id, 'x', 'non-uuid values are untouched');
+  }],
+
+  // F69 — the bare local part of the uploader's own address survived six times
+  // in a real export, because the seeded spelling is the whole address and the
+  // OS username inside it is a correct embedded non-match (F07's nested
+  // collision). Seeding EVERY local part would make entities of `legal`,
+  // `info`, `support` and `admin`; the guard is that the handle must contain
+  // the OS username, which is what makes it demonstrably the uploader's own.
+  ['F69', "the uploader's own email handle is an entity, other people's are not", () => {
+    const texts = ['write to devuser@gitroll.io or legal@catalyte.ai, cc support@deel.com'];
+    const seeded = seedEntities(
+      { USERNAME: 'devuser' },
+      { files: [] },
+      { cwds: [], repoDirs: [], texts },
+    );
+    const canonicals = seeded.entities.map((e) => e.canonical);
+    assert.ok(canonicals.includes('devuser'), `expected the own-handle seed: ${canonicals.join(', ')}`);
+    // Third-party local parts are ordinary words and are NOT seeded bare.
+    for (const other of ['legal', 'support']) {
+      assert.ok(!canonicals.includes(other), `${other} must not become an entity`);
+    }
+    // The full addresses still are, per §F1/§F2.
+    assert.ok(canonicals.includes('legal@catalyte.ai'));
+    assert.ok(canonicals.includes('support@deel.com'));
   }],
 
   ['F27', 'the email sweep is precise and finds third-party addresses (§F1, §F7)', () => {
