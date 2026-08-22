@@ -127,6 +127,12 @@ Low-confidence entities are never collapsed (§3).
 
 A count nobody can drill into is a count nobody believes.
 
+**Not implemented in slice 1.** Both queries below need an occurrence index the
+export pass builds and throws away; neither is wired up. They exit 2 with a
+usage error naming this section, because a flag that exits 0 without doing its
+job is worse than a flag that is not accepted: a scripted check of "can I drill
+into PERSON_11" passes.
+
 ```
 $ deident review --entity PERSON_11
   4 occurrences, 3 sessions:
@@ -157,13 +163,17 @@ $ deident export
     0 lines of code       18,402 counted, none included
     0 images              73 replaced with placeholders
     0 file paths          26,505 replaced
-    0 secrets             8 replaced
+    0 secrets             8 replaced (3 distinct)
+    0 phone numbers       41 replaced (10 distinct)
+
+    11,523 lines dropped: outside an included directory
+    2 sessions retained nothing and are not in the archive
 
   Counted but not shared   (count-only tier)
     14 sessions from 2 workspaces: session count, work mode and outcome only
 
   NOT protected against    (README § Limits)
-    device fingerprint: MCP server names, model mix, CLI version sequence
+    device fingerprint: localhost ports, model mix, CLI version sequence
     verbatim documents you pasted into your own messages
 
   → deident-export-2026-08-22.zip    14.2 MB
@@ -174,11 +184,19 @@ Three blocks do the work:
 
 - **"Leaving this machine"** is the trust mechanism. Zeros where zeros are the
   point, with the suppressed count beside each so the reader sees the material
-  existed and was handled.
+  existed and was handled. A count that is not a zero-where-zero-is-the-point
+  gets its own line shape: `0 dropped by cwd   3 lines outside an included
+  directory` asserts a number and then contradicts it, in the one block whose
+  whole job is being believed.
 - **"Counted but not shared"** makes the `count-only` tier legible rather than
   looking like data went missing.
 - **"NOT protected against"** is the honesty mechanism. A tool that only lists its
   strengths gets over-trusted, and the first surprise destroys it permanently.
+  It must also not list something the tool *does* handle. MCP server names sat
+  in this block while `seed.mjs` was adding them to the entity list and the
+  boundary rule was guaranteeing none of them ever matched — a disclosure
+  hiding an implemented-but-inert control, which is worse than either honest
+  option.
 
 ## 7. Wording is a security control
 
@@ -239,6 +257,14 @@ reaching the terminal is a bug, tracked as such.
 
 **Any non-zero exit leaves no output file behind.** Verification happens before
 anything is written, never after.
+
+One deliberate exception, stated rather than hidden: the semantic-pass refusal
+writes `deident-candidates.txt` and then points at it, because the whole remedy
+is "read this file and write an entity list". It is written on that refusal path
+and on no other, it holds tier-0-cleaned prose that the semantic pass has not
+seen yet — third-party names included, by design — and the tier-0 residual scan
+runs over it before it is written. Treat it the way you treat `review.md`: local
+only, never shared, never committed.
 
 ## 11. Idempotence and the second run
 

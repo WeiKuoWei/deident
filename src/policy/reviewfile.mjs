@@ -73,6 +73,12 @@ export function renderReview(model) {
   push('# The salt is NOT in this file and never will be. Neither is any');
   push('# entity-to-pseudonym map: that would be a portable re-identification key');
   push('# for data that has already left the machine.');
+  push('#');
+  push('# But this file IS full of raw identity: real absolute paths, real');
+  push('# workspace names, real git remotes including other people\'s handles, and');
+  push('# the deny-list token that matched each excluded directory. It has to be,');
+  push('# or you could not recognise the rows you are deciding about.');
+  push('# Do not share this file, do not paste it into a ticket, do not commit it.');
   push('');
 
   return `${lines.join('\n')}\n`;

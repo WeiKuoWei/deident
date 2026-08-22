@@ -63,6 +63,7 @@ diff and keep, and a prompt sequence cannot be reviewed by a second person.
 | `--namespace <TAG>` | `export` | Shift the pseudonym namespace, e.g. `X` gives `X_PERSON_01`. Must match `[A-Z][A-Z0-9]{0,7}`. Use it when the corpus already contains tokens of the default shape. |
 | `--skip-unclassified` | `export` | Confirm that workspaces you never gave a tier stay out. Without it, an unclassified workspace refuses the export rather than being silently dropped. |
 | `--skip-unreadable` | `scan`, `export` | Continue past a line that is not valid JSON instead of exiting 3. Each skipped line is reported. |
+| `--skip-unknown-types` | `scan`, `export` | Drop records whose type deident has never seen instead of refusing. The dropped types and their counts are printed in the "NOT protected against" block. Refusal stays the default; this exists because Claude Code ships a new record type every few weeks and one such line in one session should not block a whole export. |
 | `--include-denied <name>` | `export` | Typed confirmation for one deny-listed workspace. Exact name, no globs. Repeatable. |
 | `--selftest` | global | Run the fixture suite and exit. |
 | `--help` | global | Print usage and exit 0. |
@@ -168,8 +169,18 @@ substitute.
 ## Reversal, and the salt
 
 Pseudonyms are `sha256(salt + kind + entity)`. The salt lives at
-`~/.deident-private/salt`, mode 0600, and is **never** written into any output,
-manifest, preview or log line.
+`~/.deident-private/salt` and is **never** written into any output, manifest,
+preview or log line. It is 64 hexadecimal characters, and deident refuses to use
+a file that is anything else: a zeroed or truncated salt would silently produce
+predictable pseudonyms, which is this whole mechanism defeated in a way nothing
+downstream could see.
+
+**On Windows the file's protection is the directory it sits in, and nothing
+else.** deident asks for mode `0600`, and NTFS ignores it: `icacls` on the
+created file shows only inherited entries. That is honest rather than fixed —
+`%USERPROFILE%` is already user-scoped and any local administrator can read the
+file regardless — but do not read `mode: 0600` in the source as a guarantee. If
+you want more, set an explicit ACL on `~/.deident-private` yourself.
 
 **Do not share the salt and do not commit it.** Anyone who has both the salt and
 a guess at your entity list can confirm the guess. It is the only thing standing
@@ -195,15 +206,34 @@ there were 230 distinct email addresses, 228 of them not the user's. Emails have
 regex and are swept automatically. **Names do not have a regex.** That is what the
 semantic pass is for, and it is why it is mandatory rather than optional.
 
-**A name touching a letter, digit or underscore is left alone, and filenames are
-full of underscores.** The boundary rule is `(?<![A-Za-z0-9_])X(?![A-Za-z0-9_])`.
-It is what makes `ray` inside `array` a correct non-match, and a tool without it
-would destroy prose and be switched off within a day. But `_` is in the same
-class, so `contract_<name>.pdf` and `project_<org>_notes.md` keep the name. In
-the acceptance run this was the largest single share of the 4,929 occurrences the
-manifest reports as left alone. **Read that number; it is not zero and it is not
-noise.** If your sessions discuss files named after people, look at the preview
-diff before you send the zip.
+**A name touching a letter or a digit is left alone.** The boundary rule is
+`(?<![A-Za-z0-9])X(?![A-Za-z0-9])`, with two exceptions: an underscore is a
+token boundary for spellings of five characters or more, and a camel-case hump
+always is. That is what makes `mcp__<server>__tool`, `project_<org>_notes.md`
+and `<Org>AI` real matches while keeping `ray` inside `array` a correct
+non-match — the case a tool without the rule would get wrong, destroying prose
+and being switched off within a day.
+
+What is still left alone is a spelling abutting an ordinary letter or digit:
+`<name>son`, `<org>123`. The manifest reports that count and it is not zero. If
+your sessions discuss files or handles built out of people's names, read the
+preview before you send the zip.
+
+**Credentials and phone numbers are matched by shape, and only by shape.**
+Anything with an unambiguous vendor prefix (`github_pat_`, `ghp_`, `sk-ant-`,
+`xoxb-`, `AKIA`, `ntn_`, `AIza`) is force-replaced, and so is any `+<country
+code><8-15 digits>` phone number. Both are tuned for precision: an entropy
+heuristic would fire on every hash and uuid in your logs, and a scan that cries
+wolf is the first thing switched off. **A credential in a shape not on that list
+is not detected.** A password typed in prose, a bearer token with no prefix, a
+private key body: those are text, and only the semantic pass can catch them.
+
+**`review.md` is full of raw identity, on purpose.** It lists real absolute
+paths, real workspace names, real git remotes including other people's GitHub
+handles, and the deny-list token that matched each excluded directory. It has to,
+or you could not recognise the rows you are deciding about. Treat it like the
+salt: local only, never pasted into a ticket, never committed. The same goes for
+`deident-candidates.txt`, which holds prose the semantic pass has not seen yet.
 
 **Device fingerprint survives.** MCP server names are replaced, but the model mix,
 the Claude Code version sequence, the tool inventory and localhost ports are all

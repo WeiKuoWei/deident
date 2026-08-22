@@ -153,6 +153,31 @@ require length >= 2 and flag them for review, because the lookaround does not
 prevent over-matching inside a longer CJK word. Both cases go in the self-check
 with `因為Dean他他` and `林先生` as fixtures.
 
+**Correction, measured 2026-08-22 over a real export.** `_` in that character
+class is wrong, and the cost is not marginal: 870 known-entity occurrences were
+classified "embedded" and shipped verbatim while the gate read `known-entity
+residue 0 ok`. They were `mcp__playwright-headless__browser_navigate` and every
+other MCP server name in the corpus (the log form is always `mcp__NAME__tool`,
+so the §F4 MCP entity class had a 100% miss rate and was inert by
+construction), `project_gitroll_site_hk_us_entity_rollback.md`, `dm-derek-cpa`,
+`CatalyteAI` x187 and `MeetingAda和Jacob` x8. Row 4 above justifies not
+FAILING on `ray` inside `array`; it does not justify one bucket for both.
+
+The rule is therefore: `_` is a token boundary for a spelling of five
+characters or more, and a camel-case hump is a token boundary always, because
+`MeetingAda` is two words in any reading. `ray` inside `array` is untouched
+by either exception — three characters, starts lowercase — so row 4 still
+holds. Fixture F50 pins both directions.
+
+**Second correction, same measurement.** "case-variant only 7" understated the
+case, because the variant table generated case variants only for a path's drive
+letter. The org entity is seeded from the git remote `gitroll-dev/gitroll`, the
+company writes itself `GitRoll`, and `GitRoll` survived **1,804 times** in a
+real export with the scan unaware it existed. Enumerating lower/UPPER/Title does
+not help: `GitRoll` is none of them. Spellings of four characters or more are
+matched case-insensitively, and the span records the text that was actually
+there so reversal stays exact. Fixture F51.
+
 ### 4.6 Substitution must be structured, longest-match, single-pass
 
 - `JSON.parse` -> `JSON.stringify` round-trips these logs byte-identically:
@@ -306,6 +331,13 @@ localhost ports.
 Leave the version sequence; the cost is not worth it. Document that this class
 exists rather than implying it is solved.
 
+MCP server names were added to the entity list and then never matched, because
+of the `_` boundary bug corrected in §4.5 — while the "NOT protected against"
+block went on listing them as unprotected. A disclosure that hides an
+implemented-but-inert control is worse than either honest option. Both are
+fixed: the names are replaced, and the block now names only what actually
+survives (localhost ports, the model mix, the CLI version sequence).
+
 ### F5 — account UUIDs match no detector
 
 ```json
@@ -323,6 +355,31 @@ A `names 12 items [expand]` row is a button that never gets expanded. When a
 review surface exists, high-confidence and low-confidence candidates must not
 share a list; low-confidence is per-item or it blocks the export. Not slice 1,
 but do not design the surface the other way and inherit the problem.
+
+### F6b — credentials and phone numbers are entity classes, measured
+
+Added 2026-08-22, after a real export shipped a **93-character GitHub
+fine-grained PAT** twice in plain text, at full length, with no `secrets`
+counter and no `secrets` line in the manifest — while `docs/cli-ux.md` §6 shows
+`0 secrets   8 replaced` as part of the contract. Silently omitting the line
+while shipping a live token is the worst of the available options.
+
+Same export: at least 10 distinct E.164 phone numbers, 40+ occurrences, the
+uploader's and third parties' personal mobiles, in no entity class and named in
+no "NOT protected against" line — so a reader of the manifest had no way to know
+they were in the file.
+
+Both are implemented as force-replaced entity classes, and both are exactly the
+precision profile §F7 asks for. Credentials are matched only on unambiguous
+vendor prefixes (`github_pat_`, `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`, `sk-ant-`,
+`xoxb-`, `AKIA`, `ntn_`, `AIza`); an entropy heuristic would fire on every hash
+and uuid in the corpus. Phone numbers require a leading `+`, a country code and
+8-15 digits, which does not fire on version numbers, part numbers or
+timestamps.
+
+The stable Windows owner id §F3 already calls "itself an identifier" is seeded
+the same way, from the column beside the username in `ls -l` output. It had
+survived 786 times, in the exact shape fixture F05 exists to guard.
 
 ### F7 — false positives kill the scan
 

@@ -60,6 +60,41 @@ field access, and the string form must not be mistaken for "no result".
 
 **C7 — §4.10 confirmed.** 225 depth-0 files, matching BRIEF exactly. No drift.
 
+**C8 — the corpus cannot be held in memory, and the failure is unreportable.**
+Measured 2026-08-22 on the same 833 MB corpus: reading every file and retaining the raw
+text, the parsed value AND a second array of raw lines needed between 2.5 and 3.0 GB of
+old space, peaked at 2,895 MB working set, and aborted with
+`FATAL ERROR: Ineffective mark-compacts near heap limit` on a 1.78 GB corpus with the
+default heap. That is a process-level abort: the entry point's catch never runs, no
+refusal is printed, and nothing tells the user what happened — BRIEF §2's "it must not
+throw when Ray runs it", failing in the one way no error handling can cover. The pipeline
+therefore surveys each file, reduces it to its per-line cwd values and a few counters, and
+releases it; the namespace check rides along as a per-line probe because it is the only
+step that reads raw line text; the retention pass re-reads. Two reads of a file are cheap,
+the whole corpus resident at once is not. Same corpus now scans in 12 s under a 768 MB
+heap.
+
+**C9 — an empty `structuredPatch` is not a measured zero.** PLAN's first implementation
+read it as "the edit produced no hunks, which is a known zero". The Write tool's real
+corpus shape is `{type:'create', filePath, content, structuredPatch: [], originalFile,
+userModified}`: a genuinely empty patch array plus the whole new file in `content`.
+Measured over all 225 depth-0 sessions: **838 such records carrying 83,211 true added
+lines**, every one emitted as `0`. Against the 26,459 added lines the tool counts from real
+patches that is **75.9% of every added line in the corpus**, destroyed as the one value
+BRIEF §4.3 calls dangerous — 11 sessions whose only code work is Write-creates exported a
+session-wide `code_added_lines: 0`, and `distill.ts:137-139` reads
+`abandoned: s.code_added_lines === 0`. The count is in the same record; emit it, and emit
+`null` when the shape cannot be resolved.
+
+**C10 — `message.content` is a string as well as an array.** Measured: **3,323 `user`
+records carry `message.content` as a plain string**, 2,871,417 characters of user-typed
+prompt text, none of them carrying a `toolUseResult`. All 3,323 were dropped whole, across
+207 of the 225 files, two of which then exported no user prose at all. I7 does not fire,
+because the record type and the block types are all known: it is the CONTAINER SHAPE that
+was unhandled, and an unhandled shape fell through to a silent drop rather than a refusal.
+A string is normalised to a single text block; a third shape raises the same refusal an
+unknown record type does.
+
 ---
 
 ## 1. Module breakdown
@@ -254,7 +289,27 @@ unreachable until 3, 13 and 15 have returned pass — and defensively, via `.par
 + unlink-on-throw.
 
 `review.md` (5) is the only file `scan` writes, and the preview file is the only file
-written before an approved export. Neither contains raw entities.
+written before an approved export.
+
+**Correction (2026-08-22): `review.md` contains almost nothing BUT raw entities**, and
+that is by design rather than a defect. It is 43 rows of real absolute paths, real
+workspace names, real git remotes including third parties' GitHub handles, and the
+deny-list token that matched each excluded directory. A row a person cannot recognise is
+a row they cannot decide about, so a local review file has to be legible. What was wrong
+was this sentence: a reader of PLAN would reasonably have concluded review.md was safe to
+paste into a ticket. It is not, it carries the same "do not share this, do not commit it"
+line the salt gets, and `.gitignore` excludes it.
+
+The preview file does not contain raw entities: its excerpts are cut from the substituted
+text and the merged table is applied over them again, so it shows what would leave without
+pairing a pseudonym to the spelling it replaced. It used to print a before/after pair per
+entity, which was a complete portable re-identification key sitting six lines under a
+header that denied its existence.
+
+`deident-candidates.txt` is the one deliberate exception to "any non-zero exit leaves no
+output file behind": the semantic-pass refusal points at it, so it is written on that path
+and only on that path. Its contents are tier-0-cleaned prose that tier 1 has not seen yet,
+and the tier-0 residual scan runs over it before it is written.
 
 ---
 
@@ -397,7 +452,7 @@ content. Each fixture exists because it catches one specific bug.
 | F02 | `Ivy跟小語` with entity `Wei` | Same class, other side of the CJK boundary (§4.5 row 2). |
 | F03 | `林先生` with entity `郭` | A one-character CJK entity over-matching inside a longer word. Asserts the length >= 2 rule rejects it and flags it for review instead of substituting (§4.5 row 3). |
 | F04 | `array index` with entity `ray` | The correct **non**-match (§4.5 row 4). Catches the over-eager substring substituter someone reaches for after seeing F03 fail. |
-| F05 | An `ls -l` line: `-rw-r--r-- 1 devuser 197609    929 ...` | §F3. Bare username outside any path, where longest-prefix path substitution never fires. Also asserts the stable Windows UID is treated as an identifier. |
+| F05 | An `ls -l` line: `-rw-r--r-- 1 devuser 197609    929 ...` | §F3. Bare username outside any path, where longest-prefix path substitution never fires. It asserted nothing at all about the UID beside it, and the real pipeline shipped 786 copies of it; F57 now seeds the UID from that column and asserts it is replaced. |
 | F06 | `gitroll` and `gitroll-agentic` in one string | §4.6 prefix collision: a short entity eating the prefix of a longer one. Requires sort-by-length-descending. |
 | F07 | `devuser`, `devuser` and `devuser@gitroll.io` in one string | §4.6 three-way nested collision plus the email form. Catches an interval mask that releases a region it already claimed. |
 | F08 | Substitute then reverse over F01–F07 | I2. Catches any replacement that is not invertible, which is how ordering bugs actually surface. |
