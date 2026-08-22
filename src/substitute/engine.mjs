@@ -18,6 +18,47 @@ function isWordChar(ch) {
   return ch !== undefined && WORD_RE.test(ch);
 }
 
+// The tail of a JSON escape or a percent-encoding, at the end of the window.
+const ESCAPE_TAIL_RE = /(?:\\(?:u[0-9a-fA-F]{4}|[bfnrtv])|%[0-9A-Fa-f]{2})$/;
+
+/**
+ * Is the character to the LEFT of `at` a word character in the sense the
+ * boundary rule means?
+ *
+ * `n` and `b` are word characters, but the `n` of a backslash-n and the final
+ * `b` of a backslash-u escape are not: they are the tail of an escape
+ * sequence, and the entity that follows starts a word.
+ *
+ * This matters because these logs nest JSON inside JSON. A pasted email body
+ * or an embedded tool payload arrives as a string whose own newlines are the
+ * two characters backslash + n, and CJK inside it arrives as backslash-u
+ * escapes. Measured on the real corpus (2026-08-22, 210 exported sessions):
+ * without this, a signature line reading backslash-n then a first name, and a
+ * CJK sentence whose characters arrived as backslash-u escapes around a first
+ * name, were both classified as "the spelling sits inside a longer word" and
+ * left in the output. The residual scan shares this rule, so
+ * it agreed with the substituter and reported `known-entity residue: 0` over a
+ * zip that still named a third party. Both sides read this one function now.
+ *
+ * The escape is only real when its backslash is not itself escaped, so an even
+ * run of backslashes before it means the `n` really is a letter.
+ *
+ * Exported so the residual scan cannot drift from the substituter.
+ */
+export function leftIsWordChar(s, at) {
+  if (!isWordChar(s[at - 1])) return false;
+  const m = ESCAPE_TAIL_RE.exec(s.slice(Math.max(0, at - 6), at));
+  if (m === null) return true;
+  // A percent-encoding has no doubling rule: `%3D` is always three characters
+  // and the `D` is never a letter of a word. §4.6 measured this form as
+  // `%3Ddevuser%40gitroll.io`, an email inside a URL query, and without this
+  // the whole address was classified as embedded and left in the output.
+  if (m[0][0] === '%') return false;
+  let backslashes = 0;
+  for (let j = at - m[0].length - 1; j >= 0 && s[j] === '\\'; j -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
+}
+
 /**
  * @param {ReadonlyArray<object>} entities  each with {id, kind, canonical,
  *   spellings[], pseudonym, confidence, tier}
@@ -154,7 +195,7 @@ export function longestMatchAt(s, at, bucket, forbidden = null) {
     const end = at + entry.spelling.length;
     if (end > s.length) continue;
     if (!s.startsWith(entry.spelling, at)) continue;
-    if (entry.needsLeft && isWordChar(s[at - 1])) continue;
+    if (entry.needsLeft && leftIsWordChar(s, at)) continue;
     if (entry.needsRight && isWordChar(s[end])) continue;
     if (forbidden !== null && overlapsForbidden(at, end, forbidden)) continue;
     return entry;

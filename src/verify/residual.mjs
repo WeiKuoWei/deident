@@ -15,6 +15,10 @@
 // never "safe", never "0 leaks".
 
 import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
+// The left-boundary rule is imported, never re-implemented. When the scan had
+// its own copy, both copies had the same escape-tail bug and agreed with each
+// other, which is how a leak was reported as `known-entity residue: 0`.
+import { leftIsWordChar } from '../substitute/engine.mjs';
 
 const WORD_RE = /[A-Za-z0-9_]/;
 function isWordChar(ch) {
@@ -88,7 +92,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       if (startsInsideEscape(bytes, i)) continue;
       // Same boundary rule as the substituter, for the same reason.
       const end = i + form.length;
-      if ((entry.needsLeft && isWordChar(bytes[i - 1])) || (entry.needsRight && isWordChar(bytes[end]))) {
+      if ((entry.needsLeft && leftIsWordChar(bytes, i)) || (entry.needsRight && isWordChar(bytes[end]))) {
         embedded += 1;
         break;
       }
