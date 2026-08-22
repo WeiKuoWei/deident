@@ -129,7 +129,38 @@ export const DENIED_PATH_RE = new RegExp(
  * which token matched because review.md is local; the marker inside the
  * archive is read by the recipient.
  */
+/**
+ * The same, for a path that BEGINS with the deny-listed segment.
+ *
+ * DENIED_PATH_RE requires a separator BEFORE the token, so a relative path
+ * quoted as `private/vendor-search/COST-COMPARISON.md:17:` matched nothing —
+ * measured, that shape survived a real export inside grep output. Requiring a
+ * separator AFTER the segment instead is what keeps this off the ordinary
+ * English sentence "a private repo": there the next character is a space.
+ */
+export const DENIED_PATH_HEAD_RE = new RegExp(
+  '(?:^|[\\s"' + String.fromCharCode(39) + '`(=])[^\\\\/\\s"' + String.fromCharCode(39) + '`]{0,60}?(?:' +
+    DENY_PATH_TOKENS.join('|') +
+    ')[^\\\\/\\s"' + String.fromCharCode(39) + '`]{0,60}?[\\\\/]',
+  'i',
+);
+
 export const DENIED_PATH_REASON = 'a deny-listed directory';
+
+/**
+ * One path-shaped token inside ordinary prose.
+ *
+ * Prose is not a file listing: withholding a whole assistant turn because it
+ * mentions a path would throw away the scoring evidence the export exists for.
+ * The path itself is what must not ship, so the path itself is what goes.
+ * Measured on a real export, in assistant prose rather than tool output:
+ * `…/private/vendor-search/SCORECARD.md` and
+ * `WORKSPACE_n/private/WORKSPACE_m/NEW-ACCOUNTANT-BRIEF.md`.
+ */
+export const PATH_TOKEN_RE = /[^\s"'`,;()\[\]{}<>]*[\\\\/][^\s"'`,;()\[\]{}<>]*/g;
+
+/** What replaces one withheld path token. Short, and it names no directory. */
+export const DENIED_PATH_MARKER = '[path withheld by deident]';
 
 /** What replaces a denied block. Counted, never silent. */
 export const DENIED_MARKER = (bytes, why) =>

@@ -19,7 +19,8 @@
 export const ALWAYS = Object.freeze([
   'device fingerprint: localhost ports, model mix, CLI version sequence',
   'verbatim documents a tool read for you, not only ones you pasted yourself',
-  'third-party names the semantic pass missed, and facts that are not names at all: a shareholding, a rate, a balance',
+  'names the semantic pass missed, yours included, and facts that are not names: a shareholding, a rate, a balance',
+  'the bare NAME of a file or directory you discussed, where prose quotes it without a path',
   'your own account inventory: vault item names, login ids, which tokens are live',
   'ids from a service deident does not sweep: a board, document or channel id',
 ]);

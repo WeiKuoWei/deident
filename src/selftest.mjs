@@ -2662,6 +2662,15 @@ const FIXTURES = [
     assert.equal(deniedReason('the files are at /home and private things'), null);
     assert.equal(deniedReason('run the august-payroll.mjs script'), null);
     assert.equal(deniedReason('C:/w/deident/src/policy/reviewfile.mjs'), null);
+    // A RELATIVE path beginning with the deny segment. DENIED_PATH_RE wants a
+    // separator BEFORE the token, so grep output quoted as
+    // `private/vendor-search/COST-COMPARISON.md:17:` matched nothing and survived
+    // a real export. The separator AFTER the segment is what keeps this off
+    // the sentence "a private repo".
+    assert.equal(deniedReason('private/vendor-search/COST-COMPARISON.md:17:| Quick'), 'a deny-listed directory');
+    assert.equal(deniedReason('payroll/2026/ledger.md'), 'a deny-listed directory');
+    assert.equal(deniedReason('a private repo is fine'), null);
+    assert.equal(deniedReason('identity is a hard problem'), null);
 
     const ctx = newRetentionContext((u) => u);
     const at = { file: 'a', line: 1 };
@@ -3072,6 +3081,56 @@ const FIXTURES = [
     }));
     assert.match(printed, /2 replacements merged two overlapping entities/);
     assert.match(printed, /5 CJK entity occurrences replaced/);
+  }],
+
+  // F91 — the second half of F83: a deny-listed path quoted in PROSE.
+  //
+  // Withholding a whole assistant turn because it names a path would throw
+  // away the scoring evidence the export exists for, so the path goes and the
+  // paragraph stays. Measured on a real export, in assistant prose rather than
+  // tool output: `private/vendor-search/SCORECARD.md` and
+  // `WORKSPACE_n/private/WORKSPACE_m/NEW-ACCOUNTANT-BRIEF.md`.
+  ['F91', 'a deny-listed path quoted in prose is removed without the paragraph', () => {
+    const ctx = newRetentionContext((u) => u);
+    const at = { file: 'a', line: 1 };
+    const say = (text) =>
+      retainRecord(
+        { type: 'assistant', uuid: 'u', sessionId: 's', cwd: 'C:/w', message: { role: 'assistant', content: [{ type: 'text', text }] } },
+        ctx,
+        at,
+      ).record.message.content[0].text;
+
+    // No leading separator: this is the form that appears in prose, and
+    // DENIED_PATH_RE's leading-separator test does not see it.
+    const out = say('The table is at `private/vendor-search/SCORECARD.md`, see also src/policy/x.mjs');
+    assert.ok(!out.includes('SCORECARD'), out);
+    assert.ok(out.includes('src/policy/x.mjs'), 'an ordinary path is untouched');
+    assert.ok(out.startsWith('The table is at'), 'the sentence survives');
+    assert.equal(ctx.stats.deniedPaths, 1);
+
+    // Windows separators too.
+    assert.ok(!say(['see C:', 'w', 'private', 'a.md'].join(BS) + ' now').includes('a.md'));
+    // And the marker names no directory: one of the deny tokens is a person.
+    assert.equal(/redacted-name|payroll|private|identity/i.test(say('at /x/private-archive/notes.txt')), false);
+    // Agent reasoning quotes the same paths.
+    const think = retainRecord(
+      { type: 'assistant', uuid: 'u2', sessionId: 's', cwd: 'C:/w', message: { role: 'assistant', content: [{ type: 'thinking', thinking: 'open /w/payroll-2026/ledger.md next' }] } },
+      ctx,
+      at,
+    ).record.message.content[0].thinking;
+    assert.ok(!think.includes('ledger.md'), think);
+
+    // last-prompt and queue-operation carry user prose, and were the one
+    // keep-path with no denial check at all: `private/payroll-ledger/…`
+    // survived a real export there after every other route had been closed.
+    const prompt = retainRecord(
+      { type: 'last-prompt', sessionId: 's', lastPrompt: 'check private/payroll-ledger/backfill.json again' },
+      ctx,
+      at,
+    );
+    assert.ok(prompt.keep, 'the prompt survives: §C3 keeps this class for text found nowhere else');
+    assert.ok(!prompt.record.text.includes('backfill.json'), prompt.record.text);
+    assert.ok(prompt.record.text.startsWith('check '), 'and the rest of the prompt is intact');
   }],
 ];
 

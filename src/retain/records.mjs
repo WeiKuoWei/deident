@@ -19,7 +19,10 @@ import {
   CODE_VALUED_TOOL_PARAMS,
   DENIED_CONTENT,
   DENIED_PATH_RE,
+  DENIED_PATH_HEAD_RE,
   DENIED_PATH_REASON,
+  PATH_TOKEN_RE,
+  DENIED_PATH_MARKER,
   DENIED_MARKER,
   DENIED_TEXT,
   INJECTED_SPANS,
@@ -135,6 +138,7 @@ export function newRetentionContext(rewriteUuid) {
       injectedBytesDropped: 0,
       deniedBlocks: 0,
       deniedBytes: 0,
+      deniedPaths: 0,
     },
   };
 }
@@ -273,8 +277,13 @@ function retainBlock(block, ctx, where) {
   switch (block.type) {
     case 'text': {
       if (typeof block.text !== 'string' || block.text.length === 0) return null;
-      const text = stripInjected(block.text, ctx);
-      if (text.length === 0) return null;
+      const rawText = stripInjected(block.text, ctx);
+      if (rawText.length === 0) return null;
+      // A deny-listed PATH inside prose is removed on its own, not by
+      // withholding the turn: an assistant paragraph naming
+      // `…/private/vendor-search/SCORECARD.md` is scoring evidence with one token
+      // in it that must not ship.
+      const text = stripDeniedPaths(rawText, ctx);
       const credential = deniedTextReason(text);
       if (credential !== null) {
         const bytes = Buffer.byteLength(text, 'utf8');
@@ -285,11 +294,12 @@ function retainBlock(block, ctx, where) {
       return { type: 'text', text };
     }
 
-    case 'thinking':
+    case 'thinking': {
       if (!KEEP_THINKING_BLOCKS) return null;
-      return typeof block.thinking === 'string' && block.thinking.length > 0
-        ? { type: 'thinking', thinking: block.thinking }
-        : null;
+      if (typeof block.thinking !== 'string' || block.thinking.length === 0) return null;
+      // Agent reasoning quotes the same paths prose does.
+      return { type: 'thinking', thinking: stripDeniedPaths(block.thinking, ctx) };
+    }
 
     case 'tool_use': {
       // What the tool was ASKED to touch. `Read`, `Edit`, `Write` and
@@ -405,6 +415,39 @@ export function deniedTextReason(text) {
   return null;
 }
 
+/**
+ * Is this token a path with a deny-listed SEGMENT?
+ *
+ * Segment-wise rather than DENIED_PATH_RE's leading-separator test, because
+ * the caller already knows the token is a path: `private/vendor-search/x.md` has
+ * no leading separator and is exactly the form that appears in prose.
+ */
+export function deniedPathToken(token) {
+  for (const segment of token.split(/[\\\/]+/)) {
+    if (segment !== '' && matchesDenySegment(segment)) return true;
+  }
+  return false;
+}
+
+function matchesDenySegment(segment) {
+  const lower = segment.toLowerCase();
+  return DENY_SEGMENT_TOKENS.some((t) => lower.includes(t));
+}
+
+const DENY_SEGMENT_TOKENS = Object.freeze(['private', 'identity', 'payroll', 'redacted-name']);
+
+/** Replace every deny-listed path token in prose, counting what went. */
+function stripDeniedPaths(text, ctx) {
+  if (!/[\\\/]/.test(text)) return text;
+  PATH_TOKEN_RE.lastIndex = 0;
+  return text.replace(PATH_TOKEN_RE, (token) => {
+    if (!deniedPathToken(token)) return token;
+    ctx.stats.deniedPaths += 1;
+    ctx.stats.deniedBytes += Buffer.byteLength(token, 'utf8');
+    return DENIED_PATH_MARKER;
+  });
+}
+
 /** The first DENIED_CONTENT pattern this text trips, or null. */
 export function deniedReason(text) {
   if (typeof text !== 'string' || text.length === 0) return null;
@@ -417,7 +460,7 @@ export function deniedReason(text) {
   // listing of a deny-listed path from an ALLOWED directory was invisible to
   // all three levels of privacy-tiers §4. The reason is generic on purpose:
   // one of the deny tokens is a person's name and this string ships.
-  if (DENIED_PATH_RE.test(text)) return DENIED_PATH_REASON;
+  if (DENIED_PATH_RE.test(text) || DENIED_PATH_HEAD_RE.test(text)) return DENIED_PATH_REASON;
   return null;
 }
 
@@ -572,8 +615,30 @@ function retainAttachment(rec, ctx, where) {
  * kept, and deduped against each other within a session (C3) so the overlap
  * does not double-count the Framing axis.
  */
-function retainPrompt(rec, ctx, kind, text, extra = {}) {
-  if (typeof text !== 'string' || text.trim().length === 0) return null;
+function retainPrompt(rec, ctx, kind, rawPrompt, extra = {}) {
+  if (typeof rawPrompt !== 'string' || rawPrompt.trim().length === 0) return null;
+  // These carry user prose, so they carry the same quoted paths prose does —
+  // and they were the one keep-path with no denial check at all. Measured on a
+  // real export: `private/payroll-ledger/backfill-payload…` and
+  // `.gitignore:8:/private/` survived here after every other route had been
+  // closed. The path goes and the prompt stays: §C3 keeps this class precisely
+  // because it carries text found nowhere else.
+  const text = stripDeniedPaths(rawPrompt, ctx);
+  const why = deniedTextReason(text);
+  if (why !== null) {
+    const bytes = Buffer.byteLength(text, 'utf8');
+    ctx.stats.deniedBlocks += 1;
+    ctx.stats.deniedBytes += bytes;
+    return prune({
+      type: kind,
+      uuid: rec.uuid ? ctx.rewriteUuid(rec.uuid) : null,
+      sessionId: ctx.rewriteUuid(rec.sessionId),
+      timestamp: quantise(rec.timestamp),
+      cwd: rec.cwd ?? null,
+      text: DENIED_MARKER(bytes, why),
+      ...extra,
+    });
+  }
   // Keyed on the WHOLE text, not a 120-character prefix.
   //
   // PLAN C2/C3 justify this dedupe by the overlap between `last-prompt` and

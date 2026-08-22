@@ -332,7 +332,7 @@ export async function runExport(flags, env) {
   //     strings that CHANGED, and residualScan cannot find a spelling tier 0
   //     already destroyed. A 20,000-trial two-tier fuzz produced 3,636 of
   //     these and the gates caught none.
-  const tier1Entities = tier1.entities.map((e) => withCleanedSpellings(e, tier0Table));
+  const tier1Entities = tier1.entities.map((e) => withCleanedSpellings(e, tier0Table, flags.namespace));
   const tier1Assigned = assignPseudonyms(tier1Entities, salt, flags.namespace, { taken: tier0.taken });
   const tier1Table = buildTable(tier1Assigned.entities, { forbidInside: pseudonymGuardPattern(flags.namespace) });
   report.renderPhase(`Substituting ${tier1Table.size.toLocaleString('en-US')} tier-1 spellings`);
@@ -600,6 +600,7 @@ function retainCorpus(
     injectedBytesDropped: 0,
     deniedBlocks: 0,
     deniedBytes: 0,
+    deniedPaths: 0,
     userMessages: 0,
     assistantMessages: 0,
     images: 0,
@@ -791,12 +792,23 @@ function retainCorpus(
  * allows a match that strictly contains a pseudonym, so the whole span goes
  * and reversal still restores exactly what was there.
  */
-function withCleanedSpellings(entity, tier0Table) {
+function withCleanedSpellings(entity, tier0Table, namespace = null) {
   if (entity.rejected || entity.spellings.length === 0) return entity;
   const forms = new Set(entity.spellings);
   for (const spelling of entity.spellings) {
     const cleaned = substituteString(spelling, tier0Table).out;
-    if (cleaned !== spelling && cleaned.length > 0) forms.add(cleaned);
+    if (cleaned === spelling || cleaned.length === 0) continue;
+    // The cleaned form has to carry text of its own.
+    //
+    // A declared entity that tier 0 already replaces IN FULL cleans down to a
+    // bare pseudonym, and seeding that as a spelling is a disaster in two
+    // directions: the substituter correctly refuses to replace a token with
+    // another token (an exact overlap is not a containment), and the residual
+    // scan then finds the "spelling" in every occurrence of the token and
+    // fails the export. Measured on the real corpus: 2,056 reported
+    // occurrences, none of them a leak.
+    const stripped = cleaned.replace(pseudonymGuardPattern(namespace), '').trim();
+    if (stripped.length >= 2) forms.add(cleaned);
   }
   if (forms.size === entity.spellings.length) return entity;
   return Object.freeze({
@@ -990,6 +1002,7 @@ function buildManifest(retained, decisions, serialized, residue, entities, cavea
       { label: 'code parameters', suppressed: `${num(s.codeParamsDropped)} replaced with counts` },
       { label: 'held back by hand', suppressed: `${num(s.droppedBySession ?? 0)} sessions dropped in review.md` },
       { label: 'denied file content', suppressed: `${num(s.deniedBlocks ?? 0)} blocks, ${num(s.deniedBytes ?? 0)} bytes withheld` },
+      { label: 'denied paths', suppressed: `${num(s.deniedPaths ?? 0)} path references removed from prose` },
       { label: 'harness injections', suppressed: `${num(s.injectedBytesDropped ?? 0)} bytes of injected context stripped` },
       { label: 'documents', suppressed: `${num(s.documents)} pasted documents replaced` },
       // cli-ux §6 prints this row. It printed nothing at all while a live
