@@ -14,7 +14,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 
 import * as report from './cli/report.mjs';
-import { RefusalError } from './cli/errors.mjs';
+import { RefusalError, UsageError } from './cli/errors.mjs';
 import { resolveCorpus, corpusDateRange } from './corpus/root.mjs';
 import { readSession, roundTripRefusal, nestingError } from './corpus/reader.mjs';
 import { resolveLineCwd, cwdChangeFrom } from './corpus/cwdtrack.mjs';
@@ -115,13 +115,17 @@ export async function runReview(flags, env) {
     report.renderNote(`wrote ${target} — open it in your browser. No server was started.`);
     return 0;
   }
-  if (flags.entity !== null) {
-    report.renderNote(`--entity needs an export run to resolve occurrences; run: deident export --preview`);
-    return 0;
-  }
-  if (flags.session !== null) {
-    report.renderNote(`--session needs an export run to resolve a transcript; run: deident export --preview`);
-    return 0;
+  // cli-ux §5 specifies both queries and they are part of the slice-1 contract,
+  // but neither is implemented. They used to print a note and exit 0, pointing
+  // at `export --preview`, which does not answer either question — so a scripted
+  // check of "can I drill into PERSON_11" passed while nothing happened. A flag
+  // that exits 0 without doing its job is the shape of failure BRIEF §2 is
+  // about, and refusing is strictly more honest than accepting.
+  for (const [flag, value] of [['--entity', flags.entity], ['--session', flags.session]]) {
+    if (value === null) continue;
+    throw new UsageError(`${flag} is specified in docs/cli-ux.md §5 but is not implemented in slice 1`, {
+      why: [`No occurrence index is built yet, so ${flag} cannot be answered.`],
+    });
   }
 
   report.renderTranscript(
@@ -322,6 +326,8 @@ export async function runExport(flags, env) {
       {
         generated: nowStamp(),
         strings: allStrings,
+        // The merged table, so a tier-0 excerpt cannot show a tier-1 entity.
+        table: mergedTable,
         entities,
         manifest,
         checks: toReportRows(checks),

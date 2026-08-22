@@ -53,6 +53,7 @@ import {
   loadOrCreateSalt,
 } from './entities/pseudonym.mjs';
 import { buildZip } from './output/zip.mjs';
+import { renderPreview } from './output/preview.mjs';
 import { parseReview, parseSessionDrops, renderReview } from './policy/reviewfile.mjs';
 import { readEntities } from './entities/tier1.mjs';
 import { parseCliArgs } from './cli/args.mjs';
@@ -1795,6 +1796,66 @@ const FIXTURES = [
     // through the escape hatch, so they are named and counted.
     assert.match(skipped.out, /quantum-flux \(1\)/);
     assert.match(skipped.out, /dropped unread under --skip-unknown-types/);
+  }],
+
+  // F64 — `export --preview` printed a before/after pair per entity, i.e. a
+  // complete portable re-identification key for every entity that actually
+  // occurs, six lines under a header reading "Neither is any entity-to-
+  // pseudonym map". review.md carries the same disclaimer and honours it, so
+  // the two report surfaces disagreed and one of them was wrong. Aggravating:
+  // --out defaults to the working directory, so the file lands next to the zip.
+  ['F64', 'the preview shows what leaves, not a map back to who it was', () => {
+    const table = buildTable([
+      entity('P1', 'person', 'Ada Wang', 'PERSON_1'),
+      entity('P2', 'person', 'devuser', 'PERSON_2'),
+      entity('O1', 'org', 'Acme Advisory', 'ORG_1'),
+    ]);
+    const before = 'devuser: call with Ada Wang about the Acme Advisory invoice';
+    const r = substituteString(before, table);
+
+    const text = renderPreview({
+      generated: '2026-08-22 00:00',
+      strings: [{ path: 'x', before, after: r.out, spans: r.spans }],
+      table,
+      entities: [
+        { id: 'P1', kind: 'person', pseudonym: 'PERSON_1', spellings: ['Ada Wang'], confidence: 'high', source: 'semantic pass', rejected: null, canonical: 'Ada Wang' },
+        { id: 'O1', kind: 'org', pseudonym: 'ORG_1', spellings: ['Acme Advisory'], confidence: 'high', source: 'semantic pass', rejected: null, canonical: 'Acme Advisory' },
+      ],
+      manifest: { sessions: 1, workspaces: 1, userMessages: 1, zeros: [] },
+      checks: [],
+    });
+
+    for (const spelling of ['Ada Wang', 'Acme Advisory', 'devuser']) {
+      assert.ok(!text.includes(spelling), `${spelling} must not appear beside its pseudonym`);
+    }
+    // The excerpt is still there, in exported form, or the preview shows nothing.
+    assert.match(text, /PERSON_1/);
+    assert.match(text, /call with PERSON_1 about the ORG_1 invoice/);
+    // A tier-0 excerpt must not show a tier-1 name sitting a few characters away.
+    assert.ok(!text.includes('Wang'), 'no fragment of a declared entity may survive the excerpt');
+  }],
+
+  // F65 — `review --entity` and `review --session` are specified in cli-ux §5
+  // as part of the slice-1 contract and are not implemented. They printed a
+  // note and exited 0, pointing at `export --preview`, which answers neither —
+  // so a scripted check of "can I drill into PERSON_11" passed while nothing
+  // happened. BRIEF §2: a flag that exits 0 without doing its job is a failure.
+  ['F65', 'an unimplemented query says so instead of exiting 0', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+
+    for (const [flag, value] of [['--entity', 'PERSON_11'], ['--session', '2026-08-20']]) {
+      const r = runCli(['review', '--root', root, '--out', out, '--salt-dir', saltDir, flag, value]);
+      assert.equal(r.code, 2, `${flag} must be a usage error, not success`);
+      assert.match(r.out, /not implemented in slice 1/);
+      assert.match(r.out, /cli-ux/);
+    }
+
+    // `review` itself still works.
+    assert.equal(runCli(['review', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
   }],
 ];
 
