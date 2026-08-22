@@ -18,6 +18,60 @@ function isWordChar(ch) {
   return ch !== undefined && WORD_RE.test(ch);
 }
 
+// Two characters classes that ARE word characters under §4.5's rule but are
+// token boundaries in the shapes this corpus actually contains.
+//
+// Measured over a real export (2026-08-22): 870 occurrences of known entities
+// were classified "embedded" and shipped verbatim. They were not `ray` inside
+// `array`, which is what §4.5 row 4 exists to protect. They were:
+//
+//   mcp__playwright-headless__browser_navigate   every MCP server name in the
+//     corpus. The log format is always `mcp__NAME__tool`, so `_` on both sides
+//     made the whole §F4 MCP entity class inert — a 100% miss rate on a control
+//     the manifest simultaneously claimed was not implemented.
+//   project_gitroll_site_hk_us_entity_rollback.md, dm-derek-cpa
+//   CatalyteAI x187, AdaWang x3, MeetingAda和Jacob x8
+//
+// So: an underscore is a boundary for a spelling long enough that an accidental
+// match is not the likelier reading, and a camel-case hump is a boundary
+// always, because `MeetingAda` is two words in any reading. `ray` inside
+// `array` is untouched by both rules: `ray` is three characters and starts
+// lowercase, so neither fires.
+const SEPARATOR_BOUNDARY_MIN = 5;
+const UPPER_RE = /[A-Z]/;
+const LOWER_RE = /[a-z0-9]/;
+
+function isUpper(ch) {
+  return ch !== undefined && UPPER_RE.test(ch);
+}
+
+function isLowerish(ch) {
+  return ch !== undefined && LOWER_RE.test(ch);
+}
+
+/**
+ * Does the character to the LEFT of `at` block a match of `entry`?
+ * Exported so the residual scan cannot drift from the substituter.
+ */
+export function leftBoundaryBlocks(s, at, entry) {
+  if (!entry.needsLeft) return false;
+  const ch = s[at - 1];
+  if (ch === undefined) return false;
+  if (entry.firstUpper && isLowerish(ch)) return false;
+  if (entry.sepBoundary && ch === '_') return false;
+  return leftIsWordChar(s, at);
+}
+
+/** Does the character at `end` block a match of `entry`? */
+export function rightBoundaryBlocks(s, end, entry) {
+  if (!entry.needsRight) return false;
+  const ch = s[end];
+  if (ch === undefined) return false;
+  if (entry.lastLowerish && isUpper(ch)) return false;
+  if (entry.sepBoundary && ch === '_') return false;
+  return isWordChar(ch);
+}
+
 // The tail of a JSON escape or a percent-encoding, at the end of the window.
 const ESCAPE_TAIL_RE = /(?:\\(?:u[0-9a-fA-F]{4}|[bfnrtv])|%[0-9A-Fa-f]{2})$/;
 
@@ -92,6 +146,10 @@ export function buildTable(entities, opts = {}) {
           // lookaround form means.
           needsLeft: isWordChar(spelling[0]),
           needsRight: isWordChar(spelling[spelling.length - 1]),
+          // Precomputed inputs to the two token-boundary exceptions above.
+          sepBoundary: spelling.length >= SEPARATOR_BOUNDARY_MIN,
+          firstUpper: isUpper(spelling[0]),
+          lastLowerish: isLowerish(spelling[spelling.length - 1]),
         }),
       );
     }
@@ -195,8 +253,8 @@ export function longestMatchAt(s, at, bucket, forbidden = null) {
     const end = at + entry.spelling.length;
     if (end > s.length) continue;
     if (!s.startsWith(entry.spelling, at)) continue;
-    if (entry.needsLeft && leftIsWordChar(s, at)) continue;
-    if (entry.needsRight && isWordChar(s[end])) continue;
+    if (leftBoundaryBlocks(s, at, entry)) continue;
+    if (rightBoundaryBlocks(s, end, entry)) continue;
     if (forbidden !== null && overlapsForbidden(at, end, forbidden)) continue;
     return entry;
   }
@@ -273,8 +331,8 @@ export function allOccurrences(s, table) {
       const end = i + entry.spelling.length;
       if (end > s.length) continue;
       if (!s.startsWith(entry.spelling, i)) continue;
-      if (entry.needsLeft && isWordChar(s[i - 1])) continue;
-      if (entry.needsRight && isWordChar(s[end])) continue;
+      if (leftBoundaryBlocks(s, i, entry)) continue;
+      if (rightBoundaryBlocks(s, end, entry)) continue;
       found.push({ start: i, end, entry });
     }
   }

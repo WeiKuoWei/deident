@@ -466,12 +466,20 @@ const FIXTURES = [
   ['F22', 'a tier-1 entity overlapping an emitted pseudonym is refused, not applied', () => {
     const cleaned = 'we met PERSON_7 and WORKSPACE_3 today';
 
-    // The boundary rule alone already handles a semantic pass returning the
-    // bare word "PERSON": it is followed by `_`, a word character, so it never
-    // matches inside PERSON_7. Asserting that first, because it is the reason
-    // the guard is narrower than it looks.
+    // A semantic pass returning the bare word "PERSON" is the headline case,
+    // and the boundary rule does NOT stop it: `_` is a token separator for a
+    // spelling this long, so "PERSON" matches inside "PERSON_7". Only the
+    // guard stands between that and every tier-0 replacement in the corpus.
     const bareWord = buildTable([entity('T0', 'person', 'PERSON', 'PERSON_99', { tier: 1 })]);
-    assert.equal(substituteString(cleaned, bareWord).out, cleaned);
+    assert.equal(
+      substituteString(cleaned, bareWord).out,
+      'we met PERSON_99_7 and WORKSPACE_3 today',
+      'unguarded, the bare word really does eat a tier-0 token',
+    );
+    const bareGuarded = buildTable([entity('T0', 'person', 'PERSON', 'PERSON_99', { tier: 1 })], {
+      forbidInside: pseudonymPattern(null),
+    });
+    assert.equal(substituteString(cleaned, bareGuarded).out, cleaned, 'the guard must stop it');
 
     // The case the guard exists for is a tier-1 spelling that IS a pseudonym
     // token — a semantic pass reading the cleaned text and reporting the token
@@ -826,8 +834,16 @@ const FIXTURES = [
     // doubled backslash means the `n` really is a letter, not an escape.
     const r = buildTable([entity('P2', 'person', 'ray', 'PERSON_2')]);
     assert.equal(substituteString('array index', r).out, 'array index');
-    assert.equal(substituteString('JakeJoin', t).out, 'JakeJoin', 'a trailing word char is still embedded');
-    assert.equal(substituteString(`x${BS}${BS}nJake`, t).out, `x${BS}${BS}nJake`, 'an escaped backslash leaves a literal n');
+    assert.equal(substituteString('Jakeson', t).out, 'Jakeson', 'a lowercase continuation is still embedded');
+    // A camel-case hump IS a token boundary, though: `JakeJoin` is two words in
+    // any reading, and this is the shape that shipped `CatalyteAI` x187.
+    assert.equal(substituteString('JakeJoin', t).out, 'PERSON_1Join');
+    // An escaped backslash means the `n` really is a letter. Asserted with a
+    // lowercase entity, so the camel-hump rule cannot mask the escape rule:
+    // one backslash is an escape and the entity follows it, two backslashes
+    // leave a literal `n` and the entity is inside a longer word.
+    assert.equal(substituteString(`x${BS}nray`, r).out, `x${BS}nPERSON_2`);
+    assert.equal(substituteString(`x${BS}${BS}nray`, r).out, `x${BS}${BS}nray`, 'an escaped backslash leaves a literal n');
 
     // §4.6's percent-encoded form is the same shape: `%3D` ends in `D`, so the
     // email that follows it read as embedded. Measured on the real corpus in
@@ -1120,6 +1136,43 @@ const FIXTURES = [
     assert.match(seen.export, /Refusing to export:/);
     assert.doesNotMatch(seen.scan, /Refusing to export/);
     setCommand(null);
+  }],
+
+  // F50 — the embedded class was one bucket, and it shipped 870 known-entity
+  // occurrences while the gate read `known-entity residue 0  ok`.
+  //
+  // The residual scan imports the substituter's boundary rule precisely so the
+  // two agree, which made I4 untested by construction: whatever the substituter
+  // declined to replace, the scan declined to report. §4.5 row 4 justifies not
+  // FAILING on `ray` inside `array`. It does not justify putting
+  // `mcp__playwright-headless__` and `CatalyteAI` in the same bucket as `array`.
+  ['F50', 'a separator or a camel hump is a token boundary, an ordinary letter is not', () => {
+    const t = buildTable([
+      entity('M1', 'machine', 'playwright-headless', 'MACHINE_1'),
+      entity('O1', 'org', 'Catalyte', 'ORG_1'),
+      entity('P1', 'person', 'Ada', 'PERSON_1'),
+      entity('O2', 'org', 'gitroll', 'ORG_2'),
+      entity('P2', 'person', 'ray', 'PERSON_2'),
+    ]);
+    const leaks = [
+      // The whole §F4 MCP class: the log form is always mcp__NAME__tool.
+      ['mcp__playwright-headless__browser_navigate', 'mcp__MACHINE_1__browser_navigate'],
+      ['project_gitroll_site_hk_us.md', 'project_ORG_2_site_hk_us.md'],
+      ['CatalyteAI funds payroll', 'ORG_1AI funds payroll'],
+      ['MeetingAda和Jacob', 'MeetingPERSON_1和Jacob'],
+    ];
+    for (const [before, after] of leaks) assert.equal(substituteString(before, t).out, after, before);
+
+    // BRIEF §4.5 row 4 is untouched: `ray` is three characters and starts
+    // lowercase, so neither exception fires for it.
+    for (const kept of ['an array index', 'x_ray_y', 'grayscale']) {
+      assert.equal(substituteString(kept, t).out, kept, kept);
+    }
+
+    // And the residual scan agrees, because it reads the same two predicates.
+    const scan = residualScan('mcp__playwright-headless__x and CatalyteAI', t, new Set());
+    assert.equal(scan.entityCount, 2, 'both must be reported as residue, not counted as embedded');
+    assert.equal(residualScan('an array index', t, new Set()).entityCount, 0);
   }],
 ];
 
