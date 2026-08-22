@@ -176,7 +176,7 @@ export async function runExport(flags, env) {
   //     3 rides along with 2, because it is the only step that reads raw line
   //     text and accumulating the corpus's raw lines to run it separately is
   //     what put the process over the V8 heap limit.
-  const loaded = surveyCorpus(corpus, flags, flags.namespace);
+  const loaded = surveyCorpus(corpus, flags, flags.namespace, 'export');
   if (loaded.roundTripFailures.length > 0) throw roundTripRefusal(loaded.roundTripFailures);
 
   //  3  namespace collision — BEFORE any pseudonym is minted (PLAN §2)
@@ -242,6 +242,7 @@ export async function runExport(flags, env) {
   //  6 + 7  per-line cwd gate, then retention
   const salt = loadOrCreateSalt(saltDir);
   const rewriteUuid = makeUuidRewriter(salt);
+  report.renderPhase('Applying the tiers and retention rules');
   const retained = retainCorpus(
     loaded,
     workspaceOf,
@@ -267,6 +268,7 @@ export async function runExport(flags, env) {
   //     subtree's structure, the third party it concerns and what each file is
   //     for, from an export whose review said that workspace was excluded.
   //     Seeding the longer path makes longest-match replace the whole thing.
+  report.renderPhase('Seeding entities');
   const exportedCwds = [...new Set(retained.cwds)];
   const distinctCwds = [...new Set([...exportedCwds, ...allCorpusCwds(loaded)])];
   const seeded = seedEntities(env, corpus, {
@@ -286,6 +288,7 @@ export async function runExport(flags, env) {
   const tier0Table = buildTable(tier0.entities, { namespace: flags.namespace });
 
   // 10  tier-0 substitution -> `cleaned`
+  report.renderPhase(`Substituting ${tier0Table.size.toLocaleString('en-US')} tier-0 spellings`);
   const cleaned = substituteAll(retained.records, tier0Table);
 
   // 11  tier-1 discovery reads the OUTPUT of step 10, never the raw records.
@@ -332,6 +335,7 @@ export async function runExport(flags, env) {
   const tier1Entities = tier1.entities.map((e) => withCleanedSpellings(e, tier0Table));
   const tier1Assigned = assignPseudonyms(tier1Entities, salt, flags.namespace, { taken: tier0.taken });
   const tier1Table = buildTable(tier1Assigned.entities, { forbidInside: pseudonymGuardPattern(flags.namespace) });
+  report.renderPhase(`Substituting ${tier1Table.size.toLocaleString('en-US')} tier-1 spellings`);
   const final = substituteAll(cleaned.records, tier1Table);
 
   // 13  substitution invariant, at string level, before serialization.
@@ -340,6 +344,7 @@ export async function runExport(flags, env) {
   //     strings against the merged table reports every tier-1 entity in them
   //     as "missed", because tier 0 was never asked to replace it — and a
   //     check that fails on correct behaviour is worse than no check.
+  report.renderPhase('Verifying the substitution invariant');
   const allStrings = [...cleaned.strings, ...final.strings];
   const substitution = mergeCheckResults(
     checkSubstitution(cleaned.strings, tier0Table),
@@ -353,6 +358,7 @@ export async function runExport(flags, env) {
   const serialized = serializeSessions(final.records, mergedTable, rewriteUuid);
 
   // 15  residual scan on the serialized bytes
+  report.renderPhase('Scanning the serialized output for known-entity residue');
   const residue = checkResidue(serialized.allBytes, mergedTable, rewriteUuid.minted);
 
   const checks = runAllChecks({
@@ -498,7 +504,9 @@ function rememberDecisions(saltDir, decisions, sessionDrops) {
  * a few counters), and released. `retainCorpus` re-reads the files it needs.
  * Two reads of a file are cheap; the whole corpus resident at once is not.
  */
-function surveyCorpus(corpus, flags, namespace = null) {
+const PROGRESS_EVERY = 25;
+
+function surveyCorpus(corpus, flags, namespace = null, phase = null) {
   const sessions = [];
   const roundTripFailures = [];
   const warnings = [];
@@ -516,7 +524,11 @@ function surveyCorpus(corpus, flags, namespace = null) {
   // and deident minted the same token for something else in the same archive.
   const pattern = pseudonymScanPattern(namespace);
 
+  if (phase !== null) report.renderPhase(`Reading ${corpus.files.length.toLocaleString('en-US')} session files`);
+  let seen = 0;
   for (const file of corpus.files) {
+    seen += 1;
+    if (phase !== null && seen % PROGRESS_EVERY === 0) report.renderProgress(seen, corpus.files.length, 'files read');
     const session = readSession(file.path, {
       skipUnreadable: flags.skipUnreadable,
       keepRaw: false,
@@ -606,7 +618,10 @@ function retainCorpus(
   // The tokens allowed here are exactly those of the workspaces the user named.
   const allowDenyTokenFor = deniedTokensAllowed;
 
+  let seen = 0;
   for (const { file, cwds: lineCwds } of loaded.sessions) {
+    seen += 1;
+    if (seen % PROGRESS_EVERY === 0) report.renderProgress(seen, loaded.sessions.length, 'sessions processed');
     const workspace = workspaceOf.get(file.path);
     if (workspace === undefined || !exportable.has(workspace.key)) continue;
     // privacy-tiers §4 level 3. Checked before the file is re-read, because a

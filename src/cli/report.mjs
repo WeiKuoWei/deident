@@ -165,6 +165,27 @@ export function renderScan(census) {
 
 // ---------------------------------------------------------------- export
 
+/**
+ * One line per phase, so a long run is visibly alive.
+ *
+ * cli-ux §2 says no progress bars. It does not say no output: measured, a
+ * full-corpus export ran 24m28s and the first byte it printed was the Checks
+ * block after the whole pipeline had finished. Twenty-four minutes of silence
+ * on a tool whose acceptance test is "does it work" is indistinguishable from
+ * a hang, and two runs were killed in the belief that it had wedged.
+ *
+ * A phase line is not a progress bar: it is written once, never redrawn, and
+ * it survives being pasted into a bug report.
+ */
+export function renderPhase(text) {
+  say(`  ${text}`);
+}
+
+/** A counter inside a long phase. Same rule: appended, never redrawn. */
+export function renderProgress(done, total, noun) {
+  say(`    ${n(done)} / ${n(total)} ${noun}`);
+}
+
 export function renderChecks(checks) {
   say('');
   say('  Checks');

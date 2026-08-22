@@ -51,8 +51,31 @@ export function checkSubstitution(strings, table) {
     if (back !== s.before) failures.push(fail(s, 'reverse(substitute(s)) !== s'));
 
     // (4) Maximality and completeness, by the independent algorithm.
+    //
+    // Both lookups are indexed. `.some()` per occurrence and `.find()` per span
+    // are occurrence x span cross-products: measured, one string with 2,000
+    // spans cost 644 ms and one with 40,000 cost 32,002 ms, which is a check
+    // nobody waits for and therefore a check that gets switched off (§F7's
+    // failure mode arriving as latency). Spans are produced in ascending,
+    // non-overlapping order, so a binary search answers "is this covered".
     const occurrences = allOccurrences(s.before, table);
-    const covered = (start, end) => s.spans.some((sp) => sp.start <= start && sp.end >= end);
+    const covered = (start, end) => {
+      let lo = 0;
+      let hi = s.spans.length - 1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const span = s.spans[mid];
+        if (span.end <= start) lo = mid + 1;
+        else if (span.start > start) hi = mid - 1;
+        else return span.start <= start && span.end >= end;
+      }
+      return false;
+    };
+    const longestAt = new Map();
+    for (const occ of occurrences) {
+      const best = longestAt.get(occ.start);
+      if (best === undefined || occ.end > best.end) longestAt.set(occ.start, occ);
+    }
     for (const occ of occurrences) {
       if (covered(occ.start, occ.end)) continue;
       // A straddling occurrence used to be whitelisted here, which whitelisted
@@ -66,10 +89,8 @@ export function checkSubstitution(strings, table) {
       );
     }
     for (const span of s.spans) {
-      const longer = occurrences.find(
-        (o) => o.start === span.start && o.end > span.end,
-      );
-      if (longer) {
+      const longer = longestAt.get(span.start);
+      if (longer !== undefined && longer.end > span.end) {
         failures.push(
           fail(s, `chose "${span.spelling}" at ${span.start} where "${longer.entry.spelling}" was longer`),
         );

@@ -55,7 +55,21 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       // casing. Indexing it under one case only would let `GitRoll` through a
       // scan whose table knows `gitroll` — the exact shape of the 1,804-
       // occurrence leak this pairing exists to make impossible.
-      const probe = entry.lower ? { form, entry, lower: form.toLowerCase() } : { form, entry, lower: null };
+      // `second` is a one-character pre-check. residualScan is linear in the
+      // number of spellings — measured over a fixed 12.6 MB string: 216 ms at
+      // 10 spellings, 2,791 ms at 1,000, 7,798 ms at 3,000 — and the spelling
+      // count itself grows with the corpus, so the sweep is quadratic in
+      // corpus size. Most probes in a bucket differ from the text at the
+      // SECOND character, and rejecting those with one comparison rather than
+      // a full fold-compare is the cheapest large constant available.
+      const lower = entry.lower ? form.toLowerCase() : null;
+      const probe = {
+        form,
+        entry,
+        lower,
+        second: form.length > 1 ? form[1] : null,
+        secondLower: lower !== null && lower.length > 1 ? lower[1] : null,
+      };
       const keys = entry.lower
         ? new Set([form[0], form[0].toLowerCase(), form[0].toUpperCase()])
         : new Set([form[0]]);
@@ -90,7 +104,12 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
   for (let i = 0; i < bytes.length && entityHits.length <= 10_000; i += 1) {
     const bucket = byFirst.get(bytes[i]);
     if (bucket === undefined) continue;
-    for (const { form, entry, lower } of bucket) {
+    for (const { form, entry, lower, second, secondLower } of bucket) {
+      if (second !== null) {
+        const next = bytes[i + 1];
+        if (next === undefined) continue;
+        if (next !== second && (secondLower === null || next.toLowerCase() !== secondLower)) continue;
+      }
       if (lower === null ? !bytes.startsWith(form, i) : !equalsFold(bytes, i, lower)) continue;
       // A match that begins inside a JSON escape sequence is an artifact of
       // reading serialized bytes as flat text, not a leak.

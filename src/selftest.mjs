@@ -2997,6 +2997,41 @@ const FIXTURES = [
     });
     assert.ok(buildZip(many.slice(0, MAX_ENTRIES)).length > 0, 'the documented limit still works');
   }],
+
+  // F89 — a full-corpus export ran 24m28s and printed its first byte after the
+  // whole pipeline had finished. Twenty-four minutes of silence is
+  // indistinguishable from a hang, and two runs were killed believing it had
+  // wedged. cli-ux §2 rules out progress bars, not output.
+  ['F89', 'a long run says which phase it is in, and the hot loops are indexed', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    const exported = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(exported.code, 0, exported.out);
+    for (const phase of [/Reading \d+ session files/, /Applying the tiers/, /Seeding entities/, /Substituting/, /Verifying the substitution invariant/, /Scanning the serialized output/]) {
+      assert.match(exported.out, phase, `no line for ${phase}`);
+    }
+    // Every phase line comes BEFORE the Checks block it used to hide behind.
+    assert.ok(exported.out.indexOf('Reading') < exported.out.indexOf('Checks'));
+
+    // checkSubstitution was an occurrence x span cross-product: one string
+    // with 2,000 spans cost 644 ms and one with 40,000 cost 32,002 ms. The
+    // same work is now indexed, so it has to finish in ordinary time.
+    const t = buildTable([entity('P1', 'person', 'devuser', 'PERSON_1')]);
+    const many = 'devuser '.repeat(20_000);
+    const r = substituteRecord({ text: many }, t);
+    const started = Date.now();
+    const result = checkSubstitution(r.strings, t);
+    assert.equal(result.ok, true, JSON.stringify(result.failures));
+    assert.equal(result.replacements, 20_000);
+    assert.ok(Date.now() - started < 10_000, `20,000 spans took ${Date.now() - started} ms`);
+  }],
 ];
 
 export function selftest() {
