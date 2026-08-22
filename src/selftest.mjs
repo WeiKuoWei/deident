@@ -1857,6 +1857,36 @@ const FIXTURES = [
     // `review` itself still works.
     assert.equal(runCli(['review', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
   }],
+
+  // F66 — every walker in the pipeline is recursive, so pathologically nested
+  // JSON exhausts the JS stack. That is a property of the INPUT, and it was
+  // reported as `internal error while running "scan": Maximum call stack size
+  // exceeded / This is a bug in deident, not a problem with your data`, exit 1
+  // — naming the wrong culprit and sending the user to file an issue about
+  // their own file. Threshold measured between 1,500 (passes) and 3,000 (fails).
+  ['F66', 'a record nested too deeply is a read error naming the line, not a bug report', () => {
+    const dir = tmpdir();
+    const file = path.join(dir, 'deep.jsonl');
+    const depth = 6000;
+    const nested = '{"n":'.repeat(depth) + '1' + '}'.repeat(depth);
+    fs.writeFileSync(
+      file,
+      `{"type":"user","uuid":"a","sessionId":"s","message":{"role":"user","content":[]},"toolUseResult":${nested}}` + NL,
+      'utf8',
+    );
+
+    let caught = null;
+    try {
+      readSession(file);
+    } catch (err) {
+      caught = err;
+    }
+    assert.ok(caught instanceof ReadError, `expected a ReadError, got ${caught && caught.name}`);
+    assert.equal(caught.code, 3, 'an unreadable input is exit 3, not exit 1');
+    assert.equal(caught.detail.file, file);
+    assert.equal(caught.detail.line, 1);
+    assert.match(caught.detail.likelyCause, /nests JSON/);
+  }],
 ];
 
 export function selftest() {
