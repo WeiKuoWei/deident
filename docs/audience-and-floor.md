@@ -96,7 +96,38 @@ held back    12 sessions  by the floor
 The second number is the one that changes if the person turns the knob. Showing them
 merged hides the only actionable half.
 
-## 6. What is still open
+## 6. When to ask, which is not the same as where it lives
+
+The obvious answer is "at the start, it is a setting". The run says otherwise, and
+the reason is worth keeping.
+
+The owner did not know his own answer until he had seen four concrete rows. Asked
+cold, before any reading, he would have guessed, and a guess about a privacy line
+is worse than no setting because it looks like a decision. What actually happened
+is that four rows in a row got released for the same reason, and only then did he
+name the axis himself.
+
+So: **a setting that re-decides many rows belongs at the moment its effect can be
+counted, not at the moment it is first needed.**
+
+Three stages, and all three are cheap:
+
+1. **At scan, as an envelope field.** Who is this for? Default `public`. It costs
+   one line and it prevents the tool from spending a review pass holding things
+   that a declared insider already knows.
+2. **After classification, with the count.** "This setting is holding 28 sessions.
+   20 of them move if you say `company`. Here are three of them." That is when the
+   question is answerable, because the answer now has a size.
+3. **From behaviour, mid-review.** After several consecutive releases that all
+   trip the same held-for reason, propose the setting rather than asking the next
+   row. Calibration by example costs the person nothing and is how they discovered
+   the axis in the first place.
+
+The whole pipeline downstream of the setting is deterministic given the
+classifications, so re-asking is nearly free. Treat the setting as re-askable at
+any point rather than as a thing chosen once at the top.
+
+## 7. What is still open
 
 - Whether `teammate` needs to name the teammate. A per-recipient setting is more precise
   and much more state to keep.
