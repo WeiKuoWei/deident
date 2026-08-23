@@ -65,12 +65,17 @@ import {
 import { writeZip, safeUnlink } from './output/zip.mjs';
 import { writePreview } from './output/preview.mjs';
 import { EXAMPLES_PER_REPORT, MIN_REPLAY_MATCH_CHARS } from './retain/constants.mjs';
+import { loadUserDeny, setUserDeny } from './policy/userdeny.mjs';
 
 // ------------------------------------------------------------------- scan
 
 export async function runScan(flags, env) {
   const outDir = path.resolve(flags.out ?? process.cwd());
   const saltDir = flags.saltDir ?? defaultSaltDir(env);
+  // Before anything proposes a tier: matchDenyToken consults these, and a
+  // token loaded after classify would silently propose the wrong tier for
+  // the very directory it exists to protect.
+  setUserDeny(loadUserDeny(saltDir));
   const corpus = resolveCorpus(env, flags.root);
 
   const loaded = surveyCorpus(corpus, flags);
@@ -88,7 +93,7 @@ export async function runScan(flags, env) {
 
   const model = buildReviewModel(
     decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe),
-    nowStamp(), readSessionDrops(reviewPath, lenient),
+    nowStamp(), readSessionDrops(reviewPath, lenient).drops,
   );
   const written = writeReview(model, reviewPath);
 
@@ -111,6 +116,10 @@ export async function runScan(flags, env) {
 export async function runReview(flags, env) {
   const outDir = path.resolve(flags.out ?? process.cwd());
   const saltDir = flags.saltDir ?? defaultSaltDir(env);
+  // Before anything proposes a tier: matchDenyToken consults these, and a
+  // token loaded after classify would silently propose the wrong tier for
+  // the very directory it exists to protect.
+  setUserDeny(loadUserDeny(saltDir));
   const corpus = resolveCorpus(env, flags.root);
   const loaded = surveyCorpus(corpus, flags);
   const reviewPath = path.join(outDir, REVIEW_FILENAME);
@@ -121,7 +130,7 @@ export async function runReview(flags, env) {
   const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
   const model = buildReviewModel(
     decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe),
-    nowStamp(), readSessionDrops(reviewPath, lenient),
+    nowStamp(), readSessionDrops(reviewPath, lenient).drops,
   );
   for (const w of problems) report.renderWarning(w);
 
@@ -168,6 +177,10 @@ export async function runReview(flags, env) {
 export async function runExport(flags, env) {
   const outDir = path.resolve(flags.out ?? process.cwd());
   const saltDir = flags.saltDir ?? defaultSaltDir(env);
+  // Before anything proposes a tier: matchDenyToken consults these, and a
+  // token loaded after classify would silently propose the wrong tier for
+  // the very directory it exists to protect.
+  setUserDeny(loadUserDeny(saltDir));
 
   //  1  resolve the corpus
   const corpus = resolveCorpus(env, flags.root);
@@ -179,9 +192,12 @@ export async function runExport(flags, env) {
   const loaded = surveyCorpus(corpus, flags, flags.namespace, 'export');
   if (loaded.roundTripFailures.length > 0) throw roundTripRefusal(loaded.roundTripFailures);
 
-  //  3  namespace collision — BEFORE any pseudonym is minted (PLAN §2)
+  //  3  namespace collision. Deferred to step 7a, once retention has decided
+  //      which files are actually in the archive: a hit in a session nobody is
+  //      exporting cannot make anything ambiguous, and refusing on it is how
+  //      every export burned a fresh namespace. Still before any pseudonym is
+  //      minted (PLAN §2), which is what the ordering rule actually requires.
   const namespaceHits = loaded.namespaceHits;
-  if (loaded.namespaceHitCount > 0) throw namespaceRefusal(namespaceHits, flags.namespace, loaded.namespaceHitCount);
 
   //  5  workspace tiers (4 ran inside surveyCorpus, per file)
   const reviewPath = path.join(outDir, REVIEW_FILENAME);
@@ -221,7 +237,12 @@ export async function runExport(flags, env) {
   // tier. workspaces.json is memory, not output: cli-ux §10's "no output file
   // behind" is about the zip, and forgetting what the person told you is the
   // failure that ends with an excluded workspace shipping.
-  const sessionDrops = new Set([...remembered.sessionDrops, ...readSessionDrops(reviewPath)]);
+  const reviewSessions = readSessionDrops(reviewPath);
+  const sessionDrops = new Set([...remembered.sessionDrops, ...reviewSessions.drops]);
+  // A review file that lists sessions is a decision about THOSE sessions. Any
+  // session written since it was generated appears in no row, and treating an
+  // absent row as consent is how a corpus grows past its own review.
+  const decidedSessions = reviewSessions.known;
   rememberDecisions(saltDir, decisions, sessionDrops);
 
   if (!flags.skipUnclassified) {
@@ -251,8 +272,25 @@ export async function runExport(flags, env) {
     rewriteUuid,
     flags,
     sessionDrops,
+    decidedSessions,
     allowedDenyTokens(decisions, flags.includeDenied),
   );
+
+  //  7a  namespace collision, scoped to the files that are leaving.
+  //
+  //      The tool writes its own namespace into the terminal, the terminal into
+  //      the session log, and the session log into the next run's corpus, so a
+  //      whole-corpus check makes the tool poison itself: eight exports on this
+  //      machine needed eight namespaces. A token in a session that is not in
+  //      the archive cannot be confused with a minted one, because it is not
+  //      there.
+  const retainedFiles = new Set(retained.records.map((r) => r.file.path));
+  const scopedHits = namespaceHits.filter((h) => retainedFiles.has(h.file));
+  let scopedHitCount = 0;
+  for (const [file, count] of loaded.namespaceHitFiles ?? []) {
+    if (retainedFiles.has(file)) scopedHitCount += count;
+  }
+  if (scopedHitCount > 0) throw namespaceRefusal(scopedHits, flags.namespace, scopedHitCount);
 
   //  8  seed entities from PRE-substitution values (PLAN §2). Run seeding
   //     after substitution and these values are already pseudonyms: seeding
@@ -365,7 +403,7 @@ export async function runExport(flags, env) {
     linesRead: loaded.lineCount,
     roundTripFailures: loaded.roundTripFailures,
     namespaceHits,
-    namespaceHitCount: loaded.namespaceHitCount,
+    namespaceHitCount: scopedHitCount,
     namespace: flags.namespace,
     substitution,
     residue,
@@ -517,6 +555,7 @@ function surveyCorpus(corpus, flags, namespace = null, phase = null) {
   const warnings = [];
   const namespaceHits = [];
   let namespaceHitCount = 0;
+  const namespaceHitFiles = new Map();
   let badLines = 0;
   let lineCount = 0;
 
@@ -547,6 +586,7 @@ function surveyCorpus(corpus, flags, namespace = null, phase = null) {
           // backslash-n is an escape and not a letter.
           if (leftIsWordChar(line, m.index)) continue;
           namespaceHitCount += 1;
+          namespaceHitFiles.set(file.path, (namespaceHitFiles.get(file.path) ?? 0) + 1);
           if (namespaceHits.length < EXAMPLES_PER_REPORT) {
             namespaceHits.push(Object.freeze({ file: file.path, line: lineNo, token: m[0] }));
           }
@@ -574,6 +614,7 @@ function surveyCorpus(corpus, flags, namespace = null, phase = null) {
     warnings: Object.freeze(warnings),
     namespaceHits: Object.freeze(namespaceHits),
     namespaceHitCount,
+    namespaceHitFiles: Object.freeze(namespaceHitFiles),
     badLines,
     lineCount,
   });
@@ -588,6 +629,7 @@ function retainCorpus(
   rewriteUuid,
   flags,
   sessionDrops = new Set(),
+  decidedSessions = new Set(),
   deniedTokensAllowed = new Set(),
 ) {
   const out = [];
@@ -597,6 +639,7 @@ function retainCorpus(
     dropped: 0,
     droppedByCwd: 0,
     droppedBySession: 0,
+    droppedUndecided: 0,
     injectedBytesDropped: 0,
     deniedBlocks: 0,
     deniedBytes: 0,
@@ -632,7 +675,15 @@ function retainCorpus(
     if (workspace === undefined || !exportable.has(workspace.key)) continue;
     // privacy-tiers §4 level 3. Checked before the file is re-read, because a
     // session held back by hand should cost nothing to hold back.
-    if (sessionDrops.has(sessionIdOf(file.path))) {
+    const sid = sessionIdOf(file.path);
+    // Fail closed on a session the review never saw. Only when the review
+    // actually listed sessions: an empty set means the file had no opinion,
+    // not that every session is unknown.
+    if (decidedSessions.size > 0 && !decidedSessions.has(sid)) {
+      stats.droppedUndecided += 1;
+      continue;
+    }
+    if (sessionDrops.has(sid)) {
       stats.droppedBySession += 1;
       continue;
     }
@@ -1001,6 +1052,7 @@ function buildManifest(retained, decisions, serialized, residue, entities, cavea
       { label: 'images', suppressed: `${num(s.images)} replaced with placeholders` },
       { label: 'code parameters', suppressed: `${num(s.codeParamsDropped)} replaced with counts` },
       { label: 'held back by hand', suppressed: `${num(s.droppedBySession ?? 0)} sessions dropped in review.md` },
+      { label: 'never reviewed', suppressed: `${num(s.droppedUndecided ?? 0)} sessions written since the last scan` },
       { label: 'denied file content', suppressed: `${num(s.deniedBlocks ?? 0)} blocks, ${num(s.deniedBytes ?? 0)} bytes withheld` },
       { label: 'denied paths', suppressed: `${num(s.deniedPaths ?? 0)} path references removed from prose` },
       { label: 'harness injections', suppressed: `${num(s.injectedBytesDropped ?? 0)} bytes of injected context stripped` },

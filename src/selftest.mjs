@@ -550,7 +550,7 @@ const FIXTURES = [
     assert.equal(denied.allow, false);
     assert.match(denied.reason, /private/);
     assert.equal(matchDenyToken(`C:${BS}p${BS}payroll-2026`), 'payroll');
-    assert.equal(matchDenyToken(`C:${BS}p${BS}private-archive`), 'redacted-name');
+    assert.equal(matchDenyToken(`C:${BS}p${BS}private-archive`), 'private');
     assert.equal(matchDenyToken(`C:${BS}p${BS}ordinary`), null);
     // Unknown cwd is deny, never allow.
     assert.equal(allowLine(null, {}).allow, false);
@@ -833,7 +833,7 @@ const FIXTURES = [
       generated: '2026-08-22 04:00',
       workspaces: [
         { name: 'gitroll', cwd: 'C:/w/gitroll', sessionCount: 61, tier: 'redact', note: 'git remote g/g', denyToken: null },
-        { name: 'private-archive', cwd: 'C:/w/private-archive', sessionCount: 4, tier: 'exclude', note: 'deny-list matched: "redacted-name"', denyToken: 'redacted-name' },
+        { name: 'private-archive', cwd: 'C:/w/private-archive', sessionCount: 4, tier: 'exclude', note: 'deny-list matched: "private"', denyToken: 'private' },
         { name: 'passport-viz', cwd: 'C:/w/passport-viz', sessionCount: 6, tier: 'unclassified', note: 'NEW', denyToken: null },
       ],
       flaggedSessions: [],
@@ -882,7 +882,7 @@ const FIXTURES = [
   ['F31', 'the deny-list needs typed confirmation and opt-in is never implicit', () => {
     const groups = [
       { key: 'c:/w/ordinary', name: 'ordinary', cwd: 'C:/w/ordinary', normCwd: 'c:/w/ordinary', sessionCount: 3, bytes: 1, denyToken: null },
-      { key: 'c:/w/private-archive', name: 'private-archive', cwd: 'C:/w/private-archive', normCwd: 'c:/w/private-archive', sessionCount: 4, bytes: 1, denyToken: 'redacted-name' },
+      { key: 'c:/w/private-archive', name: 'private-archive', cwd: 'C:/w/private-archive', normCwd: 'c:/w/private-archive', sessionCount: 4, bytes: 1, denyToken: 'private' },
     ];
     const plain = classifyWorkspaces(groups, {}, {});
     assert.equal(plain[0].tier, 'unclassified', 'with no signal read, an unseen workspace is never swept in');
@@ -911,7 +911,7 @@ const FIXTURES = [
       ['bogus'],
       ['scan', 'review'],
       ['review', '--html', '--entity', 'PERSON_1'],
-      ['export', '--include-denied', 'redacted-name*'],
+      ['export', '--include-denied', 'private-archive*'],
     ]) {
       assert.throws(() => parseCliArgs(argv), UsageError, `should reject ${argv.join(' ')}`);
     }
@@ -1128,7 +1128,7 @@ const FIXTURES = [
 
     assert.equal(proposeTier(g('gitroll'), probe).tier, 'redact');
     assert.equal(proposeTier(g('scratch'), probe).tier, 'exclude', 'no remote fails closed');
-    assert.equal(proposeTier(g('private-archive', { denyToken: 'redacted-name' }), probe).tier, 'exclude');
+    assert.equal(proposeTier(g('private-archive', { denyToken: 'private' }), probe).tier, 'exclude');
     assert.equal(proposeTier(g(HOME_NAME), probe).tier, 'exclude');
     assert.equal(proposeTier(g('x', { unresolved: true }), probe).tier, 'unclassified');
     // `open` is never proposed: repository visibility is not on disk and
@@ -1140,7 +1140,7 @@ const FIXTURES = [
 
     // The census: one unclassified row out of five, not five out of five.
     const decisions = classifyWorkspaces(
-      [g('gitroll'), g('scratch'), g('private-archive', { denyToken: 'redacted-name' }), g('a'), g('b', { unresolved: true })],
+      [g('gitroll'), g('scratch'), g('private-archive', { denyToken: 'private' }), g('a'), g('b', { unresolved: true })],
       {},
       { propose: (ws) => proposeTier(ws, probe) },
     );
@@ -1444,7 +1444,7 @@ const FIXTURES = [
       generated: '2026-08-22 00:00',
       workspaces: [
         { tier: 'redact', name: '<home>', sessionCount: 2, cwd: 'C:' + String.fromCharCode(92) + 'home', note: null },
-        { tier: 'exclude', name: 'private-archive', sessionCount: 1, cwd: 'C:' + String.fromCharCode(92) + 'redacted-name', note: null },
+        { tier: 'exclude', name: 'private-archive', sessionCount: 1, cwd: 'C:' + String.fromCharCode(92) + 'private', note: null },
       ],
       sessions: [
         { id: 'aaaa-1111', date: '2026-08-01', workspace: '<home>', decision: 'keep' },
@@ -1456,8 +1456,14 @@ const FIXTURES = [
     };
 
     const text = renderReview(model);
-    const drops = parseSessionDrops(text);
+    const { drops, known } = parseSessionDrops(text);
     assert.deepEqual([...drops], ['bbbb-2222'], 'exactly the held-back session comes back');
+
+    // Every id the file mentions, kept or dropped. This is what lets the export
+    // fail closed on a session written after the review was generated: absent
+    // from `known` means nobody has decided about it, which is not consent.
+    assert.deepEqual([...known].sort(), ['aaaa-1111', 'bbbb-2222', 'cccc-3333']);
+    assert.ok(!known.has('dddd-4444'), 'a session written since the scan is not in known');
 
     const tiers = parseReview(text);
     assert.equal(tiers['<home>'], 'redact', 'the session rows do not disturb the workspace tiers');
@@ -1465,12 +1471,15 @@ const FIXTURES = [
 
     // The workspace section must not be read as session decisions, and the
     // informational "second look" section must not be either.
-    assert.equal(parseSessionDrops('## workspaces' + NL + 'exclude foo 1 sessions' + NL).size, 0);
-    assert.equal(
-      parseSessionDrops('## sessions worth a second look' + NL + 'drop 2026-08-01 ws cwd touched x' + NL).size,
-      0,
-      'the advisory list is a report, not an input',
-    );
+    assert.equal(parseSessionDrops('## workspaces' + NL + 'exclude foo 1 sessions' + NL).drops.size, 0);
+    const advisory = parseSessionDrops('## sessions worth a second look' + NL + 'drop 2026-08-01 ws cwd touched x' + NL);
+    assert.equal(advisory.drops.size, 0, 'the advisory list is a report, not an input');
+    assert.equal(advisory.known.size, 0, 'and it does not make its rows count as decided either');
+
+    // No sessions section at all is no opinion, not "every session unknown".
+    // Reading it the other way would hold back an entire corpus on a review
+    // file written before the per-session level existed.
+    assert.equal(parseSessionDrops('## workspaces' + NL + 'redact foo 1 sessions' + NL).known.size, 0);
 
     // An unknown word in column 1 refuses rather than being read as keep.
     assert.throws(() => parseSessionDrops('## sessions' + NL + 'maybe 2026-08-01 ws aaaa-1111' + NL), RefusalError);
@@ -1637,7 +1646,7 @@ const FIXTURES = [
   // on the strength of its remote alone and shipped a third party's real name
   // 10 times plus per-chat filenames naming the people in them; the deny-list
   // never looked, because privacy-tiers §3 matches it against directory names
-  // and the directory is not called "redacted-name".
+  // and the directory carries no deny token.
   ['F58', 'a git remote alone does not make a personal archive shareable', () => {
     const remote = (raw) => ({ raw, owner: raw.split('/')[0], repo: raw.split('/')[1], host: null });
     const group = (name) => ({ name, cwd: `C:${BS}x${BS}${name}`, denyToken: null, unresolved: false });
@@ -1652,7 +1661,8 @@ const FIXTURES = [
     assert.equal(personalDataShape('cohort-learning-dashboard'), null);
     assert.equal(personalDataShape('pipeline-runner'), null);
     assert.equal(personalDataShape('timeline'), null);
-    assert.equal(personalDataShape('private-archive'), 'line');
+    assert.equal(personalDataShape('private-archive'), 'archive');
+    assert.equal(personalDataShape('old-line'), 'line');
     assert.equal(personalDataShape('health-tracker'), 'health');
   }],
 
@@ -2650,14 +2660,18 @@ const FIXTURES = [
   // the cwd, so a Read, an Edit or a directory listing of a deny-listed path
   // from an ALLOWED cwd was invisible to every one of them. Measured on a real
   // export: `…\private\vendor-search\SCORECARD.md` x17,
-  // `…\private\NEW-ACCOUNTANT-BRIEF.md` x36, `backpay-calc.mjs` x5 — the
+  // `…\private\VENDOR-BRIEF.md` x36, `calc.mjs` x5 — the
   // parent got a WORKSPACE pseudonym and the subpath below it did not — and a
-  // `[LINE]…txt` naming the counselling counterparty arrived in a directory
+  // `[chat]…txt` naming the counselling counterparty arrived in a directory
   // listing run from the home directory.
   ['F83', 'a deny-listed path is withheld whoever touched it, from wherever', () => {
     const denied = ['C:', 'w', 'ops-handover', 'private', 'vendor-search', 'SCORECARD.md'].join(BS);
     assert.equal(deniedReason(denied), 'a deny-listed directory');
-    assert.equal(deniedReason('projects/private-archive/organized/2025-09.txt'), 'private-archive');
+    // Reached through the path deny-list now, not through a literal in the
+    // shipped pattern list, so the reason is the generic one. That is the
+    // same rule the reason string already followed: one of the deny tokens
+    // is a person, and this string ships.
+    assert.equal(deniedReason('projects/private-archive/organized/2025-09.txt'), 'a deny-listed directory');
     // The token has to be inside a path SEGMENT, or ordinary prose trips it.
     assert.equal(deniedReason('the files are at /home and private things'), null);
     assert.equal(deniedReason('run the august-payroll.mjs script'), null);
@@ -2696,7 +2710,7 @@ const FIXTURES = [
     assert.equal(JSON.stringify(block.input).includes('vendor-search'), false, 'nor the subdirectory');
     assert.match(block.input.redacted, /withheld by deident/);
     // The marker must not name the token: one of them is a person.
-    assert.equal(/redacted-name|payroll|private|identity/i.test(block.input.redacted), false);
+    assert.equal(/payroll|private|identity/i.test(block.input.redacted), false);
     assert.equal(ctx.stats.deniedBlocks, 1);
 
     // A directory listing that ENUMERATES one, from an allowed cwd.
@@ -3089,7 +3103,7 @@ const FIXTURES = [
   // away the scoring evidence the export exists for, so the path goes and the
   // paragraph stays. Measured on a real export, in assistant prose rather than
   // tool output: `private/vendor-search/SCORECARD.md` and
-  // `WORKSPACE_n/private/WORKSPACE_m/NEW-ACCOUNTANT-BRIEF.md`.
+  // `WORKSPACE_n/private/WORKSPACE_m/VENDOR-BRIEF.md`.
   ['F91', 'a deny-listed path quoted in prose is removed without the paragraph', () => {
     const ctx = newRetentionContext((u) => u);
     const at = { file: 'a', line: 1 };
@@ -3111,7 +3125,7 @@ const FIXTURES = [
     // Windows separators too.
     assert.ok(!say(['see C:', 'w', 'private', 'a.md'].join(BS) + ' now').includes('a.md'));
     // And the marker names no directory: one of the deny tokens is a person.
-    assert.equal(/redacted-name|payroll|private|identity/i.test(say('at /x/private-archive/notes.txt')), false);
+    assert.equal(/payroll|private|identity/i.test(say('at /x/private-archive/notes.txt')), false);
     // Agent reasoning quotes the same paths.
     const think = retainRecord(
       { type: 'assistant', uuid: 'u2', sessionId: 's', cwd: 'C:/w', message: { role: 'assistant', content: [{ type: 'thinking', thinking: 'open /w/payroll-2026/ledger.md next' }] } },
