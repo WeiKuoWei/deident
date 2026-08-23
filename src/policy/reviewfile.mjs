@@ -158,15 +158,21 @@ export const SESSION_DECISIONS = Object.freeze(['keep', 'drop']);
  * parseReview wants only the workspace map; widening that return value would
  * have made four call sites care about a thing three of them do not.
  *
- * Only `drop` is returned. A missing section, or a session nobody touched,
- * means keep — the workspace tier already decided whether it leaves at all,
- * and this level only ever subtracts.
+ * Returns both the drops AND the set of ids the file mentions at all.
  *
- * @returns {ReadonlySet<string>} session ids to hold back
+ * The second half is what makes the decision fail closed. A session created
+ * after the last scan appears in no row, and a drops-only reading treats "not
+ * mentioned" as "keep": on 2026-08-23 three sessions written since the scan
+ * walked into a verified archive that way, and earlier the same hole put a
+ * session into an archive that had already been checked by hand. Opt-in has to
+ * mean opt-in, or the review is a snapshot the corpus quietly grows out of.
+ *
+ * @returns {{drops: ReadonlySet<string>, known: ReadonlySet<string>}}
  */
 export function parseSessionDrops(text, opts = {}) {
   const onProblem = typeof opts.onProblem === 'function' ? opts.onProblem : null;
   const drops = new Set();
+  const known = new Set();
   let inSessions = false;
 
   for (const rawLine of text.split('\n')) {
@@ -195,19 +201,28 @@ export function parseSessionDrops(text, opts = {}) {
         remedies: [{ label: 'Fix the line', command: `notepad ${REVIEW_FILENAME}` }],
       });
     }
-    if (decision === 'drop' && id) drops.add(id);
+    if (!id) continue;
+    known.add(id);
+    if (decision === 'drop') drops.add(id);
   }
 
-  return Object.freeze(drops);
+  return Object.freeze({ drops: Object.freeze(drops), known: Object.freeze(known) });
 }
 
-/** Missing review.md means nothing has been held back yet, not an error. */
+/**
+ * Missing review.md means nothing has been decided yet, not an error.
+ *
+ * `known` is empty in that case, and an empty `known` means "this file said
+ * nothing about sessions", which callers must treat as no opinion rather than
+ * as everything unknown. Only a review file that HAS a sessions section can
+ * make a session's absence meaningful.
+ */
 export function readSessionDrops(filePath, opts = {}) {
   try {
     return parseSessionDrops(fs.readFileSync(filePath, 'utf8'), opts);
   } catch (err) {
     if (err instanceof RefusalError) throw err;
-    if (err.code === 'ENOENT') return Object.freeze(new Set());
+    if (err.code === 'ENOENT') return Object.freeze({ drops: Object.freeze(new Set()), known: Object.freeze(new Set()) });
     throw new RefusalError(`could not read ${filePath}`, {
       why: [`${err.code}: ${err.message}`],
       remedies: [{ label: 'Regenerate it', command: 'deident scan' }],
