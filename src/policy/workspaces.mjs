@@ -1,9 +1,10 @@
 // Which workspaces may be exported at all.
 //
 // BRIEF §4.11: per-directory opt-in, never opt-out, plus a seed deny-list.
-// The measured hazard is concrete: a personal couples-counselling archive
-// (`private-archive`, 42 MB) sits in the same directory as work sessions, and any
-// "export recent sessions" default sweeps it in.
+// The measured hazard is concrete: a 42 MB archive of one person's private
+// messages sat in the same directory as work sessions, and any "export
+// recent sessions" default sweeps it in. It also had a git remote, so the
+// remote signal alone would have proposed it for export.
 //
 // Slice 1 implements the hook the four privacy tiers plug into
 // (docs/privacy-tiers.md is slice 2) and may treat every included workspace
@@ -12,11 +13,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { RefusalError } from '../cli/errors.mjs';
+import { userDenyTokens } from './userdeny.mjs';
 
 export const TIERS = Object.freeze(['exclude', 'count-only', 'redact', 'open']);
 
-/** BRIEF §4.11 seed deny-list. Matched case-insensitively as a substring. */
-export const DENY_TOKENS = Object.freeze(['private', 'identity', 'payroll', 'redacted-name']);
+/**
+ * BRIEF §4.11 seed deny-list. Matched case-insensitively as a substring.
+ *
+ * Only words that are true of anyone. A token naming one person's directory
+ * belongs in the per-person file beside the salt, not in a shared repository.
+ */
+export const DENY_TOKENS = Object.freeze(['private', 'identity', 'payroll']);
 
 export const UNCLASSIFIED = 'unclassified';
 
@@ -24,7 +31,7 @@ export const UNCLASSIFIED = 'unclassified';
 export function matchDenyToken(text) {
   if (typeof text !== 'string') return null;
   const lower = text.toLowerCase();
-  for (const token of DENY_TOKENS) {
+  for (const token of [...DENY_TOKENS, ...userDenyTokens()]) {
     if (lower.includes(token)) return token;
   }
   return null;

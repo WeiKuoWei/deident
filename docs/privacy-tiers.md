@@ -61,7 +61,7 @@ it can read, and the person corrects the rows that are wrong.
 
 | Signal | Proposed tier |
 |---|---|
-| the workspace directory name matches the deny-list (`private`, `identity`, `payroll`, `redacted-name`, `health`, `medical`, `tax`, `finance-personal`) | `exclude` |
+| the workspace directory name matches the deny-list (`private`, `identity`, `payroll`, plus any token the person adds in their own file beside the salt) | `exclude` |
 | no git remote | `exclude` |
 | git remote is a public repository | `open` |
 | git remote org is not one the user belongs to | `redact` (third-party work) |
@@ -87,7 +87,7 @@ of those rows were `redact` anyway.
 that passed through it.** Applying it to any per-line `cwd` was tried and
 reverted: it excluded the home directory, `ops-handover` and
 `personal-finance` outright, and labelled the last of those `deny-list matched:
-"redacted-name"`, which is not true of that workspace. §4 below has three levels for
+"private"`, which is not true of that workspace. §4 below has three levels for
 exactly this reason. The wandering line is caught by level 2, twice over: by its
 own deny token, and because the directory it moved into is itself an excluded
 workspace.

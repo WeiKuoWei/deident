@@ -281,7 +281,7 @@ sessions" default sweeps it in.
 
 **Per-directory opt-in, never opt-out.** Additionally, a seed deny-list: a
 directory name or a per-line `cwd` containing `private`, `identity`, `payroll`,
-`redacted-name` is excluded by default and requires a typed confirmation to include.
+a person's own added token is excluded by default and requires a typed confirmation to include.
 
 ## 5. Security findings that change the product, not just the code
 

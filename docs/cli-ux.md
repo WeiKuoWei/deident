@@ -60,7 +60,7 @@ reviewed by a second person; a file can.
 redact       gitroll                   61 sessions   gitroll-dev/gitroll (private)
 redact       treasury-fde-bpa          22 sessions   gitroll-dev/... (private)
 open         moss-local                 9 sessions   no remote  ← consider redact
-exclude      private-archive                  4 sessions   deny-list matched: "redacted-name"
+exclude      private-archive                  4 sessions   deny-list matched: "private"
 exclude      ops-handover-private   0 sessions   deny-list matched: "private"
 exclude      <home>                    47 sessions   no remote, outside projects/
 unclassified passport-viz               6 sessions   NEW since last export

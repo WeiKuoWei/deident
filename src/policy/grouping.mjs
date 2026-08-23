@@ -61,7 +61,7 @@ export function groupSessions(sessions, opts = {}) {
     // Tainting a group because one of its lines wandered into a denied
     // directory was tried and reverted: on the real corpus it excluded the
     // home directory, `ops-handover` and `personal-finance` outright, and
-    // labelled the last one `deny-list matched: "redacted-name"`, which is not true of
+    // labelled the last one `deny-list matched: "private"`, which is not true of
     // that workspace. privacy-tiers §4 has three levels for exactly this
     // reason — the wandering line is caught by level 2 (the per-line filter
     // drops it, both for its deny token and because the directory it moved

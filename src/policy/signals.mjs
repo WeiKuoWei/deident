@@ -72,7 +72,7 @@ export function proposeTier(group, probeRemote) {
     // its remote alone and shipped a third party's real name 10 times, plus
     // per-chat filenames naming the people in them. The deny-list never looked,
     // because privacy-tiers §3 matches it against directory names and the
-    // directory is not called "redacted-name".
+    // directory does not carry a deny token.
     const personal = personalDataShape(group.name) ?? personalDataShape(remote.repo);
     if (personal !== null) {
       return frozen(

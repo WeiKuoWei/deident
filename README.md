@@ -141,7 +141,7 @@ empty list would satisfy "the pass ran" while delivering nothing.
 
 A workspace deident has not seen before is `unclassified`, which means excluded.
 It is never swept in. Beyond that, a workspace whose name (or whose per-line
-`cwd`) contains `private`, `identity`, `payroll` or `redacted-name` is excluded and needs
+`cwd`) contains `private`, `identity`, `payroll` or a token you add yourself is excluded and needs
 `--include-denied <exact-name>` typed out to include.
 
 The per-line `cwd` filter matters more than it sounds. The largest session file

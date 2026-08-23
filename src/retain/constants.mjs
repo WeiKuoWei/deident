@@ -84,16 +84,24 @@ export const CANDIDATE_EXCERPT_CHARS = 400;
  * So the block is dropped and the session stays. Matched against a file path,
  * a filename, or the first part of a tool result's own text.
  */
+// ONLY patterns that are true of the AGENT, not of one person. The first
+// draft of this list carried the author's own dictation app, his immigration
+// folder and a directory named after a real human. In a shared repository
+// that is a disclosure, and for every other user it is dead weight. Anything
+// machine-specific belongs in DENIED_USER_FILENAME beside the salt, where it
+// is per-person by construction and is never committed.
 export const DENIED_CONTENT = Object.freeze([
+  // The agent's own memory store, whatever a given user keeps in it.
   /(^|[^a-z])MEMORY[.]md/i,
   /(reference|feedback|project|user)_[a-z0-9_]+[.]md/i,
-  /[.](identity|investment|deident)-private/i,
-  /shim-(hint[.]txt|dict[.]json)/i,
-  /Spokenly[/\\]History/i,
-  /private-archive|daily-logs/i,
-  /[/\\]i94[/\\]/i,
+  // A dotted directory whose own name says it is private.
+  /[.][a-z0-9-]{2,24}-private[/\\]/i,
+  // Filenames that are a credential or an identity record by convention.
   /(credentials|profile)[.]json/i,
 ]);
+
+/** Per-person additions, read from beside the salt. Never in the repository. */
+export const DENIED_USER_FILENAME = 'denied.json';
 
 /**
  * A deny-listed directory named ANYWHERE in a value, not only as the cwd.
@@ -104,16 +112,19 @@ export const DENIED_CONTENT = Object.freeze([
  * directory listing of a deny-listed path from an allowed cwd was invisible to
  * every one of them. Measured on a real export: files under
  * `…ops-handover\\private\\` were named 17, 36 and 5 times
- * (`vendor-search\\SCORECARD.md`, `NEW-ACCOUNTANT-BRIEF.md`,
- * `backpay-calc.mjs`) — the parent got a WORKSPACE pseudonym and the subpath
- * below it did not — and a `[LINE]…txt` from the counselling archive was named
+ * (`vendor-search\\SCORECARD.md`, `VENDOR-BRIEF.md`,
+ * `calc.mjs`) — the parent got a WORKSPACE pseudonym and the subpath
+ * below it did not — and a `[chat]…txt` from the archive of private messages was named
  * by a directory listing run from an included directory.
  *
  * The token has to sit inside a path SEGMENT: a separator, then segment
  * characters (no spaces, no quotes), then the token. That is what keeps it off
  * the sentence "at /home and private things".
  */
-const DENY_PATH_TOKENS = ['private', 'identity', 'payroll', 'redacted-name'];
+// Generic only. Per-person tokens arrive from beside the salt; see
+// policy/userdeny.mjs and the segment test in records.mjs, which is what
+// applies them.
+const DENY_PATH_TOKENS = ['private', 'identity', 'payroll'];
 export const DENIED_PATH_RE = new RegExp(
   '[\\\\/][^\\\\/\\s"' + String.fromCharCode(39) + '`]{0,60}?(?:' +
     DENY_PATH_TOKENS.join('|') +
@@ -125,7 +136,8 @@ export const DENIED_PATH_RE = new RegExp(
  * The reason string a denied PATH puts in the export.
  *
  * Deliberately generic: the deny tokens themselves are `private`, `payroll`,
- * `identity` and `redacted-name`, and the last of those is a person. review.md says
+ * `identity`, and a person may add their own, one of which was a real name.
+ * review.md says
  * which token matched because review.md is local; the marker inside the
  * archive is read by the recipient.
  */
@@ -155,7 +167,7 @@ export const DENIED_PATH_REASON = 'a deny-listed directory';
  * The path itself is what must not ship, so the path itself is what goes.
  * Measured on a real export, in assistant prose rather than tool output:
  * `…/private/vendor-search/SCORECARD.md` and
- * `WORKSPACE_n/private/WORKSPACE_m/NEW-ACCOUNTANT-BRIEF.md`.
+ * `WORKSPACE_n/private/WORKSPACE_m/VENDOR-BRIEF.md`.
  */
 export const PATH_TOKEN_RE = /[^\s"'`,;()\[\]{}<>]*[\\\\/][^\s"'`,;()\[\]{}<>]*/g;
 

@@ -9,6 +9,7 @@
 // Counts in the comments were measured over the full depth-0 corpus.
 
 import { RefusalError } from '../cli/errors.mjs';
+import { userDenyTokens, userDenyPatterns } from '../policy/userdeny.mjs';
 import { retainToolUseResult, distillToolResult, lineCount } from './toolresult.mjs';
 import {
   TOOL_RESULT_HEAD_BYTES,
@@ -431,10 +432,11 @@ export function deniedPathToken(token) {
 
 function matchesDenySegment(segment) {
   const lower = segment.toLowerCase();
-  return DENY_SEGMENT_TOKENS.some((t) => lower.includes(t));
+  return [...DENY_SEGMENT_TOKENS, ...userDenyTokens()].some((t) => lower.includes(t));
 }
 
-const DENY_SEGMENT_TOKENS = Object.freeze(['private', 'identity', 'payroll', 'redacted-name']);
+// Generic only. Per-person tokens arrive from beside the salt (userdeny.mjs).
+const DENY_SEGMENT_TOKENS = Object.freeze(['private', 'identity', 'payroll']);
 
 /** Replace every deny-listed path token in prose, counting what went. */
 function stripDeniedPaths(text, ctx) {
@@ -448,10 +450,10 @@ function stripDeniedPaths(text, ctx) {
   });
 }
 
-/** The first DENIED_CONTENT pattern this text trips, or null. */
+/** The first deny pattern this text trips, shipped list first, or null. */
 export function deniedReason(text) {
   if (typeof text !== 'string' || text.length === 0) return null;
-  for (const re of DENIED_CONTENT) {
+  for (const re of [...DENIED_CONTENT, ...userDenyPatterns()]) {
     re.lastIndex = 0;
     const m = re.exec(text);
     if (m !== null) return m[0].trim();
