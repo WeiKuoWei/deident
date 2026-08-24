@@ -133,7 +133,17 @@ function runCli(args, env = null) {
  * cwd-less record replaying what was typed while it was away, a credential, a
  * phone number, an `ls -l` owner id, and a second session that lives entirely
  * inside the deny-listed directory.
+ *
+ * CORPUS_USER is the account the corpus was written by, because §F3's owner-id
+ * sweep only fires beside the name the RUNNING user has. Written as the
+ * author's own account name, F61's `the stable owner id must not leave` passed
+ * on his machine and on no other: measured 2026-08-24 the same corpus on Linux
+ * ran as `root`, the sweep matched nothing, and the owner id shipped inside
+ * the zip. Fabricated, and never a name from this machine.
  */
+const CORPUS_USER = 'nkoro';
+const CORPUS_USER_ENV = Object.freeze({ USERNAME: CORPUS_USER, USER: CORPUS_USER });
+
 function writeCorpus(root, { unknownType = false } = {}) {
   const projects = path.join(root, 'projects', 'ws');
   fs.mkdirSync(projects, { recursive: true });
@@ -165,7 +175,7 @@ function writeCorpus(root, { unknownType = false } = {}) {
     },
     turn(cwd, `token ${'github_pat_11ABCDEFG0'}${'a'.repeat(50)} pasted by mistake`),
     turn(cwd, 'ring me on +852-5555 0100'),
-    turn(cwd, '-rw-r--r-- 1 devuser 197609    929 Aug 21 23:49 .gitignore'),
+    turn(cwd, `-rw-r--r-- 1 ${CORPUS_USER} 197609    929 Aug 21 23:49 .gitignore`),
     turn(cwd, `notes under ${denied} and ${denied}${BS}hsbc.json`),
     {
       type: 'user',
@@ -257,6 +267,48 @@ function corpusBytes(root) {
     if (name.endsWith('.jsonl')) total += fs.statSync(path.join(dir, name)).size;
   }
   return total;
+}
+
+/**
+ * Make `file` unwritable, and PROVE it took.
+ *
+ * chmod 0444 is the failure a real user hits: on Windows it maps to the
+ * read-only attribute, which is what a locked or cloud-synced directory
+ * reports. On POSIX as root the bit is ignored (CAP_DAC_OVERRIDE), and a suite
+ * run as root is not exotic: measured 2026-08-24 on WSL2 Ubuntu, the chmod
+ * returned cleanly, the write went straight through it, and F67 then asserted
+ * a warning the run had no reason to print.
+ *
+ * The fallback is the one refusal no privilege overrides: point the path at a
+ * directory that is not there. Reading it is ENOENT, which loadSavedDecisions
+ * already treats as "no memo yet", so only the SAVE fails.
+ *
+ * @returns {() => void} undo, leaving the path gone either way
+ */
+function makeUnwritable(file) {
+  fs.chmodSync(file, 0o444);
+  if (!writableByThisProcess(file)) {
+    return () => {
+      fs.chmodSync(file, 0o666);
+      fs.rmSync(file, { force: true });
+    };
+  }
+  fs.rmSync(file);
+  fs.symlinkSync(path.join(path.dirname(file), 'no-such-directory', path.basename(file)), file);
+  assert.ok(!writableByThisProcess(file), 'the fixture could not make the tier memo unwritable on this machine');
+  return () => {
+    fs.unlinkSync(file);
+  };
+}
+
+/** Whether this process can actually open `file` for writing, bits aside. */
+function writableByThisProcess(file) {
+  try {
+    fs.appendFileSync(file, '');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Hold one session back by hand, the way a person edits review.md. */
@@ -1145,12 +1197,27 @@ const FIXTURES = [
     assert.ok(text.includes(`C:${BS}Users${BS}u${BS}projects${BS}gitroll`), 'the row must name the real directory');
     assert.ok(!text.includes('C--Users'), 'and never the slug');
     // Two sessions in one directory spelled two ways are ONE row (§4.8).
+    // A separator is never a difference; a capital letter is one exactly where
+    // the filesystem says so (F108). Asserted as two statements, because
+    // written as one it asserted whichever answer the running machine gives
+    // and failed on the other: measured 2026-08-24, this passed on Windows and
+    // reported two rows on Linux.
     const one = groupSessions(
-      [session('a', ['C:/Users/u/Projects/x']), session('b', [`C:${BS}Users${BS}u${BS}projects${BS}x`])],
+      [session('a', ['C:/Users/u/projects/x']), session('b', [`C:${BS}Users${BS}u${BS}projects${BS}x`])],
       { homedir: 'C:/Users/u' },
     );
-    assert.equal(one.length, 1);
+    assert.equal(one.length, 1, 'a separator is not a different directory, anywhere');
     assert.equal(one[0].sessionCount, 2);
+    const mixed = [session('a', ['C:/Users/u/Projects/x']), session('b', [`C:${BS}Users${BS}u${BS}projects${BS}x`])];
+    const wasFolding = caseFolding();
+    try {
+      setCaseFolding(true);
+      assert.equal(groupSessions(mixed, { homedir: 'C:/Users/u' }).length, 1, 'one directory, one row');
+      setCaseFolding(false);
+      assert.equal(groupSessions(mixed, { homedir: 'C:/Users/u' }).length, 2, 'two directories, two rows');
+    } finally {
+      setCaseFolding(wasFolding);
+    }
     // review.md is whitespace-delimited, so a name may not carry a space.
     assert.equal(tailSegments('C:/Users/u/My Docs/plan', 2), 'My_Docs/plan');
   }],
@@ -1246,24 +1313,62 @@ const FIXTURES = [
     // machine. Asked "is this line under an excluded directory", the gate
     // drops the entire corpus; asked "which workspace is this line in", it
     // drops the right lines and nothing else.
-    const decisions = classifyWorkspaces(
-      [
-        { key: 'c:/users/u', name: HOME_NAME, cwd: 'C:/Users/u', normCwd: 'c:/users/u', sessionCount: 9, denyToken: null },
-        { key: 'c:/users/u/projects/gitroll', name: 'gitroll', cwd: 'C:/Users/u/projects/gitroll', normCwd: 'c:/users/u/projects/gitroll', sessionCount: 1, denyToken: null },
-      ],
-      { [HOME_NAME]: 'exclude', gitroll: 'redact' },
-      {},
-    );
-    const cwdTiers = cwdTierIndex(decisions);
-    assert.equal(cwdTiers[0].name, 'gitroll', 'longest prefix first, or home swallows everything');
-    assert.equal(allowLine('C:/Users/u/projects/gitroll/src', { cwdTiers }).allow, true);
-    assert.equal(allowLine('C:/Users/u', { cwdTiers }).allow, false);
-    assert.equal(
-      allowLine(`C:${BS}Users${BS}u${BS}Projects${BS}gitroll`, { cwdTiers }).allow,
-      true,
-      'case and separator variants are the same directory',
-    );
-    assert.equal(allowLine('D:/elsewhere', { cwdTiers }).allow, false, 'no workspace, no export');
+    //
+    // The index a real run builds is keyed by normalizeCwd's output, so the
+    // fixture builds it the same way rather than typing a lowercased key by
+    // hand. Typed by hand it stated the folded answer on every platform, and
+    // on a case-sensitive filesystem the gate then matched none of its own
+    // keys and denied every line: measured 2026-08-24, three of these
+    // assertions passed on Windows and the same three failed on Linux, one of
+    // them for a reason the fixture never checked.
+    const index = (tiers) =>
+      cwdTierIndex(
+        classifyWorkspaces(
+          ['C:/Users/u', 'C:/Users/u/projects/gitroll'].map((cwd, i) => ({
+            key: normalizeCwd(cwd),
+            name: i === 0 ? HOME_NAME : 'gitroll',
+            cwd,
+            normCwd: normalizeCwd(cwd),
+            sessionCount: i === 0 ? 9 : 1,
+            denyToken: null,
+          })),
+          tiers,
+          {},
+        ),
+      );
+
+    const wasFolding = caseFolding();
+    try {
+      for (const folding of [true, false]) {
+        setCaseFolding(folding);
+        const cwdTiers = index({ [HOME_NAME]: 'exclude', gitroll: 'redact' });
+        assert.equal(cwdTiers[0].name, 'gitroll', 'longest prefix first, or home swallows everything');
+        assert.equal(allowLine('C:/Users/u/projects/gitroll/src', { cwdTiers }).allow, true);
+        const home = allowLine('C:/Users/u', { cwdTiers });
+        assert.equal(home.allow, false);
+        // Which row denied it, not merely that something did. Unmapped denies
+        // too, so a gate that had stopped matching its own keys still read as
+        // this assertion passing.
+        assert.match(home.reason, /"<home>"/, 'the home row is what denied it');
+        assert.equal(
+          allowLine(`C:${BS}Users${BS}u${BS}projects${BS}gitroll`, { cwdTiers }).allow,
+          true,
+          'a separator variant is the same directory',
+        );
+        // Case is the half that depends on the filesystem (F108). Where it
+        // folds, `Projects` is the same directory; where it does not, it is a
+        // directory nobody classified, and an unclassified directory fails
+        // closed rather than borrowing its neighbour's tier.
+        assert.equal(
+          allowLine(`C:${BS}Users${BS}u${BS}Projects${BS}gitroll`, { cwdTiers }).allow,
+          folding,
+          `case variant under folding=${folding}`,
+        );
+        assert.equal(allowLine('D:/elsewhere', { cwdTiers }).allow, false, 'no workspace, no export');
+      }
+    } finally {
+      setCaseFolding(wasFolding);
+    }
     // The bug this replaced: the index was built from storage slug paths,
     // which can never prefix-match a real cwd, so no workspace tier reached
     // any line at all.
@@ -1797,14 +1902,18 @@ const FIXTURES = [
     const saltDir = path.join(root, 'salt');
     const corpus = writeCorpus(root);
 
-    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    // The run is told which user wrote this corpus (CORPUS_USER), because the
+    // owner-id assertion below is about a sweep that is anchored on the
+    // running user's name and is otherwise only ever exercised on the one
+    // machine whose account name the corpus happened to be written with.
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
     assert.equal(scan.code, 0, scan.out);
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
 
     const exported = runCli([
       'export', '--root', root, '--out', out, '--salt-dir', saltDir,
       '--entities', path.join(root, 'ents.json'),
-    ]);
+    ], CORPUS_USER_ENV);
     assert.equal(exported.code, 0, exported.out);
 
     const zips = fs.readdirSync(out).filter((f) => f.endsWith('.zip'));
@@ -1820,6 +1929,7 @@ const FIXTURES = [
     // §F7-safe credential shapes, E.164 numbers, and the §F3 owner id.
     assert.ok(!bytes.includes('github_pat_'), 'a credential must not leave');
     assert.ok(!bytes.includes('5136 7788'), 'a personal mobile must not leave');
+    assert.ok(!bytes.includes(CORPUS_USER), 'the bare username must not leave');
     assert.ok(!bytes.includes('197609'), 'the stable owner id must not leave');
     // The MCP server name, which the boundary rule made inert.
     assert.ok(!bytes.includes('playwright-headless'), 'the MCP server name must not leave');
@@ -2050,21 +2160,21 @@ const FIXTURES = [
     assert.equal(ok.code, 0, ok.out);
     assert.equal(fs.existsSync(path.join(out, 'deident-candidates.txt')), false, 'no candidates file on success');
 
-    // Now make the tier memo unwritable by putting a directory where its file
-    // goes. The export must still succeed, warn, and leave the zip in place.
+    // Now make the tier memo unwritable. The export must still succeed, warn,
+    // and leave the zip in place.
     fs.rmSync(path.join(out, fs.readdirSync(out).find((f) => f.endsWith('.zip'))));
-    // Readable so the run can still load tiers, unwritable so only the SAVE
-    // fails. On Windows chmod maps to the read-only attribute, which is exactly
-    // the failure a real user hits with a locked or synced directory.
+    // Loadable so the run still reaches the save, unwritable so only the SAVE
+    // fails. makeUnwritable verifies that rather than trusting the permission
+    // bit, which root does not honour.
     const memo = path.join(saltDir, 'workspaces.json');
     fs.writeFileSync(memo, '{}', 'utf8');
-    fs.chmodSync(memo, 0o444);
+    const restoreMemo = makeUnwritable(memo);
     const blocked = runCli(args);
     assert.equal(blocked.code, 0, `a lost tier memo is not a failed export: ${blocked.out}`);
     assert.match(blocked.out, /could not remember your tier decisions/);
     assert.equal(fs.readdirSync(out).filter((f) => f.endsWith('.zip')).length, 1, 'the archive stays');
     assert.doesNotMatch(blocked.out, /Nothing was written/, 'the report must not contradict the archive on disk');
-    fs.chmodSync(memo, 0o666);
+    restoreMemo();
 
     // review --html into a directory that does not exist yet.
     const deep = path.join(root, 'nested', 'deeper');
@@ -2074,11 +2184,19 @@ const FIXTURES = [
 
     // And where the path cannot be a directory at all, it is a named refusal
     // with a remedy, not an internal error.
+    //
+    // The refusal has to be the SAME one on every platform. Asserted only as
+    // "could not write" it was two different answers: Windows reads
+    // `<out>/review.md` as ENOENT and refused at the later write, POSIX reads
+    // it as ENOTDIR and refused with `could not read <out>/review.md`, whose
+    // remedy was `deident scan --out <out>`: the same mistake again.
     const blocking = path.join(root, 'a-file');
     fs.writeFileSync(blocking, 'not a directory', 'utf8');
     const refused = runCli(['review', '--html', '--root', root, '--out', blocking, '--salt-dir', saltDir]);
     assert.equal(refused.code, 1);
     assert.match(refused.out, /could not write/);
+    assert.match(refused.out, /is a file, not a directory/, 'the refusal names the mistake that was made');
+    assert.doesNotMatch(refused.out, /could not read/, 'and never blames the file it went looking for');
     assert.match(refused.out, /--out <path>/);
     assert.doesNotMatch(refused.out, /bug in deident/);
   }],
