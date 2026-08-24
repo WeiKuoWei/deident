@@ -60,12 +60,12 @@ reviewed by a second person; a file can.
 
 ## workspaces
 redact       gitroll                   61 sessions   gitroll-dev/gitroll (private)
-redact       treasury-fde-bpa          22 sessions   gitroll-dev/... (private)
-open         moss-local                 9 sessions   no remote  ← consider redact
+redact       billing-recon-ui          22 sessions   gitroll-dev/... (private)
+open         note-vault                 9 sessions   no remote  ← consider redact
 exclude      private-archive                  4 sessions   deny-list matched: "private"
 exclude      ops-handover-private   0 sessions   deny-list matched: "private"
 exclude      <home>                    47 sessions   no remote, outside projects/
-unclassified passport-viz               6 sessions   NEW since last export
+unclassified passport-map               6 sessions   NEW since last export
 
 ## sessions worth a second look
 drop   2026-08-14  gitroll   "幫我看一下這個月薪水怎麼算"      cwd touched \private
@@ -387,8 +387,8 @@ Not a stack trace, not a bare exit code.
 ```
   ✗ Refusing to export: 2 workspaces are unclassified.
 
-      passport-viz      6 sessions
-      fde-factory       2 sessions
+      passport-map      6 sessions
+      demo-runner       2 sessions
 
     New workspaces are excluded by default and never exported silently.
     Set a tier for each in review.md, or run with --skip-unclassified to

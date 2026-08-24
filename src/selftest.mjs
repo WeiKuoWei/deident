@@ -951,7 +951,10 @@ const FIXTURES = [
     assert.equal(projectShaped('dashboard'), false);
     assert.equal(projectShaped('references'), false);
     assert.equal(projectShaped('private-archive'), true);
-    assert.equal(projectShaped('moss-local'), true);
+    // Fabricated. The shape under test is the hyphen: projectShaped accepts on
+    // [-_.0-9] or a non-ASCII character, so a replacement without one flips
+    // this to false and the assertion stops testing the accept path.
+    assert.equal(projectShaped('note-vault'), true);
     assert.equal(projectShaped('wf_20783'), true);
     // A name with no letter in it is a version or a date, never a project.
     // Seeded from a real cwd on 2026-08-22; substituting it rewrites every
@@ -969,7 +972,10 @@ const FIXTURES = [
       workspaces: [
         { name: 'gitroll', cwd: 'C:/w/gitroll', sessionCount: 61, tier: 'redact', note: 'git remote g/g', denyToken: null },
         { name: 'private-archive', cwd: 'C:/w/private-archive', sessionCount: 4, tier: 'exclude', note: 'deny-list matched: "private"', denyToken: 'private' },
-        { name: 'passport-viz', cwd: 'C:/w/passport-viz', sessionCount: 6, tier: 'unclassified', note: 'NEW', denyToken: null },
+        // Fabricated. Shape: an unclassified row whose name is NOT a deny token
+        // and is not one of the two decided rows above, so parseReview has
+        // something it must drop rather than round-trip.
+        { name: 'passport-map', cwd: 'C:/w/passport-map', sessionCount: 6, tier: 'unclassified', note: 'NEW', denyToken: null },
       ],
       flaggedSessions: [],
       entities: [
@@ -981,7 +987,7 @@ const FIXTURES = [
     const back = parseReview(text);
     assert.equal(back.gitroll, 'redact');
     assert.equal(back['private-archive'], 'exclude');
-    assert.equal(back['passport-viz'], undefined, 'unclassified must not become a decision');
+    assert.equal(back['passport-map'], undefined, 'unclassified must not become a decision');
     // §F6: low-confidence entities are individual rows, never a collapsed count.
     assert.ok(text.includes('PERSON_2'), 'the low-confidence entity must be listed by name');
     assert.ok(text.includes('← check me'));
@@ -1228,7 +1234,10 @@ const FIXTURES = [
     const groups = groupSessions(
       [
         session('s1', [`C:${BS}Users${BS}u${BS}projects${BS}gitroll`]),
-        session('s2', [`C:${BS}Users${BS}u${BS}projects${BS}catalyte-whitepaper${BS}scripts`]),
+        // Fabricated. Shape: a project directory with a generic subdirectory
+        // below it, so the group name must come out `scripts` (the last
+        // segment) and not the project. A single-segment path tests nothing.
+        session('s2', [`C:${BS}Users${BS}u${BS}projects${BS}market-report${BS}scripts`]),
       ],
       { homedir: `C:${BS}Users${BS}u` },
     );
@@ -1858,23 +1867,29 @@ const FIXTURES = [
   }],
 
   // F58 — a git remote is evidence a directory is a repository. It is not
-  // evidence its content is shareable. `whatsapp-archive` was proposed `redact`
-  // on the strength of its remote alone and shipped a third party's real name
-  // 10 times plus per-chat filenames naming the people in them; the deny-list
-  // never looked, because privacy-tiers §3 matches it against directory names
-  // and the directory carries no deny token.
+  // evidence its content is shareable. A personal message archive was proposed
+  // `redact` on the strength of its remote alone and shipped a third party's
+  // real name 10 times plus per-chat filenames naming the people in them; the
+  // deny-list never looked, because privacy-tiers §3 matches it against
+  // directory names and the directory carries no deny token.
   ['F58', 'a git remote alone does not make a personal archive shareable', () => {
     const remote = (raw) => ({ raw, owner: raw.split('/')[0], repo: raw.split('/')[1], host: null });
     const group = (name) => ({ name, cwd: `C:${BS}x${BS}${name}`, denyToken: null, unresolved: false });
 
-    const personal = proposeTier(group('whatsapp-archive'), () => remote('me/whatsapp-archive'));
+    // Fabricated. Shape: a whole segment in PERSONAL_TOKENS (here `chat`), so
+    // personalDataShape returns non-null and the proposal drops to
+    // unclassified. A name with no personal segment proposes redact instead
+    // and the fixture asserts nothing.
+    const personal = proposeTier(group('chat-archive'), () => remote('me/chat-archive'));
     assert.equal(personal.tier, 'unclassified', 'a personal archive must not be swept in by its remote');
     assert.match(personal.reason, /personal data/);
 
     // Ordinary work still proposes redact, or the row becomes 29 questions.
     assert.equal(proposeTier(group('gitroll'), () => remote('gitroll-dev/gitroll')).tier, 'redact');
     // Whole segments only: a substring test would call these personal data.
-    assert.equal(personalDataShape('cohort-learning-dashboard'), null);
+    // Fabricated. Shape: an ordinary multi-segment work name whose every
+    // segment is outside PERSONAL_TOKENS, so it must come back null.
+    assert.equal(personalDataShape('learning-signal-dashboard'), null);
     assert.equal(personalDataShape('pipeline-runner'), null);
     assert.equal(personalDataShape('timeline'), null);
     assert.equal(personalDataShape('private-archive'), 'archive');
@@ -2807,7 +2822,10 @@ const FIXTURES = [
 
     // An identity-document number, only where the words say what it is.
     assert.deepEqual(sweepIdNumbers(['Taiwan passport No. 361234560   U.S. TIN: none']), ['361234560']);
-    assert.deepEqual(sweepIdNumbers(['passport number pending', 'the passport-viz project']), [],
+    // `passport-map` is fabricated, but the word `passport` in it is not
+    // decoration: the shape under test is the cue word appearing with no
+    // digits beside it. Drop the word and this stops testing the guard.
+    assert.deepEqual(sweepIdNumbers(['passport number pending', 'the passport-map project']), [],
       'no number, no entity');
     // §F7's own example: a passport-shaped regex matched a thermal-paste part
     // number, and nothing here says "passport" beside it.

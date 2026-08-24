@@ -95,7 +95,8 @@ placeholder on a Write/Edit parameter does **not** carry enough.
 
 ### 4.3 `code_added_lines`: `null` and `0` are different, and `0` is dangerous
 
-From `cohort-learning-dashboard/lib/fluency/distill.ts:137-139`:
+From `learning-signal-dashboard/lib/fluency/distill.ts:137-139` (repository name
+fabricated; the file path under it is what the citation needs):
 
 ```ts
 failedWithWork:   (s.code_added_lines ?? 0) > 0
@@ -242,7 +243,9 @@ per-line `cwd` value as well.
 
 `:`, `\`, `/` and `.` all collapse to `-`. Observed collisions:
 `C--Users-devuser--claude-skills` could be `.claude\skills` or `-claude-skills`;
-`...-moss-local-src` is ambiguous; case is preserved so `projects` and
+`...-note-vault-src` is ambiguous (the name is fabricated; the shape is a
+hyphenated basename with a further segment after it, which is what makes the
+`-` unreadable); case is preserved so `projects` and
 `Projects` are two directories for one Windows path.
 
 Storage root is overridable by `CLAUDE_CONFIG_DIR` (official). Since Claude Code

@@ -1536,15 +1536,19 @@ export function serializeSessions(sessions, table, rewriteUuid) {
     // The slug is substituted for entities AND swept for uuids, in that order.
     // Measured on the real corpus (2026-08-22): a workspace launched from a
     // scratchpad path carries a session uuid inside its own directory slug
-    // (`...-claude-C--Users-devuser-6b85b649-...-scratchpad-resumetest`). No
-    // entity matches it, so it reached the zip's directory listing verbatim
-    // and I5 correctly reported three unknown uuids. Same reuse as the record
-    // walker, so a slug and a record body cannot disagree.
+    // (`...-claude-C--Users-devuser-4f2c81ad-...-scratchpad-smoketest`). The
+    // slug is fabricated; the shape is a uuid sitting mid-slug with more path
+    // segments after it. No entity spelling matches that, so it reached the
+    // zip's directory listing verbatim and I5 correctly reported three unknown
+    // uuids. Same reuse as the record walker, so a slug and a record body
+    // cannot disagree.
     //
     // The entry directory is derived from the workspace's own CWD, not from its
     // short label. `s.workspace.name` is the last path segment, and the entity
     // table only carries full cwd spellings, so the bare basename never matched
-    // anything: the archive contained `./sessions/catalyte/...jsonl` while every
+    // anything: the archive contained `./sessions/market-report/...jsonl` (a
+    // fabricated stand-in; the shape is a bare basename, no drive and no
+    // separators, which is why no cwd spelling matched it) while every
     // record body inside it read `"cwd":"WORKSPACE_3736654"`. That is the real
     // directory name in plaintext AND a free WORKSPACE_n -> real-name mapping
     // handed to the recipient, and a scan over record bodies reported
