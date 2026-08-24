@@ -68,10 +68,49 @@ import { writePreview } from './output/preview.mjs';
 import { EXAMPLES_PER_REPORT, MIN_REPLAY_MATCH_CHARS } from './retain/constants.mjs';
 import { loadUserDeny, setUserDeny } from './policy/userdeny.mjs';
 
+/**
+ * The directory a command writes into. NEVER throws a raw ENOENT.
+ *
+ * This was `path.resolve(flags.out ?? process.cwd())` in all three commands.
+ * process.cwd() is the same shape as the os.userInfo() bug: a platform call
+ * that throws where the code reads a value. On POSIX a directory can be
+ * removed while a process sits in it, and the next process.cwd() raises
+ * `ENOENT: no such file or directory, uv_cwd`. Windows holds a handle on the
+ * working directory so it cannot be removed, which is why it never showed up
+ * on the machine this was written on; `cd /tmp/x && rm -rf /tmp/x` in another
+ * terminal is all it takes on a teammate's.
+ *
+ * main() caught it, so nobody saw a traceback. What they saw was worse:
+ * wrapUnexpected turned it into "internal error ... This is a bug in deident,
+ * not a problem with your data ... Report it with this line". That is the
+ * answer homeDir() was written to stop giving. It is an environment, it has a
+ * remedy, and the remedy is a flag.
+ *
+ * path.resolve is inside the try because it reads process.cwd() itself for a
+ * relative argument, so `--out ./here` lands on the same corner.
+ */
+export function resolveOutDir(flags) {
+  try {
+    return path.resolve(flags.out ?? process.cwd());
+  } catch (err) {
+    if (err?.code !== 'ENOENT') throw err;
+    throw new RefusalError('the current directory no longer exists, so deident has nowhere to write', {
+      why: [
+        'The directory this shell is sitting in was removed while it was open.',
+        'This is the environment deident was started in, not a problem with your data.',
+      ],
+      remedies: [
+        { label: 'Name an absolute path', command: 'deident scan --out <path>' },
+        { label: 'Or move somewhere real', command: 'change to a directory that exists, then run deident again' },
+      ],
+    });
+  }
+}
+
 // ------------------------------------------------------------------- scan
 
 export async function runScan(flags, env) {
-  const outDir = path.resolve(flags.out ?? process.cwd());
+  const outDir = resolveOutDir(flags);
   const saltDir = flags.saltDir ?? defaultSaltDir(env);
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
@@ -136,7 +175,7 @@ export async function runScan(flags, env) {
 // ----------------------------------------------------------------- review
 
 export async function runReview(flags, env) {
-  const outDir = path.resolve(flags.out ?? process.cwd());
+  const outDir = resolveOutDir(flags);
   const saltDir = flags.saltDir ?? defaultSaltDir(env);
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
@@ -198,7 +237,7 @@ export async function runReview(flags, env) {
 // ----------------------------------------------------------------- export
 
 export async function runExport(flags, env) {
-  const outDir = path.resolve(flags.out ?? process.cwd());
+  const outDir = resolveOutDir(flags);
   const saltDir = flags.saltDir ?? defaultSaltDir(env);
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
@@ -1108,7 +1147,7 @@ function entryDir(dir, key) {
 
 /** Keep entry names portable across Windows, macOS and Linux extractors. */
 function sanitizeEntryName(name) {
-  return name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120) || 'unnamed';
+  return name.replace(/[\/:*?"<>|]/g, '_').slice(0, 120) || 'unnamed';
 }
 
 /** Step 16. */

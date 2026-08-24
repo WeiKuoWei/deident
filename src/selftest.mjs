@@ -71,7 +71,7 @@ import { parseReview, parseSessionDrops, renderReview, renderReviewHtml } from '
 import { readEntities } from './entities/tier1.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
-import { serializeSessions } from './pipeline.mjs';
+import { serializeSessions, resolveOutDir } from './pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
 
 const BS = String.fromCharCode(92); // a single backslash, written without escapes
@@ -4207,6 +4207,69 @@ const FIXTURES = [
     }
     assert.deepEqual(offenders, [], `real home paths in shipped docs: ${offenders.join(' | ')}`);
   }],
+
+  // F113 - process.cwd() is the same shape as os.userInfo(): a platform call
+  // that throws where the code reads a value.
+  //
+  // All three commands opened with `path.resolve(flags.out ?? process.cwd())`.
+  // On POSIX a directory can be removed while a process sits in it, and
+  // process.cwd() then raises `ENOENT: no such file or directory, uv_cwd`.
+  // Windows holds a handle on the working directory so it cannot be removed,
+  // which is why this never showed up here. `cd /tmp/x && rm -rf /tmp/x` in
+  // another terminal is all it takes on a teammate's machine.
+  //
+  // The throw did not reach the terminal as a traceback - main() catches
+  // everything - but wrapUnexpected turned it into "internal error ... This is
+  // a bug in deident, not a problem with your data ... Report it with this
+  // line". That is the same wrong answer homeDir() was written to stop giving:
+  // it is an environment, it has a remedy, and the remedy is a flag.
+  //
+  // path.resolve is inside the try because it reads process.cwd() itself when
+  // the argument is relative, so `--out ./here` throws on the same corner.
+  ['F113', 'a working directory that has been deleted is an environment, not an internal error', () => {
+    const real = process.cwd;
+    const gone = () => {
+      throw Object.assign(new Error('ENOENT: no such file or directory, uv_cwd'), {
+        code: 'ENOENT',
+        syscall: 'uv_cwd',
+      });
+    };
+    try {
+      process.cwd = gone;
+
+      let refusal = null;
+      try {
+        resolveOutDir({});
+      } catch (err) {
+        refusal = err;
+      }
+      assert.ok(refusal instanceof RefusalError, 'a refusal, not a raw ENOENT');
+      assert.ok(
+        !/internal error|bug in deident/i.test(`${refusal.reason} ${refusal.why.join(' ')}`),
+        `the user is blamed for their own environment: ${refusal.reason}`,
+      );
+      assert.ok(refusal.remedies.length > 0, 'cli-ux §8: a refusal names its remedy');
+      assert.ok(
+        refusal.remedies.some((r) => r.command.includes('--out')),
+        `the remedy is the flag that does not need a cwd, got ${JSON.stringify(refusal.remedies)}`,
+      );
+
+      // A relative --out still needs the cwd, so it refuses the same way
+      // rather than throwing out of path.resolve.
+      assert.throws(() => resolveOutDir({ out: 'here' }), RefusalError);
+
+      // An absolute --out needs no cwd at all and must still work: this is the
+      // remedy the refusal hands out, so it has to be true.
+      const abs = os.tmpdir();
+      assert.equal(resolveOutDir({ out: abs }), path.resolve(abs));
+    } finally {
+      process.cwd = real;
+    }
+
+    // And the ordinary case is untouched.
+    assert.equal(resolveOutDir({}), path.resolve(process.cwd()));
+  }],
+
 ];
 
 export function selftest() {
