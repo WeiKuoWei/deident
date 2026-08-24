@@ -33,7 +33,7 @@ that was never going to be exported.
        verdict cannot overturn a drop, which is why a cheap model is the right
        one here (docs/model-tier.md).
 
-3.  node deident.js export --preview                  ~250k tokens of reading
+3.  node deident.js export --preview                  ~1M tokens of reading
        Runs every check, writes deident-candidates.txt (tier-0-cleaned prose)
        and a before/after .diff. No zip.
        Then fill in the entity list: hand this step to an agent, or write
@@ -51,6 +51,15 @@ Measured 2026-08-24 on a 205-session corpus: stage 2 reads 23 KB and stage 3
 reads 915 KB, a 35x difference for the stage that decides whether a session
 ships at all. Stage 2 is optional; skipping it just means stage 3 reads
 sessions a person would have thrown out.
+
+That 915 KB was measured while the candidates file truncated every prose chunk
+at 400 characters and deduplicated on the first 80 of each. It no longer does
+either, because both losses were silent and neither was counted. Measured over
+the whole depth-0 corpus with the same workspace decisions before and after,
+the change multiplies stage 3 by **4.40** (2,957,659 bytes to 13,026,553), so
+budget stage 3 near 4 MB and about 1M tokens on a 205-session corpus. Stage 2
+got cheaper relative to it by exactly the same factor, so the argument for
+running it is now much stronger than 35x.
 
 ### The funnel has a memory
 
