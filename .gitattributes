@@ -1,0 +1,13 @@
+# One line ending in the repository, because this now gets cloned onto Windows
+# and macOS by people who will diff each other's changes. Without this, git's
+# core.autocrlf default rewrites on checkout per-machine and the first
+# cross-platform edit shows every line as changed.
+#
+# LF in the repo and in the working tree: this is a Node project run as
+# `node deident.mjs`, and nothing here is opened by a Windows tool that needs
+# CRLF. Session logs are JSONL, which is LF by definition.
+* text=auto eol=lf
+
+# Fixture corpora and archives are compared byte for byte. Never touch them.
+*.zip binary
+*.jsonl -text
