@@ -71,7 +71,7 @@ import { parseReview, parseSessionDrops, renderReview, renderReviewHtml } from '
 import { readEntities } from './entities/tier1.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
-import { serializeSessions, resolveOutDir } from './pipeline.mjs';
+import { serializeSessions, resolveOutDir, sanitizeEntryName } from './pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
 
 const BS = String.fromCharCode(92); // a single backslash, written without escapes
@@ -4270,6 +4270,62 @@ const FIXTURES = [
     assert.equal(resolveOutDir({}), path.resolve(process.cwd()));
   }],
 
+  // F114 - sanitizeEntryName promised portability across Windows extractors
+  // and did not deliver it. The names it did not handle are the ones only a
+  // NON-Windows uploader can produce, which is why this survived.
+  //
+  // `~/projects/aux` is an ordinary directory on macOS and Linux and
+  // impossible to create on Windows, so the workspace name reaches the archive
+  // only from a teammate's machine and breaks only at the recipient's.
+  // Measured with the extractor the recipient actually has:
+  //
+  //   PS> Expand-Archive probe.zip -DestinationPath out
+  //   WARNING: The archive entry 'sessions/aux/s0.jsonl' contains a Windows
+  //   reserved device name as one of its segments which is not supported.
+  //   The entry was renamed to 'sessions\_aux\s0.jsonl'.
+  //
+  // Renamed for con, prn, aux, nul, com1-9 and lpt1-9, in either case. And
+  // silently, with no warning at all, for a trailing dot or space: `notes.`
+  // and `trail ` landed as `notes` and `trail`.
+  //
+  // Both break export-map.txt, which records the archive entry verbatim and
+  // exists so that privacy-tiers level 3 can attribute an entry back to a
+  // session (cli-ux §10). A path that no longer resolves is the one thing that
+  // file may not contain. Writing the escaped name into the archive means the
+  // recipient extracts what the map already says.
+  //
+  // Measured, not folklore: `aux.jsonl`, `auxiliary`, `console`, `com0`,
+  // `lpt0` and `com10` all extracted intact, and `aux.txt` created fine
+  // through Win32 on this build, so the rule stops at the bare name.
+  ['F114', 'an archive entry named after a Windows device extracts under the name deident recorded', () => {
+    for (const name of ['con', 'PRN', 'aux', 'Nul', 'com1', 'COM9', 'lpt1', 'lpt9']) {
+      assert.equal(sanitizeEntryName(name), `_${name}`, `${name} is a reserved device name`);
+    }
+
+    // Trailing dot and trailing space are dropped by Windows itself, silently,
+    // and dropping them here is what keeps the archive and the map agreeing.
+    assert.equal(sanitizeEntryName('notes.'), 'notes');
+    assert.equal(sanitizeEntryName('trail '), 'trail');
+    assert.equal(sanitizeEntryName('dots...'), 'dots');
+    // ...and a name that is nothing else still has to be a name.
+    assert.equal(sanitizeEntryName('...'), 'unnamed');
+    assert.equal(sanitizeEntryName('   '), 'unnamed');
+
+    // Not reserved, and mangling them would rename real workspaces for
+    // nothing (§F7: a scan that cries wolf is the first thing switched off).
+    for (const name of ['auxiliary', 'console', 'com0', 'lpt0', 'com10', 'aux.jsonl', 'nulls', 'a-normal-name']) {
+      assert.equal(sanitizeEntryName(name), name, `${name} is not a device name`);
+    }
+
+    // The characters it already handled still go.
+    assert.equal(sanitizeEntryName('a:b/c'), 'a_b_c');
+    assert.equal(sanitizeEntryName(''), 'unnamed');
+    // A session id passes through untouched: it is the other caller.
+    assert.equal(
+      sanitizeEntryName('11111111-1111-4111-8111-111111111111'),
+      '11111111-1111-4111-8111-111111111111',
+    );
+  }],
 ];
 
 export function selftest() {

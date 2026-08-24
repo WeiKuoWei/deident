@@ -1145,9 +1145,48 @@ function entryDir(dir, key) {
   return `workspace-${createHash('sha256').update(String(key), 'utf8').digest('hex').slice(0, 8)}`;
 }
 
-/** Keep entry names portable across Windows, macOS and Linux extractors. */
-function sanitizeEntryName(name) {
-  return name.replace(/[\/:*?"<>|]/g, '_').slice(0, 120) || 'unnamed';
+/**
+ * Keep entry names portable across Windows, macOS and Linux extractors.
+ *
+ * The illegal-character class was here from the start; the two rules below
+ * were not, and they cover exactly the names a NON-Windows uploader can
+ * produce and a Windows recipient cannot receive. `~/projects/aux` is an
+ * ordinary directory on macOS and Linux and impossible to create on Windows,
+ * so it only ever reaches the archive from a teammate's machine.
+ *
+ * Measured against the extractor the recipient actually has:
+ *
+ *   PS> Expand-Archive probe.zip -DestinationPath out
+ *   WARNING: The archive entry 'sessions/aux/s0.jsonl' contains a Windows
+ *   reserved device name as one of its segments which is not supported.
+ *   The entry was renamed to 'sessions\_aux\s0.jsonl'.
+ *
+ * Renamed for con, prn, aux, nul, com1-9 and lpt1-9 in either case, and
+ * silently, with no warning at all, for a trailing dot or space: `notes.` and
+ * `trail ` landed as `notes` and `trail`.
+ *
+ * Both break export-map.txt, which records this exact string and exists so
+ * privacy-tiers level 3 can attribute an archive entry back to a session
+ * (cli-ux §10). A path that no longer resolves is the one thing that file may
+ * not contain. Escaping here means the recipient extracts what the map says.
+ *
+ * The rule stops at the bare name because that is where the measurement
+ * stopped: `aux.jsonl`, `auxiliary`, `console`, `com0`, `lpt0` and `com10` all
+ * extracted intact, and `aux.txt` created fine through Win32 on this build.
+ *
+ * ponytail: two distinct workspaces can still collide after sanitising, the
+ * way `a:b` and `a_b` always could. Nothing disambiguates, because entry names
+ * must be stable across runs (I10) and a collision suffix is not. Give it a
+ * per-workspace hash suffix if a real collision ever shows up.
+ */
+const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+export function sanitizeEntryName(name) {
+  // Trailing dots and spaces first: Windows drops them, so `aux.` has to be
+  // recognised as the device name it will become.
+  const clean = name.replace(/[\\/:*?"<>|]/g, '_').replace(/[. ]+$/, '').slice(0, 120);
+  if (clean === '') return 'unnamed';
+  return WINDOWS_DEVICE_NAME.test(clean) ? `_${clean}` : clean;
 }
 
 /** Step 16. */
