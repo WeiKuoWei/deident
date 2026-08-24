@@ -23,6 +23,7 @@
 // in front of a reader; the reader decides.
 
 import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold, buildTable } from '../substitute/engine.mjs';
+import { isCjkOnly } from './variants.mjs';
 
 /** Characters of context kept either side of the one excerpt per spelling. */
 const EXCERPT_CONTEXT = 60;
@@ -195,7 +196,24 @@ function partsOf(spelling, kind) {
 
   const found = [];
   if (kind === 'person') {
-    for (const { word } of words) if (word.length >= MIN_NAME_PART) found.push(word);
+    for (const { word } of words) {
+      if (word.length >= MIN_NAME_PART) found.push(word);
+      // A name written without spaces between its parts has nothing for the
+      // loop above to split, so the only thing it proposes is the whole
+      // spelling, which is already declared and gets filtered. Propose the two
+      // ways such a name divides instead: the leading and the trailing two
+      // codepoints. The floor of 2 is the one seed.mjs already applies to this
+      // class, because a one-codepoint needle has no boundary rule and
+      // over-matches inside a longer word (BRIEF §4.5 row 3).
+      //
+      // Bounded and self-limiting: at most two extra probe rows per person,
+      // and uncoveredNameParts drops every row with count 0, so the half that
+      // is only ever part of the full name disappears on its own.
+      const cp = [...word];
+      if (cp.length >= 3 && isCjkOnly(word)) {
+        found.push(cp.slice(0, 2).join(''), cp.slice(-2).join(''));
+      }
+    }
   }
   // A connector breaks a run exactly the way punctuation does. Both mean the
   // same thing: the identity does not continue across it.
@@ -266,7 +284,15 @@ export function uncoveredNameParts(entities, texts) {
     for (const s of e?.spellings ?? []) {
       // A single-word spelling has no parts: the only piece of it is itself,
       // and it is already a needle.
-      if (typeof s !== 'string' || !/\s/.test(s)) continue;
+      //
+      // Except that a name written without spaces has no whitespace to test,
+      // so this line alone switched the whole detector off for it. Verified
+      // against the shipped modules: `Grace Hopper` with a bare `Hopper` in the
+      // prose returned a row, `王大明` with a bare `大明` returned nothing, and
+      // the substituter shipped the bare half twice with every gate green.
+      // That is renderNameParts's own stated failure, word for word.
+      if (typeof s !== 'string') continue;
+      if (!/\s/.test(s) && !(isCjkOnly(s) && [...s].length >= 3)) continue;
       for (const part of partsOf(s, e.kind)) {
         if (declared.has(part.toLowerCase())) continue;
         const prev = candidates.get(part);

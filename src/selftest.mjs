@@ -6088,6 +6088,48 @@ const FIXTURES = [
       'a budget below one session size offered nothing at all',
     );
   }],
+
+  // F144 - uncoveredNameParts exists to catch the half-replacement: the full
+  // name is substituted, the prose names him again two sentences later, and no
+  // other check can see it because the residue scan only looks for what it was
+  // given. The single-word guard tested for whitespace, so the whole detector
+  // was switched off for any name written without spaces.
+  //
+  // Verified against the shipped modules before this fixture: the Latin pair
+  // returned a row, the Han pair returned [], and substituteString on the same
+  // Han prose replaced the declared name once and shipped the bare half twice,
+  // verbatim, with every gate green.
+  ['F144', 'a bare half of a CJK name left in the prose is reported the same way a bare surname is', () => {
+    // Fabricated. SHAPE: a three-codepoint Han personal name, surname then
+    // two-codepoint given name, declared in full; then the given name standing
+    // alone twice in the prose. That is the same half-replacement as
+    // `Grace Hopper` declared and a bare `Hopper` left behind.
+    const rows = uncoveredNameParts(
+      [{ kind: 'person', spellings: ['王大明'] }],
+      ['王大明送出了報告。大明後來回覆說大明週五會再確認。'],
+    );
+    assert.equal(rows.length, 1, `expected one row, got ${JSON.stringify(rows)}`);
+    assert.equal(rows[0].part, '大明');
+    assert.equal(rows[0].from, '王大明');
+    // The BARE uses, not every occurrence: the probe table carries the declared
+    // spelling alongside the candidate and the longer one claims its own span.
+    assert.equal(rows[0].count, 2, 'the count is not the bare uses');
+
+    // The other half is proposed too and disappears on its own, because a row
+    // with count 0 is dropped. That is what bounds the cost to at most two
+    // extra probe rows per CJK person, and it is why this stays a finding
+    // rather than a gate: May, Wise and Ray are ordinary words in Latin and
+    // the same is true of a two-character Han fragment.
+    assert.deepEqual(
+      uncoveredNameParts([{ kind: 'person', spellings: ['王大明'] }], ['王大明送出了報告，沒有別的名字。']),
+      [],
+      'a half that never stands alone must not become a row',
+    );
+
+    // A one-codepoint Han spelling still has no parts, and BRIEF §4.5 row 3 is
+    // why: it has no boundary rule and over-matches inside a longer word.
+    assert.deepEqual(uncoveredNameParts([{ kind: 'person', spellings: ['林'] }], ['林先生來了']), []);
+  }],
 ];
 
 export function selftest() {
