@@ -638,6 +638,7 @@ export async function runExport(flags, env) {
   const perSession = extractProseBySession(cleaned.records).map((s) => ({
     id: s.id,
     chunks: s.chunks,
+    mtimeMs: s.mtimeMs,
     hash: proseHash(rawProse.get(s.id) ?? s.chunks),
   }));
   const uncovered = uncoveredSessions(dictionary.sessions, perSession, { ignoreRecord: flags.full });
@@ -1538,7 +1539,10 @@ function extractProseBySession(sessions) {
         else if (block?.type === 'thinking' && typeof block.thinking === 'string') chunks.push(block.thinking);
       }
     }
-    out.push({ id: s.file.sessionId, chunks });
+    // mtime rides along so coverageRefusal can mark a session that is still
+    // being written. The file record is already in hand, and uncoveredSessions
+    // spreads the row, so it costs one property and no plumbing.
+    out.push({ id: s.file.sessionId, chunks, mtimeMs: s.file.mtimeMs });
   }
   return out;
 }

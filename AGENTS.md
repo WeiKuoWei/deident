@@ -183,6 +183,12 @@ their content changed since they were read, so they are the ones now in the
 candidates file. Read them, add anything they turned up to the entity list, and
 run the export again.
 
+If a row is marked `(written N minutes ago)`, that is a session somebody still
+has open, possibly the one you are in. Reading it again will not clear it: the
+hash is over the whole session, so every turn added to it changes its prose
+back and the same refusal returns. Close that session, or leave its workspace
+out at the review step, then run the export again.
+
 **The candidates file is one BATCH, not necessarily the whole backlog.** It is
 capped at 120,000 characters per run (`--batch-chars <n>` to change it), and
 only the sessions actually written into it are recorded as read. When the file

@@ -33,7 +33,7 @@ import {
 import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar } from './substitute/engine.mjs';
 import { probeCounts, probeOutliers } from './entities/probe.mjs';
 import { substituteRecord } from './substitute/walker.mjs';
-import { checkSubstitution, checkSemanticPass, semanticRefusal } from './verify/checks.mjs';
+import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal } from './verify/checks.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from './verify/residual.mjs';
 import { distillToolResult, retainToolUseResult, checkAddedLines } from './retain/toolresult.mjs';
 import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason } from './retain/records.mjs';
@@ -6237,6 +6237,60 @@ const FIXTURES = [
     // line and a person deciding what to put in denied.json needs the list.
     const readme = fs.readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8');
     assert.match(readme, /Claude Code universal/, 'README still implies the list is universal');
+  }],
+
+  // F147 - a session is hashed over its whole retained prose, so appending one
+  // turn makes the whole session uncovered again. Re-showing a changed session
+  // in full is deliberate and right (appended turns read without the
+  // conversation around them are worse for entity discovery, and over-showing
+  // is the safe direction). What is not right is the case where that never
+  // terminates: a session still being written, very often the one the reader is
+  // sitting in. Every turn they add to it while working through the refusal
+  // changes its prose back, so the refusal returns and the loop reads as a bug
+  // in the tool.
+  //
+  // No behaviour change: the gate keeps refusing, which is correct. What was
+  // missing is the sentence that turns an apparent bug into an instruction.
+  ['F147', 'a session still being written is named as such in the refusal, with what to do about it', () => {
+    const now = Date.now();
+    // Fabricated session ids. SHAPE: one whose file was touched two minutes ago
+    // (the session the reader still has open) and one that was not.
+    const err = coverageRefusal(
+      [
+        { id: 'a3f9', reason: 'changed since it was last read', mtimeMs: now - 2 * 60 * 1000 },
+        { id: '7c02', reason: 'new since the last read', mtimeMs: now - 40 * 60 * 60 * 1000 },
+      ],
+      2,
+      'deident-candidates.txt',
+    );
+    const why = err.why.join(NL);
+    assert.match(why, /a3f9 {3}changed since it was last read {3}\(written 2 minutes ago\)/);
+    assert.ok(!/7c02.*written \d/.test(why), 'a session nobody is writing must not be marked fresh');
+    assert.match(why, /every turn you add changes it back/, 'the refusal does not say why reading it again will not clear it');
+
+    // With nothing fresh, the paragraph must not appear: a sentence about a
+    // session you have open, printed when you have none, is the cry-wolf
+    // failure in prose.
+    const stale = coverageRefusal([{ id: '1de4', reason: 'new since the last read', mtimeMs: now - 86_400_000 }], 1, 'x');
+    assert.ok(!stale.why.join(NL).includes('every turn you add changes it back'));
+
+    // And the mtime really reaches the refusal on a real run, which is the half
+    // a unit test on coverageRefusal cannot prove. The turn below is appended a
+    // moment before the export, exactly as an open session appends one.
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    appendTurn(root, '11111111-1111-4111-8111-111111111111', corpus.cwd, 'one more turn, typed just now');
+    const run = runCli(
+      ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', path.join(root, 'ents.json')],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(run.code, 1, run.out);
+    assert.match(run.out, /written 1 minute ago/, 'the file mtime never reached the refusal');
   }],
 ];
 

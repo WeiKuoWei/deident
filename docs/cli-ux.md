@@ -548,7 +548,7 @@ it:
 
       a3f9…   new since the last read
       7c02…   new since the last read
-      1de4…   changed since it was last read
+      1de4…   changed since it was last read   (written 2 minutes ago)
 
     A session is covered once its prose has been put in front of a reader and
     the answer is remembered. Exporting one that never was would mean claiming
@@ -562,6 +562,14 @@ This is **stricter** than the old gate, including in a direction that has
 nothing to do with the dictionary: `export --entities an-old-list.json` over a
 corpus that has grown used to ship the new sessions on the strength of a list
 written before they existed.
+
+A session that is still being written cannot be covered, and the row says so
+with `(written N minutes ago)`. The hash is over the whole retained prose, so
+every turn added to a session somebody has open changes it back and the same
+refusal returns. Reading it again is not the fix. Close that session, or leave
+its workspace out at the review step, then export again. The refusal prints
+that paragraph only when a row really is fresh, because a sentence about a
+session you have open, printed when you have none, is §F7 in prose.
 
 What it checks is that deident put the prose in front of a reader, not that the
 reader read it. That is the same limit the old gate had, one session at a time
