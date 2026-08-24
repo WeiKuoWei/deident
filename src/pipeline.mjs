@@ -683,7 +683,9 @@ export async function runExport(flags, env) {
     // to remove.
     rememberShown(saltDir, dictionary, perSession.filter((s) => showAll || shown.has(s.id)));
     report.renderCandidates(candidates.path, candidates.chars, omitted);
-    if (semantic.why === 'uncovered') throw coverageRefusal(uncovered, perSession.length, candidates.path, { full: flags.full });
+    if (semantic.why === 'uncovered') {
+      throw coverageRefusal(uncovered, perSession.length, candidates.path, { full: flags.full });
+    }
     throw semanticRefusal(candidates.path, semantic.why);
   }
 
