@@ -187,6 +187,11 @@ Also carry back:
   is expected.
 - `replacementCounts.zeros` — spellings that matched nothing, so they protected
   nothing. Usually a typo in the entity list.
+- `uncoveredNameParts` — surnames of people you declared that still stand alone
+  in the text. `Grace Hopper` replaced and a bare `Morgan` left behind is a half
+  replacement, and no check catches it: the residue scan only looks for what it
+  was given. Add the ones that are really that person and re-run. Leave out any
+  that are ordinary words.
 
 If the export refuses, the JSON has `ok: false` and an `error` with `reason`,
 `why` and runnable `remedies`. Act on the remedy; do not retry the same command.

@@ -51,6 +51,7 @@ import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/g
 import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from './policy/signals.mjs';
 import { readSession } from './corpus/reader.mjs';
 import { probeCaseFolding, setCaseFolding, caseFolding, normalizeCwd } from './corpus/cwdtrack.mjs';
+import { uncoveredNameParts } from './entities/probe.mjs';
 import { resolveRoot } from './corpus/root.mjs';
 import { setCommand, renderRefusal, renderReadError, renderManifest, captureOutput } from './cli/report.mjs';
 import {
@@ -3959,6 +3960,58 @@ const FIXTURES = [
       null,
       'the reference directory is not there, so the answer would be noise',
     );
+  }],
+
+  ['F109', 'a declared person name whose surname is left uncovered is reported, not silently substituted', () => {
+    // Measured 2026-08-24 comparing entity lists from three model tiers on one
+    // corpus: the mid tier reliably named "Grace Hopper" and never named the
+    // bare "Morgan", and the same for Hsu, Mistry, Smith, Abdullah, Reuther
+    // and Pocock. Substituting the full name and leaving the bare surname is
+    // a half-replacement: the prose still says who it is two sentences later.
+    //
+    // It is a REPORT and not an automatic spelling, for the same reason the
+    // probe is not a gate. May, Wise and Ray are all surnames in this corpus
+    // and all ordinary words; deriving them automatically is the 202-occurrence
+    // failure with a new source. The reader decides, holding the count.
+    const texts = [
+      'Grace Hopper sent it. Morgan replied later, and Morgan again on Friday.',
+      'Alan Turing reviewed it.',
+    ];
+    const entities = [
+      { kind: 'person', spellings: ['Grace Hopper', 'Derek'] },
+      { kind: 'person', spellings: ['Alan Turing', 'Kartik', 'Mistry'] },
+      { kind: 'org', spellings: ['Acme Advisory'] },
+    ];
+
+    const found = uncoveredNameParts(entities, texts);
+    const names = found.map((f) => f.part);
+    assert.deepEqual(names, ['Morgan'], `expected only Morgan, got ${JSON.stringify(names)}`);
+    // Two, not three. The occurrence inside "Grace Hopper" is already covered
+    // by the declared full name, and the number a reader acts on is how many
+    // times the surname stands ALONE: "Morgan replied later, and Morgan again
+    // on Friday". Counting the part by itself reports every surname in the
+    // corpus, including the ones already fully handled.
+    assert.equal(found[0].count, 2, 'the count is bare uses, not every occurrence');
+    assert.equal(found[0].from, 'Grace Hopper');
+    assert.ok(found[0].excerpt.includes('Morgan'));
+
+    // Already declared: not reported again, in either case.
+    assert.equal(uncoveredNameParts([{ kind: 'person', spellings: ['Alan Turing', 'mistry'] }], texts).length, 0);
+
+    // Never occurs on its own: reporting it would be noise, and this is the
+    // list a person reads line by line.
+    assert.equal(uncoveredNameParts([{ kind: 'person', spellings: ['Alan Turing'] }], ['Alan Turing only']).length, 0);
+
+    // Only people. An org's words are not name parts: splitting "Acme
+    // Advisory" proposes "Advisory", which is a common noun.
+    assert.equal(
+      uncoveredNameParts([{ kind: 'org', spellings: ['Acme Advisory'] }], ['Advisory Advisory']).length,
+      0,
+    );
+
+    // One-character and two-character parts are not proposed: a two-letter
+    // needle with no boundary rule is the bare-tilde bug in another costume.
+    assert.equal(uncoveredNameParts([{ kind: 'person', spellings: ['Al Bo'] }], ['Al Bo, then Bo, then Al']).length, 0);
   }],
 ];
 

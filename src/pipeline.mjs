@@ -44,7 +44,7 @@ import {
   pseudonymScanPattern,
 } from './entities/pseudonym.mjs';
 import { writeCandidates, readEntities, CANDIDATES_FILENAME } from './entities/tier1.mjs';
-import { probeCounts, probeOutliers } from './entities/probe.mjs';
+import { probeCounts, probeOutliers, uncoveredNameParts } from './entities/probe.mjs';
 import { buildTable, substituteString, leftIsWordChar } from './substitute/engine.mjs';
 import { substituteRecord, collectStrings } from './substitute/walker.mjs';
 import {
@@ -419,6 +419,18 @@ export async function runExport(flags, env) {
     ...probeCounts(collectRetainedStrings(cleaned.records), tier1Table),
   ]);
   report.renderProbe(probeOutliers(replacementCounts));
+
+  //  12b  Surnames of declared people that still stand alone in the text.
+  //
+  //       Measured over the tier-0-cleaned text, which is what the semantic
+  //       pass read, so a part the reader could have declared and did not is
+  //       what shows up. Reported and not substituted: docs/model-tier.md
+  //       measured every tier naming "Grace Hopper" while the mid tier never
+  //       named the bare "Morgan", and in this corpus May, Wise and Ray are
+  //       all parts of real names and all ordinary words.
+  report.renderNameParts(
+    uncoveredNameParts(tier1.entities, collectRetainedStrings(cleaned.records)),
+  );
 
   // 13  substitution invariant, at string level, before serialization.
   //

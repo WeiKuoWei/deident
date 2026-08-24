@@ -20,7 +20,7 @@
 // third, which is §F7's cry-wolf failure arriving on schedule. The number goes
 // in front of a reader; the reader decides.
 
-import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold } from '../substitute/engine.mjs';
+import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold, buildTable } from '../substitute/engine.mjs';
 
 /** Characters of context kept either side of the one excerpt per spelling. */
 const EXCERPT_CONTEXT = 60;
@@ -127,4 +127,91 @@ export function probeOutliers(rows, { top = 15, includeZero = true } = {}) {
   const hits = rows.filter((r) => r.count > 0).slice(0, top);
   const zeros = includeZero ? rows.filter((r) => r.count === 0) : [];
   return Object.freeze({ hits: Object.freeze(hits), zeros: Object.freeze(zeros) });
+}
+
+/** A name part shorter than this is a needle with no useful boundary rule. */
+const MIN_NAME_PART = 3;
+
+/**
+ * Parts of a declared person's name that occur ALONE in the corpus and are not
+ * themselves declared.
+ *
+ * Measured 2026-08-24, comparing entity lists produced at three model tiers on
+ * one corpus (docs/model-tier.md): every tier named "Grace Hopper" and the mid
+ * tier never named the bare "Morgan", and the same held for Hsu, Mistry,
+ * Smith, Abdullah, Reuther and Pocock. Substituting the full name and leaving
+ * the bare surname is a half-replacement: the pseudonym appears once and the
+ * prose says who it is two sentences later. The residue scan cannot catch it,
+ * because it only looks for what it was given.
+ *
+ * A REPORT, not an extra spelling, and for the same reason the probe is not a
+ * gate. In this corpus alone, May, Wise and Ray are all parts of real names and
+ * all ordinary words; adding them automatically is the 202-occurrence failure
+ * with a new source. What is automatic is the FINDING - the count, and one
+ * excerpt showing how the word is actually used.
+ *
+ * Only `person`. An org's words are not name parts: splitting "Acme
+ * Advisory" proposes "Advisory".
+ *
+ * @param {ReadonlyArray<{kind:string, spellings:ReadonlyArray<string>}>} entities
+ * @param {Iterable<string>} texts
+ * @returns {ReadonlyArray<{part, from, count, excerpt}>} descending by count
+ */
+export function uncoveredNameParts(entities, texts) {
+  const declared = new Set();
+  for (const e of entities ?? []) {
+    for (const s of e?.spellings ?? []) {
+      if (typeof s === 'string') declared.add(s.trim().toLowerCase());
+    }
+  }
+
+  // part -> the longest declared spelling it came from, for the report line.
+  const candidates = new Map();
+  for (const e of entities ?? []) {
+    if (e?.kind !== 'person') continue;
+    for (const s of e.spellings ?? []) {
+      if (typeof s !== 'string' || !s.includes(' ')) continue;
+      for (const raw of s.split(/\s+/)) {
+        const part = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+        if (part.length < MIN_NAME_PART) continue;
+        if (declared.has(part.toLowerCase())) continue;
+        const prev = candidates.get(part);
+        if (prev === undefined || s.length > prev.length) candidates.set(part, s);
+      }
+    }
+  }
+  if (candidates.size === 0) return Object.freeze([]);
+
+  // Counted through the shipped matcher, so "occurs" means "would be replaced"
+  // rather than "grep finds it".
+  //
+  // The table carries the already-declared spellings ALONGSIDE the candidate
+  // parts, which is what makes the count mean "appears on its own". buildTable
+  // orders longest first and the sweep stops at the first match, so every
+  // occurrence inside the full name is claimed by the full name and the part's
+  // count is exactly its bare uses. Counting the part alone instead reports
+  // every surname in the corpus, including the ones already covered.
+  const rowsToProbe = [
+    ...[...declared].map((spelling, i) => ({
+      id: `NPD${i}`, kind: 'person', pseudonym: `DECLARED_${i}`, spellings: [spelling],
+    })),
+    ...[...candidates.keys()].map((part, i) => ({
+      id: `NP${i}`, kind: 'person', pseudonym: `NAMEPART_${i}`, spellings: [part],
+    })),
+  ];
+  const counts = probeCounts(texts, buildTable(rowsToProbe));
+
+  const rows = [];
+  for (const c of counts) {
+    if (c.count === 0 || !candidates.has(c.spelling)) continue;
+    rows.push(
+      Object.freeze({
+        part: c.spelling,
+        from: candidates.get(c.spelling),
+        count: c.count,
+        excerpt: c.excerpt,
+      }),
+    );
+  }
+  return Object.freeze(rows.sort((a, b) => b.count - a.count || (a.part < b.part ? -1 : 1)));
 }
