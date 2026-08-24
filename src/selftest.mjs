@@ -1606,11 +1606,14 @@ const FIXTURES = [
     assert.deepEqual(sweepSecrets(['M1019757 thermal paste', 'sha256:abcdef0123456789', 'ghost_writer']), []);
 
     // Scheduled-trigger ids. Found by grepping the SHIPPED archive rather than
-    // the report: `trig_01ZZZZZZZZZZZZZZZZZZZZZZZZ` sat in plaintext in an export
+    // the report: one sat in plaintext in an export
     // that had passed all six checks, because the reader listed two of the
     // three trigger ids in the corpus and nothing else was looking. This is a
     // fixed prefix plus 26 base62 characters, which is a machine's job and not
     // a reader's, and it is exactly the kind an entity list misses one of.
+    // Fabricated, not the one that was found. A fixture is committed source in
+    // a repo with a remote, so a real credential pasted into one is a
+    // disclosure with a longer half-life than the export it came from.
     const trig = 'trig_01ZZZZZZZZZZZZZZZZZZZZZZZZ';
     assert.ok(sweepSecrets([`routine ${trig} runs monthly`]).includes(trig));
     // §F7 precision: the prefix has to be followed by a real token.
