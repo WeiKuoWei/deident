@@ -31,7 +31,14 @@ import {
 import { groupSessions } from './policy/grouping.mjs';
 import { proposeTier, makeRemoteProbe } from './policy/signals.mjs';
 import { allowLine, touchedDenied } from './policy/linefilter.mjs';
-import { readReview, readSessionDrops, writeReview, renderReviewHtml, REVIEW_FILENAME } from './policy/reviewfile.mjs';
+import { readReview, readSessionDrops, writeReview, renderReviewHtml, parseSessionRows, REVIEW_FILENAME } from './policy/reviewfile.mjs';
+import {
+  renderTriage,
+  readVerdicts,
+  applyVerdicts,
+  TRIAGE_FILENAME,
+} from './policy/triage.mjs';
+import { firstUserPrompt } from './corpus/head.mjs';
 import { seedEntities } from './entities/seed.mjs';
 import {
   loadOrCreateSalt,
@@ -231,6 +238,157 @@ export async function runReview(flags, env) {
       (w) => `  ${w.tier.padEnd(12)} ${w.name.padEnd(26)} ${w.sessionCount} sessions   ${w.cwd ?? ''}`.trimEnd(),
     ),
   );
+  return 0;
+}
+
+// ----------------------------------------------------------------- triage
+
+/**
+ * The cheap per-session pass, between `scan` and the entity list.
+ *
+ * It reads review.md, the HEAD of each still-kept session file, and nothing
+ * else. Measured 2026-08-24 on the live corpus: 205 sessions, and each one's
+ * workspace plus its first prompt truncated to 300 characters is 23,302
+ * characters, about 7k tokens, against 915 KB and about 250k tokens for the
+ * entity pass that follows.
+ *
+ * `resolveCorpus` is a directory walk and a stat per file; it opens nothing.
+ * `firstUserPrompt` opens each file once and reads at most its first 256 KB.
+ * Neither surveyCorpus nor retainCorpus runs here, and that is the point.
+ */
+export async function runTriage(flags, env) {
+  const outDir = resolveOutDir(flags);
+  const saltDir = flags.saltDir ?? defaultSaltDir(env);
+  const reviewPath = path.join(outDir, REVIEW_FILENAME);
+  const reviewText = readReviewText(reviewPath, outDir);
+  const corpus = resolveCorpus(env, flags.root);
+  const pathById = new Map(corpus.files.map((f) => [f.sessionId, f.path]));
+
+  return flags.apply
+    ? applyTriage(flags, saltDir, reviewPath, reviewText, pathById)
+    : writeTriage(flags, outDir, reviewText, pathById, loadSavedDecisions(saltDir).sessionDrops);
+}
+
+/**
+ * review.md is the input, so a missing one is a refusal rather than an empty
+ * run. Triage's whole job is to shrink a list of sessions the person has
+ * already decided about; with no decisions there is no list, and rendering
+ * every session as a candidate would put the entire corpus in front of a
+ * reader under a header claiming it had been filtered.
+ */
+function readReviewText(reviewPath, outDir) {
+  try {
+    return fs.readFileSync(reviewPath, 'utf8');
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      throw new RefusalError(`could not read ${reviewPath}`, {
+        why: [`${err.code}: ${err.message}`],
+        remedies: [{ label: 'Regenerate it', command: `deident scan --out ${outDir}` }],
+      });
+    }
+    throw new RefusalError(`no ${REVIEW_FILENAME} in ${outDir}, so there is nothing to triage`, {
+      why: [
+        'Triage narrows the sessions your review still proposes to keep.',
+        'Nothing has proposed anything yet, so every session would be a candidate',
+        'and the header would be claiming a filter that had not run.',
+      ],
+      remedies: [{ label: 'Survey first', command: `deident scan --out ${outDir}` }],
+    });
+  }
+}
+
+/** Direction one: write the file a reader acts on. */
+function writeTriage(flags, outDir, reviewText, pathById, rememberedDrops) {
+  const rows = [];
+  let missingFiles = 0;
+  for (const row of parseSessionRows(reviewText)) {
+    // Only what is still proposed `keep`, and remembered drops count too: scan
+    // writes those into review.md, but a review.md generated before a hold was
+    // remembered would offer the session again, and paying a reader to look at
+    // a session that is already out is exactly the waste this stage removes.
+    if (row.decision !== 'keep' || rememberedDrops.has(row.id)) continue;
+    const filePath = pathById.get(row.id);
+    if (filePath === undefined) {
+      // The session was deleted between the scan and now. There is no prompt to
+      // show and no reason to ask about it, so it is counted rather than listed.
+      missingFiles += 1;
+      continue;
+    }
+    rows.push(Object.freeze({ ...row, prompt: firstUserPrompt(filePath) }));
+  }
+
+  const body = renderTriage(rows, { chars: flags.triageChars });
+  const triagePath = path.join(outDir, TRIAGE_FILENAME);
+  try {
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(triagePath, body, 'utf8');
+  } catch (err) {
+    throw new RefusalError(`could not write ${triagePath}`, {
+      why: [`${err.code}: ${err.message}`, 'Nothing was written.'],
+      remedies: [{ label: 'Choose a writable directory', command: 'deident triage --out <path>' }],
+    });
+  }
+
+  if (missingFiles > 0) {
+    report.renderWarning(
+      `${missingFiles} session${missingFiles === 1 ? '' : 's'} in ${REVIEW_FILENAME} no longer exist on disk and were not offered`,
+    );
+  }
+  report.renderTriageWritten({
+    path: triagePath,
+    sessions: rows.length,
+    withoutPrompt: rows.filter((r) => r.prompt === null).length,
+    chars: flags.triageChars,
+    bytes: Buffer.byteLength(body, 'utf8'),
+  });
+  return 0;
+}
+
+/** Direction two: merge the reader's answer back into review.md. */
+function applyTriage(flags, saltDir, reviewPath, reviewText, pathById) {
+  const verdicts = readVerdicts(flags.verdicts);
+  const result = applyVerdicts(reviewText, verdicts);
+
+  if (result.applied.length > 0) {
+    try {
+      fs.writeFileSync(reviewPath, result.text, 'utf8');
+    } catch (err) {
+      throw new RefusalError(`could not write ${reviewPath}`, {
+        why: [`${err.code}: ${err.message}`, 'No verdict was applied.'],
+        remedies: [{ label: 'Fix the permissions', command: `edit ${reviewPath}` }],
+      });
+    }
+    // Beside the tiers, for the reason F104 exists: a decision that lives only
+    // in the review.md this run happened to read is lost the moment somebody
+    // scans into a different directory.
+    const remembered = loadSavedDecisions(saltDir);
+    rememberDecisions(
+      saltDir,
+      // saveDecisions rebuilds the whole workspaces map from what it is handed,
+      // so handing it an empty list would erase every remembered tier on the
+      // machine. They are re-declared exactly as they were read back.
+      Object.entries(remembered.workspaces).map(([key, tier]) => ({ key, tier, decided: true })),
+      new Set([...remembered.sessionDrops, ...result.applied]),
+    );
+  }
+
+  // Sessions get deleted between runs, so a stale id is ordinary. Refusing
+  // would throw away every other verdict in the same file over somebody tidying
+  // a directory, and the reader would have to run the whole stage again.
+  for (const id of result.unmatched) {
+    report.renderWarning(
+      pathById.has(id)
+        ? `verdict for "${id}" was not applied: that session is in the corpus but has no row in ${REVIEW_FILENAME}. Run scan again to decide it`
+        : `verdict for "${id}" was not applied: no session with that id, and none in the corpus either. It was probably deleted between runs`,
+    );
+  }
+  report.renderTriageApplied({
+    path: reviewPath,
+    applied: result.applied.length,
+    unchanged: result.unchanged.length,
+    unmatched: result.unmatched.length,
+    verdicts: verdicts.length,
+  });
   return 0;
 }
 

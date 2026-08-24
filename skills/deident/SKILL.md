@@ -71,7 +71,7 @@ one line of reason. The person answers a list; they do not read transcripts.
 Mark them differently as you go. Getting this wrong in the safe direction costs
 nothing; a row you cannot classify is a `drop`.
 
-**Ask the person who the archive is for**, and pass it in step 4:
+**Ask the person who the archive is for**, and pass it in step 5:
 `teammate`, `company`, or `public`. Default is `public`, which releases nothing
 extra. This one answer moves every `drop:audience` row at once, which is why it
 is worth asking rather than adjudicating those rows one by one.
@@ -79,7 +79,62 @@ is worth asking rather than adjudicating those rows one by one.
 Write decisions back by editing `review.md` in place: column 1 of the
 `## workspaces` and `## sessions` sections.
 
-## 3. Find the identities a machine cannot
+## 3. Triage: cut the list before anything expensive reads it
+
+```
+node <repo>/deident.mjs triage --out <workdir> --json
+```
+
+That writes `deident-triage.txt`: one block per session your review still
+proposes to keep, carrying the session id, its date, the workspace, and the
+first thing the person typed truncated to 300 characters. Nothing else, and only
+the head of each session file is read.
+
+Measured 2026-08-24 on a 205-session corpus: 23 KB, about 7k tokens, against
+915 KB and about 250k tokens for step 4. That 35x is the whole reason this step
+exists, and it is why it runs before step 4 rather than after.
+
+Read it and write `deident-triage.json` beside it:
+
+```json
+{
+  "verdicts": [
+    { "id": "<session id>", "verdict": "drop", "reason": "one line" }
+  ]
+}
+```
+
+`verdict` is `drop` or `unsure`. **There is no `keep`.** A triage verdict may
+only ever move a session toward `drop`: the tool refuses a `keep` naming the row
+it came from, and a verdict cannot overturn a session that is already dropped.
+Both are enforced in code. `unsure` means "I looked and I am not acting", and it
+exists so a considered row does not look like a skipped one.
+
+**A low-tier model is appropriate here, and this is the one step where that is
+true.** `docs/model-tier.md` disqualifies the low tier for step 4 because its
+failures are misses and a miss there is a disclosure. Here the only power on
+offer is removal, so a wrong verdict costs coverage and never privacy. Use the
+rubric in the file's own header rather than a stricter one of your own.
+
+Then apply them:
+
+```
+node <repo>/deident.mjs triage --apply --verdicts <workdir>/deident-triage.json \
+  --out <workdir> --json
+```
+
+That writes `drop` into column 1 of `review.md`, puts the reason on the row, and
+remembers the drop beside the tiers so a later scan elsewhere does not lose it. A
+verdict naming a session that is no longer in the corpus warns and is skipped;
+sessions get deleted between runs.
+
+`deident-triage.txt` carries raw prose. Unlike `deident-candidates.txt`, tier-0
+substitution has NOT run over it, so handing it to a model sends untouched
+session text to that model. That is a real cost, and it is why the payload is one
+truncated line per session rather than a transcript. Never commit it, and never
+paste it into a ticket.
+
+## 4. Find the identities a machine cannot
 
 The export refuses without this. Run:
 
@@ -94,7 +149,7 @@ server names. What remains is what needs a reader.
 It is a PROSE extract, and the export substitutes over everything it keeps, so
 the file shows you less than what ships. Measured 2026-08-24: a name-part check
 over the candidates file found 8 uncovered surnames and the same check over the
-export found 17. Step 5 is where that gap closes, so do not treat this file as
+export found 17. Step 6 is where that gap closes, so do not treat this file as
 the whole surface.
 
 Every UUID in it is already a pseudonym: session and message ids were replaced
@@ -153,7 +208,7 @@ What stays out:
 Set `"confidence": "low"` whenever you are guessing. Low-confidence entries are
 listed individually for the person rather than collapsed into a count.
 
-## 4. Export
+## 5. Export
 
 ```
 node <repo>/deident.mjs export --out <workdir> --json \
@@ -170,7 +225,7 @@ the background rather than waiting on it.
 terminal is logged into the session, and the session is part of the next run's
 corpus, so a namespace used before will collide and refuse.
 
-## 5. Read the report before saying it worked
+## 6. Read the report before saying it worked
 
 The JSON document carries `checks`. Every one must be `ok`. Two of them are
 worth naming to the person:
@@ -199,7 +254,7 @@ Also carry back:
 If the export refuses, the JSON has `ok: false` and an `error` with `reason`,
 `why` and runnable `remedies`. Act on the remedy; do not retry the same command.
 
-## 6. Hand it over
+## 7. Hand it over
 
 The archive is a file. The tool does not upload it and has no receiver.
 

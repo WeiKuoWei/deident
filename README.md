@@ -11,17 +11,29 @@ browser UI.
 
 ---
 
-## The three-step workflow
+## The four-stage funnel
 
-Three commands. The first two write nothing that can leave the machine.
+Each stage costs more than the one before it and hands the next one a shorter
+list. That ordering is the design: nothing expensive should ever read a session
+that was never going to be exported.
 
 ```
-1.  node deident.mjs scan
+1.  node deident.mjs scan                              cheap: one pass, no reader
        Surveys the corpus and writes review.md. Nothing else.
        Open review.md and set a tier for each workspace: exclude, count-only,
        redact or open. A workspace you do not touch stays excluded.
 
-2.  node deident.mjs export --preview
+2.  node deident.mjs triage                            ~7k tokens of reading
+       Writes deident-triage.txt: one block per session still proposed keep,
+       carrying its first user prompt truncated to 300 characters. Only the
+       head of each session file is read.
+       A reader writes deident-triage.json, then:
+         node deident.mjs triage --apply --verdicts deident-triage.json
+       A verdict can only ever DROP a session. There is no keep verdict and a
+       verdict cannot overturn a drop, which is why a cheap model is the right
+       one here (docs/model-tier.md).
+
+3.  node deident.mjs export --preview                  ~250k tokens of reading
        Runs every check, writes deident-candidates.txt (tier-0-cleaned prose)
        and a before/after .diff. No zip.
        Then fill in the entity list: hand this step to an agent, or write
@@ -29,10 +41,16 @@ Three commands. The first two write nothing that can leave the machine.
        as skills/deident/SKILL.md and as AGENTS.md, with the same text in
        both.
 
-3.  node deident.mjs export --entities deident-entities.json
-       The real thing. Every check runs again first; any failure means nothing
-       is written.
+4.  node deident.mjs export --entities deident-entities.json
+       The real thing, and the only stage that writes an archive. Every check
+       runs again first; any failure means nothing is written. Measured at
+       more than ten minutes on a few hundred sessions.
 ```
+
+Measured 2026-08-24 on a 205-session corpus: stage 2 reads 23 KB and stage 3
+reads 915 KB, a 35x difference for the stage that decides whether a session
+ships at all. Stage 2 is optional; skipping it just means stage 3 reads
+sessions a person would have thrown out.
 
 `deident` with no arguments prints usage and exits 0. **It never exports by
 default.** The default action of a tool that ships data off a machine is to show
@@ -44,6 +62,7 @@ you what it would do.
 |---|---|---|
 | `scan` | `review.md` | A census plus a proposed tier per workspace. |
 | `review` | `review.html` with `--html` | Read in the browser, decide in the text file. No local server is ever started. |
+| `triage` | `deident-triage.txt`, or `review.md` with `--apply` | One truncated first prompt per still-kept session, and the verdicts on it. A verdict can only ever drop a session. |
 | `export` | the zip and `export-map.txt`, or a `.diff` with `--preview` | Runs every check first. Any failure means nothing is written. |
 
 `export-map.txt` sits beside the zip and holds one `<real session id>  <archive
@@ -62,6 +81,9 @@ diff and keep, and a prompt sequence cannot be reviewed by a second person.
 | Flag | Commands | Meaning |
 |---|---|---|
 | `--root <path>` | all | Override the resolved session-storage root. Default: `CLAUDE_CONFIG_DIR`, else `~/.claude`. Sessions are read from `<root>/projects/*/*.jsonl`, depth 0 only. |
+| `--triage-chars <n>` | `triage` | Characters of the first user prompt to show per session. Default 300, maximum 2,000. A limit high enough to carry whole sessions turns triage back into the expensive stage. |
+| `--apply` | `triage` | Merge a verdicts file into `review.md` instead of writing the triage file. Needs `--verdicts`. |
+| `--verdicts <file>` | `triage` | The verdicts file to apply. `verdict` is `drop` or `unsure`; `keep` is refused, because a triage verdict may only ever move a session toward `drop`. |
 | `--out <path>` | all | Output directory. Default: the current directory. |
 | `--salt-dir <path>` | all | Override `~/.deident-private`. The salt and your saved tier decisions live here. |
 | `--html` | `review` | Write one self-contained `review.html`. Cannot be combined with `--entity` or `--session`. |

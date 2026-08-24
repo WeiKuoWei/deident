@@ -64,6 +64,11 @@ export async function main(argv, env) {
             report.endMachine();
             return code;
           }
+          case 'triage': {
+            const code = await pipeline.runTriage(opts.flags, env);
+            report.endMachine();
+            return code;
+          }
           case 'export': {
             const code = await pipeline.runExport(opts.flags, env);
             report.endMachine();

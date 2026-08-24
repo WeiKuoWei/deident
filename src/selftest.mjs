@@ -67,7 +67,7 @@ import {
 } from './entities/pseudonym.mjs';
 import { buildZip, readZip, readZipFile, MAX_ENTRIES } from './output/zip.mjs';
 import { renderPreview } from './output/preview.mjs';
-import { parseReview, parseSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
+import { parseReview, parseSessionDrops, readSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
 import { readEntities } from './entities/tier1.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
@@ -220,6 +220,53 @@ function writeCorpus(root, { unknownType = false } = {}) {
     'utf8',
   );
   return { cwd, denied, private: PRIVATE };
+}
+
+/**
+ * One extra session in the same workspace whose first prompt is far longer than
+ * any triage limit, written beside writeCorpus's sessions so the triage
+ * fixtures can measure truncation without perturbing every other fixture's
+ * corpus.
+ */
+const LONG_SESSION_ID = '55555555-5555-4555-8555-555555555555';
+
+function writeLongPromptSession(root, cwd, text) {
+  const rows = [
+    {
+      type: 'user',
+      uuid: '00000000-0000-4000-8000-000000000905',
+      sessionId: LONG_SESSION_ID,
+      timestamp: '2026-08-20T12:00:00.000Z',
+      cwd,
+      message: { role: 'user', content: [{ type: 'text', text }] },
+    },
+  ];
+  fs.writeFileSync(
+    path.join(root, 'projects', 'ws', `${LONG_SESSION_ID}.jsonl`),
+    rows.map((r) => JSON.stringify(r)).join(NL) + NL,
+    'utf8',
+  );
+  return LONG_SESSION_ID;
+}
+
+/** Total bytes of every session file under a fixture root. */
+function corpusBytes(root) {
+  const dir = path.join(root, 'projects', 'ws');
+  let total = 0;
+  for (const name of fs.readdirSync(dir)) {
+    if (name.endsWith('.jsonl')) total += fs.statSync(path.join(dir, name)).size;
+  }
+  return total;
+}
+
+/** Hold one session back by hand, the way a person edits review.md. */
+function setSessionDecision(reviewPath, id, decision) {
+  const text = fs.readFileSync(reviewPath, 'utf8');
+  fs.writeFileSync(
+    reviewPath,
+    text.replace(new RegExp(`^\\S+(\\s+.*${id})$`, 'm'), `${decision}$1`),
+    'utf8',
+  );
 }
 
 /** Promote one workspace in review.md, the way a person edits the file. */
@@ -4393,6 +4440,243 @@ const FIXTURES = [
       sanitizeEntryName('11111111-1111-4111-8111-111111111111'),
       '11111111-1111-4111-8111-111111111111',
     );
+  }],
+
+  // F116..F122 - the per-session triage stage.
+  //
+  // Measured on the live corpus before it existed: 205 sessions, and each
+  // session's cwd plus its first user prompt truncated to 300 characters is a
+  // 23,302-character payload, about 7k tokens. The entity pass that follows
+  // reads 915 KB, about 250k tokens. A 35x difference for the stage that
+  // decides whether a session ships at all is worth a command.
+  //
+  // The whole stage rests on one property, so it gets the most direct test:
+  // a triage verdict may only ever move a session TOWARD drop.
+  //
+  // F116 - "keep" is not a verdict, and asking for it is a refusal.
+  //
+  // docs/model-tier.md disqualifies the low tier for the entity pass because
+  // its failures are MISSES and a miss there is a disclosure. Triage inverts
+  // that only because removal is the only power on offer, so the moment a
+  // verdict can release a session the whole argument for a cheap reader is
+  // gone. Enforced in code rather than in the header, because a header is a
+  // request and this is a constraint.
+  ['F116', 'a triage verdict of "keep" is refused, naming the row', () => {
+    const root = tmpdir();
+    const saltDir = path.join(root, 'salt');
+    const out = path.join(root, 'out');
+    writeCorpus(root);
+    const scanned = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(scanned.code, 0, scanned.out);
+
+    const reviewPath = path.join(out, 'review.md');
+    const before = fs.readFileSync(reviewPath, 'utf8');
+    const verdicts = path.join(out, 'deident-triage.json');
+    const id = '11111111-1111-4111-8111-111111111111';
+    fs.writeFileSync(
+      verdicts,
+      JSON.stringify({ verdicts: [{ id, verdict: 'keep', reason: 'looks fine to me' }] }),
+      'utf8',
+    );
+
+    const r = runCli(['triage', '--apply', '--verdicts', verdicts, '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(r.code, 1, `a keep verdict must refuse: ${r.out}`);
+    assert.match(r.out, /keep/, 'the refusal must name the word it refused');
+    assert.match(r.out, new RegExp(id), 'the refusal must name the row');
+    assert.equal(fs.readFileSync(reviewPath, 'utf8'), before, 'a refused verdict file must change nothing');
+  }],
+
+  // F117 - the other half of the same constraint. "unsure" is the explicit way
+  // to say "I looked and I am not acting", so it must leave an existing drop
+  // exactly where it is. A verdict that could quietly re-open a held-back
+  // session is the same failure as a keep verdict wearing a different word.
+  ['F117', 'a triage verdict cannot overturn an existing drop', () => {
+    const root = tmpdir();
+    const saltDir = path.join(root, 'salt');
+    const out = path.join(root, 'out');
+    writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+
+    const reviewPath = path.join(out, 'review.md');
+    const id = '11111111-1111-4111-8111-111111111111';
+    setSessionDecision(reviewPath, id, 'drop');
+    assert.ok(readSessionDrops(reviewPath).drops.has(id), 'the hold was not written into review.md');
+
+    const verdicts = path.join(out, 'deident-triage.json');
+    fs.writeFileSync(
+      verdicts,
+      JSON.stringify({ verdicts: [{ id, verdict: 'unsure', reason: 'cannot tell from the first line' }] }),
+      'utf8',
+    );
+    const r = runCli(['triage', '--apply', '--verdicts', verdicts, '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(r.code, 0, r.out);
+    assert.ok(readSessionDrops(reviewPath).drops.has(id), 'an unsure verdict must not release a dropped session');
+
+    // A `drop` verdict against a row that already reads drop is the other half:
+    // a counted no-op, not a rewrite. Rewriting it would replace whatever the
+    // person had written on that row with the triage reason, which is a verdict
+    // overwriting a decision it did not make.
+    const held = fs.readFileSync(reviewPath, 'utf8').replace(
+      new RegExp(`^drop(\\s+.*${id})$`, 'm'),
+      'drop$1   # held by hand, before any triage ran',
+    );
+    fs.writeFileSync(reviewPath, held, 'utf8');
+    fs.writeFileSync(
+      verdicts,
+      JSON.stringify({ verdicts: [{ id, verdict: 'drop', reason: 'triage would have said this instead' }] }),
+      'utf8',
+    );
+    const again = runCli(['triage', '--apply', '--verdicts', verdicts, '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(again.code, 0, again.out);
+    assert.match(again.out, /1 changed nothing/, 'the no-op must be counted and reported');
+    const after = fs.readFileSync(reviewPath, 'utf8');
+    assert.ok(after.includes('held by hand, before any triage ran'), 'the row the person wrote must survive');
+    assert.ok(!after.includes('triage would have said this instead'), 'and must not be overwritten');
+    assert.ok(readSessionDrops(reviewPath).drops.has(id), 'and it is still dropped');
+  }],
+
+  // F118 - the apply path writes into column 1 of review.md, which is the one
+  // column the export reads. Asserted through readSessionDrops rather than by
+  // matching the line, because the line shape is not the contract: what the
+  // export sees is.
+  //
+  // The reason is appended to the row, so the next person to open the file can
+  // see why it went. That put a fifth token on a row whose id used to be read
+  // as "the last word on the line" - which would have made the id the last word
+  // of the reason instead.
+  ['F118', 'an applied triage verdict lands in review.md and round-trips through readSessionDrops', () => {
+    const root = tmpdir();
+    const saltDir = path.join(root, 'salt');
+    const out = path.join(root, 'out');
+    writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+
+    const reviewPath = path.join(out, 'review.md');
+    const id = '22222222-2222-4222-8222-222222222222';
+    assert.ok(!readSessionDrops(reviewPath).drops.has(id), 'the session starts out kept');
+
+    const verdicts = path.join(out, 'deident-triage.json');
+    fs.writeFileSync(
+      verdicts,
+      JSON.stringify({ verdicts: [{ id, verdict: 'drop', reason: 'first prompt is somebody else"s document' }] }),
+      'utf8',
+    );
+    const r = runCli(['triage', '--apply', '--verdicts', verdicts, '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(r.code, 0, r.out);
+
+    const text = fs.readFileSync(reviewPath, 'utf8');
+    assert.match(text, new RegExp(`^drop\\s+.*${id}`, 'm'), 'column 1 must read drop');
+    assert.ok(text.includes('somebody else"s document'), 'the reason must be on the row');
+    const parsed = readSessionDrops(reviewPath);
+    assert.ok(parsed.drops.has(id), 'the applied verdict must round-trip');
+    assert.ok(parsed.known.has(id), 'and the row must still count as decided');
+
+    // Remembered beside the tiers, or a re-scan elsewhere loses it (F104).
+    const store = JSON.parse(fs.readFileSync(path.join(saltDir, 'workspaces.json'), 'utf8'));
+    assert.ok(store.sessionDrops.includes(id), `not remembered: ${JSON.stringify(store.sessionDrops)}`);
+  }],
+
+  // F119 - sessions get deleted between runs, so a verdict naming an id that is
+  // no longer in the corpus is ordinary, not a failure. Refusing would mean one
+  // stale row throws away every other verdict in the file, and the reader would
+  // have to re-run the whole stage to recover from somebody tidying a directory.
+  ['F119', 'a triage verdict for an unknown session warns and does not refuse', () => {
+    const root = tmpdir();
+    const saltDir = path.join(root, 'salt');
+    const out = path.join(root, 'out');
+    writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+
+    const gone = '99999999-9999-4999-8999-999999999999';
+    const real = '22222222-2222-4222-8222-222222222222';
+    const verdicts = path.join(out, 'deident-triage.json');
+    fs.writeFileSync(
+      verdicts,
+      JSON.stringify({
+        verdicts: [
+          { id: gone, verdict: 'drop', reason: 'session no longer on disk' },
+          { id: real, verdict: 'drop', reason: 'held back' },
+        ],
+      }),
+      'utf8',
+    );
+    const r = runCli(['triage', '--apply', '--verdicts', verdicts, '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(r.code, 0, `an unknown id must warn, not refuse: ${r.out}`);
+    assert.match(r.out, new RegExp(gone), 'the warning must name the id it could not find');
+    // The other verdict in the same file still landed.
+    assert.ok(readSessionDrops(path.join(out, 'review.md')).drops.has(real), 'one stale row must not void the rest');
+  }],
+
+  // F120 - the whole point of the stage is not paying a reader to look at
+  // something already decided. A session that is already dropped is not on
+  // offer, because the only verdict it could receive is the one it already has.
+  ['F120', 'the triage file offers only sessions currently proposed keep', () => {
+    const root = tmpdir();
+    const saltDir = path.join(root, 'salt');
+    const out = path.join(root, 'out');
+    writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+
+    const dropped = '22222222-2222-4222-8222-222222222222';
+    const kept = '11111111-1111-4111-8111-111111111111';
+    setSessionDecision(path.join(out, 'review.md'), dropped, 'drop');
+
+    const r = runCli(['triage', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(r.code, 0, r.out);
+    const text = fs.readFileSync(path.join(out, 'deident-triage.txt'), 'utf8');
+    assert.ok(text.includes(kept), 'a kept session must be offered');
+    assert.ok(!text.includes(dropped), 'a session already dropped must not be offered');
+  }],
+
+  // F121 - a triage that reads the whole session is the expensive stage wearing
+  // a hat. Only the head of each file is read and only the first prompt is
+  // rendered, truncated, so the payload cannot grow with the corpus.
+  ['F121', 'the triage file truncates the first prompt and never carries a session body', () => {
+    const root = tmpdir();
+    const saltDir = path.join(root, 'salt');
+    const out = path.join(root, 'out');
+    const corpus = writeCorpus(root);
+    const long = `TRIAGE-PROMPT-HEAD ${'z'.repeat(60_000)} TRIAGE-PROMPT-TAIL`;
+    writeLongPromptSession(root, corpus.cwd, long);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+
+    const r = runCli(['triage', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(r.code, 0, r.out);
+    const triagePath = path.join(out, 'deident-triage.txt');
+    const text = fs.readFileSync(triagePath, 'utf8');
+
+    assert.ok(text.includes('TRIAGE-PROMPT-HEAD'), 'the start of the prompt must be shown');
+    assert.ok(!text.includes('TRIAGE-PROMPT-TAIL'), 'the end of a 60,000-character prompt must not be');
+    assert.ok(
+      fs.statSync(triagePath).size < corpusBytes(root) / 2,
+      `triage file ${fs.statSync(triagePath).size} B is not small against a ${corpusBytes(root)} B corpus`,
+    );
+
+    // The limit is the limit, and the flag moves it.
+    const promptLine = text.split(NL).find((l) => l.includes('TRIAGE-PROMPT-HEAD'));
+    assert.ok(promptLine.length <= 320, `default limit not applied: ${promptLine.length} characters`);
+    assert.equal(runCli(['triage', '--root', root, '--out', out, '--salt-dir', saltDir, '--triage-chars', '40']).code, 0);
+    const short = fs.readFileSync(triagePath, 'utf8').split(NL).find((l) => l.includes('TRIAGE-PROMPT-HEAD'));
+    assert.ok(short.length <= 60, `--triage-chars 40 not applied: ${short.length} characters`);
+  }],
+
+  // F122 - the constraint is enforced in code, and the person or agent reading
+  // the file is told so in the file itself. Asserted against the rendered
+  // header rather than a copy of the wording here: a fixture holding its own
+  // copy of the sentence passes while the shipped file says something else.
+  ['F122', 'the triage header states the drop-only rule to whoever reads it', () => {
+    const root = tmpdir();
+    const saltDir = path.join(root, 'salt');
+    const out = path.join(root, 'out');
+    writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+    assert.equal(runCli(['triage', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+
+    const header = fs.readFileSync(path.join(out, 'deident-triage.txt'), 'utf8').split('# ---')[0];
+    assert.match(header, /toward "?drop"?/i, 'the header must say the verdict only ever moves toward drop');
+    assert.match(header, /there is no "keep" verdict/i, 'and must say plainly that keep is not on offer');
+    assert.match(header, /coverage/, 'and must say what a wrong verdict costs');
+    assert.match(header, /model-tier\.md/, 'and must point at the measurement it rests on');
   }],
 ];
 
