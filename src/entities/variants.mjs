@@ -19,7 +19,7 @@ export function looksLikePath(s) {
  * @returns {ReadonlyArray<string>} the spelling plus every variant, deduped,
  *   longest first. The input is always element 0 of the deduped set.
  */
-export function expandVariants(spelling) {
+export function expandVariants(spelling, opts = {}) {
   if (typeof spelling !== 'string' || spelling.length === 0) return Object.freeze([]);
 
   const out = new Set([spelling]);
@@ -45,7 +45,7 @@ export function expandVariants(spelling) {
   for (const form of [spelling.normalize('NFC'), spelling.normalize('NFD')]) out.add(form);
 
   if (looksLikePath(spelling)) {
-    for (const form of pathForms(spelling)) out.add(form);
+    for (const form of pathForms(spelling, opts.home ?? null)) out.add(form);
   }
 
   // URL/percent encoding, for non-path spellings only. The measured case is
@@ -94,8 +94,39 @@ export function expandVariants(spelling) {
 }
 
 /** The four separator/escaping forms of a path, plus their case variants. */
-function pathForms(spelling) {
+function pathForms(spelling, home = null) {
   const forms = new Set();
+
+  // POSIX spellings of the same POSIX path. Windows paths take the drive-letter
+  // branch below and never reach these.
+  //
+  // The tilde: `/Users/x/app` and `~/app` are one path, and both appear in the
+  // same session, because a shell prompt and a person prefer the short form
+  // while realpath and the log records carry the long one. The home directory
+  // is the most heavily seeded entity there is, so on macOS and Linux half its
+  // spellings were missing.
+  //
+  // Recognised structurally rather than by consulting os.homedir(), so the
+  // generator stays pure and works for a corpus recorded on someone else's
+  // machine. A second segment is required: `/Users` alone is not a home
+  // directory and giving it a tilde form would be a needle that matches every
+  // path on the volume.
+  const posixHome = /^\/(Users|home)\/([^/]+)(\/.*)?$/.exec(spelling);
+  if (posixHome !== null) {
+    forms.add(`~${posixHome[3] ?? ''}`);
+  } else if (spelling.startsWith('~/') && typeof home === 'string' && home.length > 0) {
+    forms.add(home.replace(/\/$/, '') + spelling.slice(1));
+  }
+
+  // /var, /tmp and /etc are symlinks into /private on macOS, so realpath
+  // returns the long form for a path the person wrote short. Both spellings
+  // name the same file and both occur, one from the filesystem and one from
+  // the human.
+  const PRIVATE_ROOTS = ['var', 'tmp', 'etc'];
+  for (const root of PRIVATE_ROOTS) {
+    if (spelling.startsWith(`/${root}/`)) forms.add(`/private${spelling}`);
+    else if (spelling.startsWith(`/private/${root}/`)) forms.add(spelling.slice('/private'.length));
+  }
 
   // Canonicalise to forward slashes with a drive letter, then re-emit.
   const drive = /^([A-Za-z]):[\\/]/.exec(spelling);

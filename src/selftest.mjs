@@ -3321,6 +3321,52 @@ const FIXTURES = [
     walk(root);
     assert.deepEqual(offenders, [], `platform-specific remedies: ${offenders.join('; ')}`);
   }],
+  // F96 - the path variants are Windows-shaped, so a Mac path has one form.
+  //
+  // pathForms canonicalises around a drive letter and otherwise only swaps
+  // separators, which on macOS produces nothing: backslash forms do not occur
+  // there. Two forms do, constantly, and neither was generated.
+  //
+  // (a) The tilde. `/Users/x/projects/app` and `~/projects/app` are the same
+  // path and both appear in the same session: a shell prompt, a tool that
+  // abbreviates, and a person typing all prefer the short one, while realpath
+  // and the log records prefer the long one. The home directory is the most
+  // heavily seeded entity there is, so missing half its spellings is the
+  // largest single hole on that platform.
+  //
+  // (b) The /private prefix. On macOS /var, /tmp and /etc are symlinks into
+  // /private, so realpath returns /private/var/... for a path the person wrote
+  // as /var/... . Anything resolved through the filesystem comes back in the
+  // long form while anything quoted from the person stays short.
+  ['F96', 'a POSIX home path is also spelled with a tilde, and /private is a symlink', () => {
+    const home = expandVariants('/Users/devuser/projects/app');
+    assert.ok(home.includes('~/projects/app'), 'the tilde form of a macOS home path');
+
+    const linux = expandVariants('/home/devuser/notes');
+    assert.ok(linux.includes('~/notes'), 'and of a Linux home path');
+
+    // The reverse direction: a tilde spelling must cover the expanded form it
+    // will meet in the logs. Without a home directory to expand against, the
+    // generator cannot know the username, so this is where a caller supplies it.
+    const tilde = expandVariants('~/projects/app', { home: '/Users/devuser' });
+    assert.ok(tilde.includes('/Users/devuser/projects/app'), 'the expanded form of a tilde path');
+
+    // /private is the same path, so both spellings must be needles.
+    const short = expandVariants('/var/folders/zz/T/session.jsonl');
+    assert.ok(short.includes('/private/var/folders/zz/T/session.jsonl'));
+    const long = expandVariants('/private/tmp/scratch');
+    assert.ok(long.includes('/tmp/scratch'));
+
+    // Precision, not recall: a path that merely CONTAINS the word private, or a
+    // /Users path with no second segment, must not sprout forms.
+    assert.ok(!expandVariants('/opt/private-thing/x').some((f) => f.startsWith('~')));
+    assert.deepEqual(expandVariants('/Users').filter((f) => f.startsWith('~')), []);
+
+    // A Windows path is untouched by any of this.
+    const win = expandVariants('C:' + String.fromCharCode(92) + 'Users' + String.fromCharCode(92) + 'devuser' + String.fromCharCode(92) + 'app');
+    assert.ok(!win.some((f) => f.startsWith('~')), 'no tilde form for a drive-letter path');
+    assert.ok(win.some((f) => f.startsWith('/c/')), 'the Git Bash form still exists');
+  }],
 ];
 
 export function selftest() {
