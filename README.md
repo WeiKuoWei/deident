@@ -11,6 +11,82 @@ browser UI.
 
 ---
 
+## Install
+
+You do not have to install anything. The CLI is `node <repo>/deident.js` from
+any directory, with no harness around it, and that is the whole tool. Installing
+adds the skill that teaches an agent to drive it.
+
+The repository is its own marketplace, and one checkout serves both harnesses:
+they read the same two manifests in `.claude-plugin/` and the same
+`skills/deident/SKILL.md`, so one `git pull` updates both.
+
+Claude Code:
+
+```
+claude plugin marketplace add <repo>
+claude plugin install deident@deident
+claude plugin details deident
+```
+
+Codex:
+
+```
+codex plugin marketplace add <repo>
+codex plugin add deident@deident
+codex debug prompt-input | grep deident
+```
+
+The third command in each block is the verification, not a formality. Both print
+the harness's own view of what it parsed, so they prove the skill was loaded.
+Claude Code answers `Skills (1)  deident`; Codex answers with the line
+`deident:deident:` followed by the skill's description. A file sitting on disk
+proves neither.
+
+Nothing Codex-specific is checked in, because Codex falls back to the Claude
+manifests. It looks for a plugin manifest at `.codex-plugin/plugin.json`, then
+`.claude-plugin/plugin.json`, then `.cursor-plugin/plugin.json`, and for a
+marketplace at `.agents/plugins/marketplace.json`, then
+`.agents/plugins/api_marketplace.json`, then `.claude-plugin/marketplace.json`.
+The second file in each chain is one this repository already needs.
+
+For an agent that reads neither, `AGENTS.md` at the repository root carries the
+same contract. Fixture F103 asserts it has not drifted from the skill, and F151
+asserts the two manifests and the skill still agree on one name.
+
+### Installing copies the repository, and updating does not re-copy it
+
+Both harnesses copy the checkout into a version-keyed cache directory and load
+the skill from the copy, never from your working tree:
+
+```
+~/.claude/plugins/cache/deident/deident/<version>/
+~/.codex/plugins/cache/deident/deident/<version>/
+```
+
+So editing `skills/deident/SKILL.md` changes nothing an agent can see, and the
+commands that look like they would fix that report success while doing nothing.
+`claude plugin update` and `claude plugin marketplace update` leave the copy
+alone unless `version` in `.claude-plugin/plugin.json` changed. `codex plugin
+marketplace upgrade` prints `No configured Git marketplaces to upgrade` and
+exits 0, because it refreshes git-backed marketplaces only and a local path is
+not one.
+
+Codex has a way out that works at an unchanged version:
+
+```
+codex plugin remove deident@deident && codex plugin add deident@deident
+```
+
+Measured with a marker added to the skill's `description`: `codex debug
+prompt-input` kept showing the old description until that pair ran, then showed
+the new one. Claude Code needs the `version` field bumped before it will re-copy.
+
+While editing the skill, the honest move is to skip installing and point the
+agent at the checkout.
+
+---
+
 ## The four-stage funnel
 
 Each stage costs more than the one before it and hands the next one a shorter
@@ -438,7 +514,7 @@ turns. Orchestration is still visible through the parent session's `Agent` and
 node deident.js --selftest
 ```
 
-138 fixtures, plain `node:assert`, no framework and no network. Each one exists
+153 fixtures, plain `node:assert`, no framework and no network. Each one exists
 because it catches a specific bug, named in the fixture. Several carry a negative
 control, because a check that cannot fail proves nothing.
 

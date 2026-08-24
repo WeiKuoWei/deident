@@ -6493,6 +6493,48 @@ const FIXTURES = [
     assert.match(printed, /Reading this will cost roughly [\d,]+ tokens/);
     assert.equal(printed.match(/roughly|estimate|approximate|about/gi).length, 4, 'the estimate is hedged more than once per file');
   }],
+  // F151 - one manifest pair now serves two harnesses, and nothing said so.
+  //
+  // Codex resolves a plugin manifest by trying `.codex-plugin/plugin.json`,
+  // then `.claude-plugin/plugin.json`, then `.cursor-plugin/plugin.json`, and a
+  // marketplace by trying `.agents/plugins/marketplace.json`, then
+  // `.agents/plugins/api_marketplace.json`, then `.claude-plugin/marketplace.json`.
+  // Measured against codex.exe 26.818.31338: `codex plugin list` printed this
+  // repository's own `.claude-plugin/marketplace.json` as the file it read, and
+  // `codex debug prompt-input` then listed the skill. So the two files Claude
+  // Code already needs are the two files Codex reads, and there is no second
+  // copy of the skill to drift the way SKILL.md and AGENTS.md did in F103.
+  //
+  // What that buys in copies it spends in blast radius: a rename here breaks
+  // both harnesses at once, and breaks them silently, because `plugin add`
+  // still reports success and the skill just never reaches the model's prompt.
+  // The names that have to agree are asserted here instead of at install time.
+  ['F151', 'the plugin manifest, the marketplace entry and the skill agree on one name', () => {
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const readJson = (...p) => JSON.parse(fs.readFileSync(path.join(repo, ...p), 'utf8'));
+    const plugin = readJson('.claude-plugin', 'plugin.json');
+    const market = readJson('.claude-plugin', 'marketplace.json');
+
+    assert.equal(market.plugins.length, 1, 'the repository is one plugin, so its marketplace lists one');
+    assert.equal(market.plugins[0].name, plugin.name, 'marketplace entry and plugin manifest disagree on the name');
+
+    // `./` is what makes "the repository IS the plugin" resolve. Both harnesses
+    // read it relative to the marketplace root, which is the repository root.
+    assert.equal(market.plugins[0].source, './', 'the plugin source is no longer the repository root');
+
+    // `skills` is a path both harnesses walk. If it stops reaching
+    // <name>/SKILL.md the install still succeeds and loads nothing.
+    const skillFile = path.join(repo, plugin.skills, plugin.name, 'SKILL.md');
+    assert.ok(fs.existsSync(skillFile), `plugin.json skills path does not reach a SKILL.md: ${skillFile}`);
+
+    // The frontmatter name is the third copy of that name, and it is the one a
+    // harness indexes the skill under.
+    const front = fs.readFileSync(skillFile, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    assert.ok(front, 'SKILL.md has no frontmatter');
+    const named = front[1].match(/^name:[ \t]*(\S+)[ \t]*$/m);
+    assert.ok(named, 'SKILL.md frontmatter has no name');
+    assert.equal(named[1], plugin.name, 'SKILL.md frontmatter name and plugin.json name have drifted');
+  }],
 ];
 
 export function selftest() {
