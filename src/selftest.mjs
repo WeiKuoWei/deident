@@ -61,7 +61,7 @@ import {
   loadOrCreateSalt,
   defaultSaltDir,
 } from './entities/pseudonym.mjs';
-import { buildZip, MAX_ENTRIES } from './output/zip.mjs';
+import { buildZip, readZip, readZipFile, MAX_ENTRIES } from './output/zip.mjs';
 import { renderPreview } from './output/preview.mjs';
 import { parseReview, parseSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
 import { readEntities } from './entities/tier1.mjs';
@@ -116,28 +116,6 @@ function runCli(args) {
   return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
-/**
- * Read a zip written by output/zip.mjs. Enough of the format to walk local
- * headers and inflate each entry, which is all a fixture needs — and it reads
- * the SHIPPED bytes rather than the in-memory records, which is the only way to
- * see what a recipient actually gets.
- */
-function readZip(file) {
-  const buf = fs.readFileSync(file);
-  const entries = [];
-  let at = 0;
-  while (at + 30 <= buf.length && buf.readUInt32LE(at) === 0x04034b50) {
-    const compressedSize = buf.readUInt32LE(at + 18);
-    const nameLength = buf.readUInt16LE(at + 26);
-    const extraLength = buf.readUInt16LE(at + 28);
-    const name = buf.subarray(at + 30, at + 30 + nameLength).toString('utf8');
-    const dataAt = at + 30 + nameLength + extraLength;
-    const data = zlib.inflateRawSync(buf.subarray(dataAt, dataAt + compressedSize)).toString('utf8');
-    entries.push({ name, data });
-    at = dataAt + compressedSize;
-  }
-  return entries;
-}
 
 /**
  * A corpus with the shapes the round-2 findings were measured on: a session
@@ -1754,7 +1732,7 @@ const FIXTURES = [
 
     const zips = fs.readdirSync(out).filter((f) => f.endsWith('.zip'));
     assert.equal(zips.length, 1, 'exactly one archive');
-    const entries = readZip(path.join(out, zips[0]));
+    const entries = readZipFile(path.join(out, zips[0]));
     const bytes = entries.map((e) => `${e.name}${NL}${e.data}`).join(NL);
 
     // Content authored inside a deny-listed directory, replayed by a cwd-less
@@ -2798,7 +2776,7 @@ const FIXTURES = [
       '--entities', path.join(root, 'ents.json'),
     ]);
     assert.equal(exported.code, 0, exported.out);
-    const bytes = readZip(path.join(out, fs.readdirSync(out).find((f) => f.endsWith('.zip'))))
+    const bytes = readZipFile(path.join(out, fs.readdirSync(out).find((f) => f.endsWith('.zip'))))
       .map((e) => e.data)
       .join(NL);
 
@@ -3366,6 +3344,99 @@ const FIXTURES = [
     const win = expandVariants('C:' + String.fromCharCode(92) + 'Users' + String.fromCharCode(92) + 'devuser' + String.fromCharCode(92) + 'app');
     assert.ok(!win.some((f) => f.startsWith('~')), 'no tilde form for a drive-letter path');
     assert.ok(win.some((f) => f.startsWith('/c/')), 'the Git Bash form still exists');
+  }],
+  // F97 - the residue gate scans a string in memory, not the file that ships.
+  //
+  // journey-and-pitfalls section 2.1 states it as a build instruction: "the
+  // review step should physically read the output file." Three times in the
+  // delivery run a reviewer was handed something that was not what shipped, and
+  // each time the gap was where the leak lived. The gate at pipeline.mjs scans
+  // `serialized.allBytes`, which is assembled beside the entries rather than
+  // read back from them, so a defect in the writer, the deflate path or the
+  // entry naming is invisible to every check the tool has.
+  //
+  // Closing it needs a reader, because the writer is a hand-rolled deterministic
+  // ZIP over node:zlib with no npm dependency to lean on. This pins the reader
+  // against the writer: whatever buildZip emits, readZip returns byte-identical,
+  // and a scan over the inflated bytes therefore scans the shipped artifact.
+  ['F97', 'the archive can be read back, so the gate can scan what ships', () => {
+    const entries = [
+      { name: 'sessions/W_1/a.jsonl', data: '{"type":"user","text":"ordinary"}\n' },
+      { name: 'sessions/W_1/b.jsonl', data: '{"type":"user","text":"Yandex here"}\n' },
+      { name: 'manifest.json', data: '{"sessions":2}' },
+    ];
+    const buf = buildZip(entries);
+    const back = readZip(buf);
+
+    assert.equal(back.length, entries.length, 'every entry comes back');
+    for (const e of entries) {
+      const got = back.find((b) => b.name === e.name);
+      assert.ok(got, `${e.name} is in the archive`);
+      assert.equal(got.data, e.data, `${e.name} inflates byte-identically`);
+    }
+
+    // The point of the reader: a scan over the INFLATED bytes sees what a
+    // recipient sees. A table that knows the entity finds it here, in the same
+    // shape residualScan is given at the in-memory gate.
+    const table = buildTable([{ id: 'O1', kind: 'org', pseudonym: 'X_O_1', spellings: ['Yandex'] }]);
+    const shipped = back.map((b) => b.data).join('');
+    const scan = residualScan(shipped, table, new Set());
+    assert.equal(scan.entityCount, 1, 'the planted entity is found in the shipped bytes');
+
+    // And a clean archive scans clean, so the gate is not simply always red.
+    const cleanBuf = buildZip([{ name: 'sessions/W_1/a.jsonl', data: '{"type":"user","text":"ordinary"}\n' }]);
+    const cleanScan = residualScan(readZip(cleanBuf).map((b) => b.data).join(''), table, new Set());
+    assert.equal(cleanScan.entityCount, 0);
+
+    // An entry name is part of the artifact too: F38 exists because a uuid rode
+    // out inside one. The reader must return names, not only bodies.
+    assert.ok(back.every((b) => typeof b.name === 'string' && b.name.length > 0));
+
+    // Empty archive, and a body containing the local-file signature, which is
+    // where a hand-rolled reader that scans for magic bytes instead of walking
+    // the central directory goes wrong.
+    assert.deepEqual(readZip(buildZip([])), []);
+    const tricky = [{ name: 'sessions/W_1/c.jsonl', data: 'PK' + String.fromCharCode(3, 4) + ' not a header' }];
+    assert.equal(readZip(buildZip(tricky))[0].data, tricky[0].data);
+  }],
+  // F98 - the residue gate must scan the file, not the string beside it.
+  //
+  // Until now the last gate ran over `serialized.allBytes`, assembled in memory
+  // alongside the entries. Everything downstream of that assembly - the deflate
+  // path, the entry naming, the central directory, the rename from .part - was
+  // outside every check the tool has. journey-and-pitfalls section 2.1 is the
+  // rule this closes, and it is stated there as a build instruction rather than
+  // an aspiration: the review step should physically read the output file.
+  //
+  // The check is cheap because the reader already exists for the writer's own
+  // round-trip, and it is the only gate whose subject is the artifact a
+  // recipient opens.
+  ['F98', 'the written archive is read back and scanned before the run succeeds', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    const exported = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(exported.code, 0, exported.out);
+
+    // Named separately from the in-memory scan, because a reader who sees one
+    // "residue" line cannot tell which artifact it covered, and the whole point
+    // of this one is that it covered a different artifact from all the rest.
+    assert.match(exported.out, /archive on disk/, `no on-disk gate in the report:${NL}${exported.out}`);
+
+    // And it really opened the file: the row counts the entries the READER
+    // found, a number only the written archive can supply.
+    const zipName = fs.readdirSync(out).find((f) => f.endsWith('.zip'));
+    assert.ok(zipName, 'an archive was written');
+    const entries = readZipFile(path.join(out, zipName));
+    assert.ok(entries.length > 0);
+    assert.match(exported.out, new RegExp(`${entries.length} entries read back`));
   }],
 ];
 

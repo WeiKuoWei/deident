@@ -63,7 +63,7 @@ import {
   runAllChecks,
   toReportRows,
 } from './verify/checks.mjs';
-import { writeZip, safeUnlink } from './output/zip.mjs';
+import { writeZip, readZipFile, safeUnlink } from './output/zip.mjs';
 import { writePreview } from './output/preview.mjs';
 import { EXAMPLES_PER_REPORT, MIN_REPLAY_MATCH_CHARS } from './retain/constants.mjs';
 import { loadUserDeny, setUserDeny } from './policy/userdeny.mjs';
@@ -489,6 +489,25 @@ export async function runExport(flags, env) {
   const mapPath = path.join(outDir, EXPORT_MAP_FILENAME);
   try {
     const written = writeZip(serialized.entries, zipPath);
+
+    // The last gate, and the only one whose subject is the file a recipient
+    // opens. Every other check runs over `serialized.allBytes`, a string
+    // assembled BESIDE the entries, so the deflate path, the entry naming, the
+    // central directory and the rename from .part were outside all of them.
+    //
+    // journey-and-pitfalls 2.1 states this as a build instruction rather than
+    // an aspiration, because on the delivery run a reviewer was handed
+    // something that was not what shipped three separate times, and each time
+    // the gap was where the leak lived. The entry NAMES are scanned too: F38
+    // exists because a uuid rode out inside one.
+    const shipped = readZipFile(zipPath);
+    const onDisk = checkResidue(
+      shipped.map((e) => `${e.name}\n${e.data}`).join('\n'),
+      mergedTable,
+      rewriteUuid.minted,
+    );
+    report.renderOnDiskResidue(shipped.length, onDisk);
+    if (!onDisk.ok) throw residueRefusal(onDisk);
     // privacy-tiers 4 level 3 needs attribution: "this entry is that session".
     // Without it the last look cannot act, because every id in the archive has
     // already been rewritten and nothing on this machine says which is which.

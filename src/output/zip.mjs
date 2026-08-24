@@ -9,7 +9,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { deflateRawSync, crc32 } from 'node:zlib';
+import { deflateRawSync, inflateRawSync, crc32 } from 'node:zlib';
 import { RefusalError, osErrorLine } from '../cli/errors.mjs';
 
 // 1980-01-01 00:00:00, the earliest the DOS format can express. Any real clock
@@ -156,4 +156,45 @@ export function buildZip(entries) {
   eocd.writeUInt16LE(0, 20); // comment length
 
   return Buffer.concat([...locals, centralBuf, eocd]);
+}
+
+/**
+ * Read back what buildZip wrote.
+ *
+ * The reason this exists in the shipped source rather than only in a fixture:
+ * journey-and-pitfalls section 2.1 records that three times in the delivery run
+ * a reviewer was handed something that was not what shipped, and each time the
+ * gap was where the leak lived. The residue gate scans a string assembled
+ * BESIDE the entries, so a defect in the writer, the deflate path or the entry
+ * naming is invisible to every check the tool has. A gate that reads the file
+ * needs a reader.
+ *
+ * Local headers are walked by their own recorded sizes rather than by scanning
+ * for the signature, so an entry whose BODY happens to contain the four
+ * signature bytes cannot be mistaken for the next header. Only what this writer
+ * emits is supported: stored names, deflate, no ZIP64, no encryption.
+ *
+ * @param {Buffer} buf
+ * @returns {Array<{name: string, data: string}>}
+ */
+export function readZip(buf) {
+  const entries = [];
+  let at = 0;
+  while (at + 30 <= buf.length && buf.readUInt32LE(at) === LOCAL_SIG) {
+    const compressedSize = buf.readUInt32LE(at + 18);
+    const nameLength = buf.readUInt16LE(at + 26);
+    const extraLength = buf.readUInt16LE(at + 28);
+    const name = buf.subarray(at + 30, at + 30 + nameLength).toString('utf8');
+    const dataAt = at + 30 + nameLength + extraLength;
+    const end = dataAt + compressedSize;
+    if (end > buf.length) break;
+    entries.push({ name, data: inflateRawSync(buf.subarray(dataAt, end)).toString('utf8') });
+    at = end;
+  }
+  return entries;
+}
+
+/** The same, from disk. What the recipient will open. */
+export function readZipFile(file) {
+  return readZip(fs.readFileSync(file));
 }

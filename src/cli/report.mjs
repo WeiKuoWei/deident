@@ -318,6 +318,17 @@ export function renderProbe({ hits, zeros }) {
   warn('');
 }
 
+/**
+ * The gate that opened the file, named so a reader can tell it apart.
+ *
+ * Every other residue line covers a string assembled in memory. A reader who
+ * sees one "residue" row cannot tell which artifact it covered, and the whole
+ * point of this one is that it covered a different artifact from all the rest.
+ */
+export function renderOnDiskResidue(entryCount, check) {
+  say(`    ${pad('archive on disk', 23)} ${n(entryCount)} entries read back, ${check.detail}${check.ok ? '   ok' : '   FAILED'}`);
+}
+
 export function renderNote(text) {
   say(`  ${text}`);
 }
