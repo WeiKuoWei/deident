@@ -23,6 +23,7 @@ import { expandVariants, looseVariants } from './variants.mjs';
 import { rejectReason } from './seed.mjs';
 import { residualScan, entityExamples } from '../verify/residual.mjs';
 import { CANDIDATE_CHUNK_CHARS } from '../retain/constants.mjs';
+import { estimateTokens } from '../cli/tokens.mjs';
 
 export const CANDIDATES_FILENAME = 'deident-candidates.txt';
 export const ENTITIES_FILENAME = 'deident-entities.json';
@@ -206,7 +207,17 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
       remedies: [{ label: 'Choose a writable directory', command: 'deident export --out <path>' }],
     });
   }
-  return { path: outPath, chars: Buffer.byteLength(body, 'utf8'), chunks: seen.size, omittedChars };
+  // Measured over the WHOLE file, header included: the header is 30-odd lines
+  // of instructions the reader has to read to know what the file is for, and
+  // an estimate that quietly excluded them would understate a small batch by a
+  // visible margin.
+  return {
+    path: outPath,
+    chars: Buffer.byteLength(body, 'utf8'),
+    chunks: seen.size,
+    omittedChars,
+    estimate: estimateTokens(body),
+  };
 }
 
 /**

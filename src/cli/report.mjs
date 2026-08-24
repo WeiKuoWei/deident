@@ -280,6 +280,7 @@ export function renderTriageWritten(t) {
   }
   say('');
   say(`  → ${t.path}    ${humanBytes(t.bytes)}`);
+  renderTokenCost(t.tokenEstimate ?? null);
   say('    Raw prose: tier-0 substitution has not run over it. Local only, like review.md');
   say('    A verdict can only ever drop a session. There is no keep verdict');
   say('');
@@ -419,11 +420,41 @@ export function renderWrote(path, bytes, saltPath) {
   say('');
 }
 
-export function renderCandidates(path, chars, omitted = 0, omittedChars = 0, deferred = 0) {
-  if (machine !== null) { machineAdd({ candidates: { path, chars, omitted, omittedChars, deferred } }); return; }
+/**
+ * What reading a file deident just wrote will cost, in tokens.
+ *
+ * One headline, then the rows behind it. Three things it must never carry:
+ *
+ *   - A percentage of anyone's subscription. deident cannot read a plan and
+ *     cannot read remaining usage, and the limits are not published as a token
+ *     count, so any figure there would be invented. That is worse than no
+ *     number, because a person would act on it.
+ *   - A model-tier comparison. docs/model-tier.md is where the tiers are
+ *     weighed up; the tool runs one, and telling a reader about a tier they
+ *     are not using is process rather than result.
+ *   - A second hedge. "roughly" is the whole disclaimer, said once. A number
+ *     qualified in every clause is a number nobody can use.
+ */
+export function renderTokenCost(cost) {
+  if (cost === null || cost === undefined) return;
+  say(`    Reading this will cost roughly ${n(cost.total)} tokens.`);
+  const width = Math.max(12, ...cost.files.map((f) => f.label.length));
+  for (const f of cost.files) {
+    // The character count is the evidence for the row. The CJK share appears
+    // only when there is one, because "0% CJK" beside a pure-Latin file is a
+    // clause that answers a question the reader did not have.
+    const mix = f.cjkPercent > 0 ? `${n(f.chars)} characters, ${f.cjkPercent}% CJK` : `${n(f.chars)} characters`;
+    say(`      ${pad(f.label, width)} ${padLeft(n(f.tokens), 9)}   (${mix})`);
+  }
+  say(`      the reader's own reasoning adds about ${cost.reasoningPercent}%`);
+}
+
+export function renderCandidates(path, chars, omitted = 0, omittedChars = 0, deferred = 0, tokenEstimate = null) {
+  if (machine !== null) { machineAdd({ candidates: { path, chars, omitted, omittedChars, deferred, tokenEstimate } }); return; }
   say('');
   say('  Tier-1 candidates written');
   say(`    ${path}    ${humanBytes(chars)} of tier-0-cleaned prose`);
+  renderTokenCost(tokenEstimate);
   // The number that says a repeat run is cheap. Without it a short file looks
   // like a corpus that shrank rather than like a memo that worked.
   if (omitted > 0) {
