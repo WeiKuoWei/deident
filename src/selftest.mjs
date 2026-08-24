@@ -66,6 +66,7 @@ import { renderPreview } from './output/preview.mjs';
 import { parseReview, parseSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
 import { readEntities } from './entities/tier1.mjs';
 import { parseCliArgs } from './cli/args.mjs';
+import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
 import { serializeSessions } from './pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
 
@@ -3623,6 +3624,44 @@ const FIXTURES = [
     ]);
     assert.equal(human.code, 0, human.out);
     assert.match(human.out, /teammate/);
+  }],
+  // F102 - the runtime floor is discovered at the last step of a ten-minute run.
+  //
+  // node:zlib's crc32 arrived in Node 20.15 and 22.2, and it is used in exactly
+  // one place: buildZip, which is step 17 of 17. So a person on an older Node
+  // reads the corpus, classifies it, substitutes, runs all five gates, and only
+  // then gets `TypeError: crc32 is not a function` - wrapped by the entry point
+  // as "internal error, please report this", which is the shape BRIEF section 2
+  // forbids. The version is knowable before any of that work happens.
+  //
+  // A package.json `engines` field does not do this. npm's engine-strict
+  // defaults to false, so it warns and proceeds; and the tool is run directly as
+  // `node deident.mjs`, where npm is not involved at all.
+  ['F102', 'an unsupported runtime is named at startup, not at the last write', () => {
+    // The floor is what the source actually needs, not a number typed twice.
+    assert.ok(REQUIRED_NODE.major >= 20, 'the floor is a real version');
+    assert.equal(typeof zlib.crc32, 'function', 'and this build clears it');
+
+    // Below the floor: refused, with a usage exit code and a runnable remedy.
+    const old = checkRuntime({ node: 'v20.14.0' });
+    assert.ok(old instanceof UsageError, 'a runtime that cannot work is a usage problem');
+    assert.equal(old.code, 2);
+    assert.match(old.reason, /20\.14/, 'says which version it found');
+    assert.match(old.why.join(' '), /crc32|zlib/i, 'and what is missing, not just a number');
+    assert.ok(old.remedies.length > 0 && old.remedies.every((r) => typeof r.command === 'string'));
+
+    // The two release lines both have a floor, and the older major is not
+    // rejected just for being older.
+    assert.equal(checkRuntime({ node: 'v20.15.0' }), null, 'the 20.x floor passes');
+    assert.equal(checkRuntime({ node: 'v22.1.0' }) instanceof UsageError, true, '22.1 is below its own floor');
+    assert.equal(checkRuntime({ node: 'v22.2.0' }), null, 'the 22.x floor passes');
+    assert.equal(checkRuntime({ node: 'v24.0.0' }), null, 'anything newer passes');
+    assert.equal(checkRuntime({ node: process.version }), null, 'and so does the build running this');
+
+    // An unparseable version is not silently treated as fine: the failure
+    // direction of guessing here is a ten-minute run that ends in a traceback.
+    assert.ok(checkRuntime({ node: 'not-a-version' }) instanceof UsageError);
+    assert.ok(checkRuntime({}) instanceof UsageError);
   }],
 ];
 

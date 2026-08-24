@@ -480,8 +480,21 @@ export function renderReadError(err) {
 export function renderUsageError(err) {
   warn('');
   warn(`  ✗ ${err.reason}`);
+  // A usage error that took the trouble to say WHY was throwing that away, and
+  // the usage block is only the right remedy for a bad flag. For a runtime that
+  // cannot run the tool at all, the usage text answers a question nobody asked.
+  if (err.why.length > 0) {
+    warn('');
+    for (const line of err.why) warn(`    ${line}`);
+  }
+  if (err.remedies.length > 0) {
+    warn('');
+    for (const r of err.remedies) warn(`    ${pad(`${r.label}:`, 26)} ${r.command}`);
+  }
   warn('');
-  renderUsage();
+  // Usage still follows for the case it was written for: a flag typed wrong,
+  // where the list of flags IS the answer.
+  if (err.why.length === 0) renderUsage();
 }
 
 /** The single dispatch used by the entry point's catch. */

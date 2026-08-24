@@ -7,6 +7,7 @@
 // is a failed delivery, so nothing below is allowed to throw past main().
 
 import { parseCliArgs } from './src/cli/args.mjs';
+import { checkRuntime } from './src/cli/runtime.mjs';
 import { wrapUnexpected } from './src/cli/errors.mjs';
 import * as report from './src/cli/report.mjs';
 
@@ -16,6 +17,15 @@ import * as report from './src/cli/report.mjs';
  * @returns {Promise<number>} exit code
  */
 export async function main(argv, env) {
+  // Before argument parsing, so `--version` and `--help` still answer on a
+  // runtime that cannot export. Those two are the commands a person runs when
+  // something is wrong, and refusing them would remove the only way to find out
+  // what is wrong.
+  const unsupported = checkRuntime({ node: process.version });
+  if (unsupported !== null && !argv.includes('--version') && !argv.includes('--help')) {
+    return report.renderError(unsupported);
+  }
+
   let opts;
   try {
     opts = parseCliArgs(argv);
