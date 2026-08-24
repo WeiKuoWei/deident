@@ -48,6 +48,12 @@ const HEADER = `# deident tier-1 candidates
 # BRIEF §F2: third parties never consented. They are force-replaced with no
 # opt-out. Only your own pseudonym is optional.
 #
+# EVERY UUID BELOW IS ALREADY A PSEUDONYM. Session and message ids were
+# replaced with values deident minted, so a UUID here identifies nothing and
+# must NOT be declared. Measured 2026-08-24: two readers of this file saw one
+# recur 49 times, reasonably called it a secret, and the export then refused
+# because deident's own output "survived" its own entity table.
+#
 # Read this file and write ${ENTITIES_FILENAME} next to it:
 #
 #   {

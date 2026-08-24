@@ -443,7 +443,17 @@ export async function runExport(flags, env) {
   //     strings that CHANGED, and residualScan cannot find a spelling tier 0
   //     already destroyed. A 20,000-trial two-tier fuzz produced 3,636 of
   //     these and the gates caught none.
-  const tier1Entities = tier1.entities.map((e) => withCleanedSpellings(e, tier0Table, flags.namespace));
+  //     A uuid in the candidates file is deident's OWN output, and declaring
+  //     one makes the residue gate refuse against the tool itself. Stripped
+  //     before anything else looks at the list, so nothing downstream has to
+  //     know about the case.
+  const minted = stripMintedSpellings(tier1.entities, rewriteUuid.minted);
+  for (const d of minted.dropped) {
+    report.renderWarning(
+      `entity spelling ignored, it is a uuid deident minted rather than one from your sessions: ${d}`,
+    );
+  }
+  const tier1Entities = minted.entities.map((e) => withCleanedSpellings(e, tier0Table, flags.namespace));
   const tier1Assigned = assignPseudonyms(tier1Entities, salt, flags.namespace, { taken: tier0.taken });
   const tier1Table = buildTable(tier1Assigned.entities, { forbidInside: pseudonymGuardPattern(flags.namespace) });
   report.renderPhase(`Substituting ${tier1Table.size.toLocaleString('en-US')} tier-1 spellings`);
@@ -468,7 +478,7 @@ export async function runExport(flags, env) {
   //       named the bare "Morgan", and in this corpus May, Wise and Ray are
   //       all parts of real names and all ordinary words.
   report.renderNameParts(
-    uncoveredNameParts(tier1.entities, collectRetainedStrings(cleaned.records)),
+    uncoveredNameParts(tier1Entities, collectRetainedStrings(cleaned.records)),
   );
 
   // 13  substitution invariant, at string level, before serialization.
@@ -957,6 +967,51 @@ function retainCorpus(
  * allows a match that strictly contains a pseudonym, so the whole span goes
  * and reversal still restores exactly what was there.
  */
+/**
+ * Remove spellings that name a uuid deident itself minted.
+ *
+ * `deident-candidates.txt` is written AFTER the uuid rewrite, so every uuid a
+ * reader sees in it is already a pseudonym. Measured 2026-08-24 on the live
+ * corpus: two independent readers each saw one recurring 49 times, reasonably
+ * called it a secret, and declared it. The export then refused with
+ * "1 known-entity occurrence survived into the output" and offered the remedy
+ * "file an issue against deident". The tool blamed itself for its own output,
+ * ten minutes into a run, on the one path whose whole job is to be trustworthy.
+ *
+ * Dropped rather than refused, which is the opposite of this file's usual
+ * direction, because the asymmetry runs the other way for once: a minted uuid
+ * is ALREADY a pseudonym, so removing it from the table protects nothing and
+ * loses nothing, while keeping it makes the export impossible. There is no
+ * reading of the person's intent under which they wanted this.
+ *
+ * Reported, never silent. They wrote it down for a reason and are owed the
+ * sentence saying why it was not needed.
+ *
+ * @param {ReadonlyArray<object>} entities
+ * @param {Set<string>} minted `rewriteUuid.minted`
+ * @returns {{entities: ReadonlyArray<object>, dropped: ReadonlyArray<string>}}
+ */
+export function stripMintedSpellings(entities, minted) {
+  if (!(minted instanceof Set) || minted.size === 0) {
+    return { entities, dropped: Object.freeze([]) };
+  }
+  const dropped = [];
+  const out = [];
+  for (const e of entities) {
+    const kept = (e.spellings ?? []).filter((s) => !minted.has(s));
+    if (kept.length === (e.spellings ?? []).length) {
+      out.push(e);
+      continue;
+    }
+    for (const s of e.spellings) if (minted.has(s)) dropped.push(`${e.kind}: ${s}`);
+    // An entity left with no spellings is not kept as an empty one: it would
+    // mint a pseudonym for nothing and put a row in the review that names an
+    // identity nobody can act on.
+    if (kept.length > 0) out.push(Object.freeze({ ...e, spellings: Object.freeze(kept) }));
+  }
+  return { entities: Object.freeze(out), dropped: Object.freeze(dropped) };
+}
+
 function withCleanedSpellings(entity, tier0Table, namespace = null) {
   if (entity.rejected || entity.spellings.length === 0) return entity;
   const forms = new Set(entity.spellings);

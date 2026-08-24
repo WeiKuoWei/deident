@@ -71,7 +71,7 @@ import { parseReview, parseSessionDrops, renderReview, renderReviewHtml } from '
 import { readEntities } from './entities/tier1.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
-import { serializeSessions, resolveOutDir, sanitizeEntryName } from './pipeline.mjs';
+import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings } from './pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
 
 const BS = String.fromCharCode(92); // a single backslash, written without escapes
@@ -3965,6 +3965,54 @@ const FIXTURES = [
       null,
       'the reference directory is not there, so the answer would be noise',
     );
+  }],
+
+  ['F115', "a declared spelling that is one of deident's own minted uuids is dropped, not shipped into a refusal", () => {
+    // Measured 2026-08-24 on the live corpus. deident-candidates.txt is written
+    // AFTER the uuid rewrite, so every uuid in it is a value deident minted.
+    // Two independent readers each saw one recurring 49 times, reasonably
+    // called it a secret, and declared it. The export then refused with
+    // "1 known-entity occurrence survived into the output" and the remedy
+    // "file an issue against deident": the tool blamed itself for its own
+    // output, on the one path whose whole job is to be trustworthy.
+    //
+    // Dropping is safe in a way that nothing else here is. A minted uuid is
+    // already a pseudonym, so removing it from the table protects nothing and
+    // loses nothing; keeping it makes the export impossible.
+    const minted = new Set(['a6ca6f4b-8b3e-2ebe-0c07-f9e986ec09ce']);
+    const real = '11111111-2222-4333-8444-555555555555';
+
+    const { entities, dropped } = stripMintedSpellings(
+      [
+        { kind: 'secret', spellings: ['a6ca6f4b-8b3e-2ebe-0c07-f9e986ec09ce'], confidence: 'high' },
+        { kind: 'person', spellings: ['Ada Lovelace', 'a6ca6f4b-8b3e-2ebe-0c07-f9e986ec09ce'] },
+        { kind: 'secret', spellings: [real], confidence: 'high' },
+      ],
+      minted,
+    );
+
+    // The entity that was ONLY a minted uuid is gone: an empty spellings array
+    // would mint a pseudonym for nothing and put a phantom row in the review.
+    assert.equal(entities.length, 2);
+    assert.deepEqual(entities[0].spellings, ['Ada Lovelace'], 'the real spelling survives');
+    assert.deepEqual(entities[1].spellings, [real], 'a uuid deident did NOT mint is left alone');
+
+    // Reported, never silent. The person wrote it down for a reason and is
+    // owed the sentence explaining why it is not needed.
+    assert.equal(dropped.length, 2);
+    assert.ok(dropped.every((d) => d.includes('a6ca6f4b')));
+
+    // Negative control: with nothing minted, nothing is touched, and the same
+    // array comes back rather than a rebuilt one.
+    const untouched = stripMintedSpellings([{ kind: 'secret', spellings: [real] }], new Set());
+    assert.equal(untouched.dropped.length, 0);
+    assert.deepEqual(untouched.entities[0].spellings, [real]);
+
+    // The candidates header has to say this, or the reader makes the same
+    // reasonable mistake every time and only finds out ten minutes later.
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const src = fs.readFileSync(path.join(repo, 'src', 'entities', 'tier1.mjs'), 'utf8');
+    assert.match(src, /EVERY UUID BELOW IS ALREADY A PSEUDONYM/, 'the candidates header does not warn about uuids');
   }],
 
   ['F109', 'a declared person name whose surname is left uncovered is reported, not silently substituted', () => {
