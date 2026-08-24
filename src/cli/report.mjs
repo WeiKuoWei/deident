@@ -36,6 +36,45 @@ for (const stream of [process.stdout, process.stderr]) {
   });
 }
 
+// --- Machine mode -----------------------------------------------------------
+//
+// One document per run, emitted once at the end, carrying the values that were
+// ALREADY frozen at each render call: the census, the manifest, the checks
+// array, the typed error. Nothing is recomputed and no second code path exists,
+// which is why the human output is byte-identical when the flag is absent.
+//
+// Collected rather than streamed because an agent reads stdout whole: a
+// progress line interleaved with a document makes JSON.parse throw on a run
+// that succeeded.
+let machine = null;
+
+/** Start collecting instead of printing. Called once, from the command. */
+export function beginMachine(command) {
+  machine = { deident: VERSION, command, ok: true };
+}
+
+export function inMachineMode() {
+  return machine !== null;
+}
+
+/** Merge fields into the pending document. */
+export function machineAdd(fields) {
+  if (machine !== null) Object.assign(machine, fields);
+}
+
+/**
+ * Emit the document. Returns true if it wrote, so the caller can tell whether
+ * the human path still owes a line.
+ */
+export function endMachine() {
+  if (machine === null) return false;
+  const doc = machine;
+  machine = null;
+  // After the reset, so the guard in say() is already open again.
+  say(JSON.stringify(doc, null, 2));
+  return true;
+}
+
 /** Capture printed output instead of writing it. Used by the selftest. */
 export function captureOutput(fn) {
   capturing = true;
@@ -69,8 +108,21 @@ export function outputPipeClosed() {
   return pipeClosed;
 }
 
-const say = (text = '') => emit(process.stdout, text);
-const warn = (text = '') => emit(process.stderr, text);
+// While a document is pending, prose is suppressed at the primitive rather
+// than in each renderer. An agent reads stdout whole, so one progress line
+// interleaved with the document makes JSON.parse throw on a run that succeeded
+// - which is exactly how this was found, from renderProbe writing to stderr
+// after the document had been emitted. Guarding here means a renderer added
+// tomorrow cannot reintroduce it, which auditing twenty call sites could not
+// promise.
+const say = (text = '') => {
+  if (machine !== null) return;
+  emit(process.stdout, text);
+};
+const warn = (text = '') => {
+  if (machine !== null) return;
+  emit(process.stderr, text);
+};
 
 const n = (v) => (typeof v === 'number' ? v.toLocaleString('en-US') : String(v));
 
@@ -137,6 +189,7 @@ export function renderVersion() {
 // ---------------------------------------------------------------- scan
 
 export function renderScan(census) {
+  if (machine !== null) { machineAdd(census); return; }
   const { fileCount, bytes, dateRange, workspaceCount, emptyDirs, tiers, reviewPath, unreadable } = census;
   say('');
   say(`  Claude Code sessions   ${n(fileCount)} files · ${humanBytes(bytes)}${dateRange ? ` · ${dateRange}` : ''}`);
@@ -178,6 +231,7 @@ export function renderScan(census) {
  * it survives being pasted into a bug report.
  */
 export function renderPhase(text) {
+  if (machine !== null) return;
   say(`  ${text}`);
 }
 
@@ -187,6 +241,7 @@ export function renderProgress(done, total, noun) {
 }
 
 export function renderChecks(checks) {
+  if (machine !== null) { machineAdd({ checks }); return; }
   say('');
   say('  Checks');
   for (const c of checks) {
@@ -195,6 +250,7 @@ export function renderChecks(checks) {
 }
 
 export function renderManifest(m) {
+  if (machine !== null) { machineAdd({ manifest: m }); return; }
   say('');
   say('  Leaving this machine');
   say(`    ${n(m.sessions)} sessions from ${n(m.workspaces)} workspaces`);
@@ -258,6 +314,7 @@ export function renderManifest(m) {
 }
 
 export function renderWrote(path, bytes, saltPath) {
+  if (machine !== null) { machineAdd({ wrote: { path, bytes } }); return; }
   say(`  → ${path}    ${humanBytes(bytes)}`);
   say(`    salt stays at ${saltPath}. Do not share it, do not commit it`);
   say('');
@@ -300,6 +357,7 @@ export function renderUnmatched(entities) {
  * by construction, and a list nobody finishes reading is a list nobody reads.
  */
 export function renderProbe({ hits, zeros }) {
+  if (machine !== null) { machineAdd({ replacementCounts: { hits, zeros } }); return; }
   if (hits.length === 0 && zeros.length === 0) return;
   warn('');
   warn('  Replacement counts, highest first. A common word here is a false positive');
@@ -326,6 +384,15 @@ export function renderProbe({ hits, zeros }) {
  * point of this one is that it covered a different artifact from all the rest.
  */
 export function renderOnDiskResidue(entryCount, check) {
+  if (machine !== null) {
+    machineAdd({
+      checks: [
+        ...(machine.checks ?? []),
+        { label: 'archive on disk', ok: check.ok, detail: check.detail, entries: entryCount },
+      ],
+    });
+    return;
+  }
   say(`    ${pad('archive on disk', 23)} ${n(entryCount)} entries read back, ${check.detail}${check.ok ? '   ok' : '   FAILED'}`);
 }
 
@@ -334,6 +401,7 @@ export function renderNote(text) {
 }
 
 export function renderWarning(text) {
+  if (machine !== null) { machineAdd({ warnings: [...(machine.warnings ?? []), text] }); return; }
   warn(`  ! ${text}`);
 }
 
@@ -409,6 +477,22 @@ export function renderUsageError(err) {
 
 /** The single dispatch used by the entry point's catch. */
 export function renderError(err) {
+  if (machine !== null) {
+    const code = err && typeof err.code === 'number' ? err.code : 1;
+    machineAdd({
+      ok: false,
+      error: {
+        kind: err && err.constructor ? err.constructor.name : 'Error',
+        reason: err && err.reason ? err.reason : (err && err.message) || String(err),
+        why: (err && err.why) || [],
+        remedies: (err && err.remedies) || [],
+        detail: (err && err.detail) || null,
+        code,
+      },
+    });
+    endMachine();
+    return code;
+  }
   if (err instanceof UsageError) {
     renderUsageError(err);
     return err.code;

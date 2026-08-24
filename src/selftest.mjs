@@ -3438,6 +3438,78 @@ const FIXTURES = [
     assert.ok(entries.length > 0);
     assert.match(exported.out, new RegExp(`${entries.length} entries read back`));
   }],
+  // F99 - the settled operator is an agent, and every number this tool computes
+  // reaches it as padded columns whose width is data-dependent.
+  //
+  // The manifest's most interesting counters are built as English prose
+  // ("3 counted, none included"), the check rows are aligned by pad(), and a
+  // refusal's remedies are a shaped object flattened to text on the way out. An
+  // agent driving this has to parse the disclosure format, which is the one
+  // thing cli-ux put in a single greppable file so it would never be parsed.
+  //
+  // --json emits the values that are ALREADY in hand at the render call: the
+  // frozen manifest, the frozen checks array, the typed error. It is an
+  // encoding, not a second code path, which is why the human output must be
+  // byte-identical when the flag is absent.
+  ['F99', 'every command can answer in JSON, including when it refuses', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+
+    // scan
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir, '--json']);
+    assert.equal(scan.code, 0, scan.out);
+    const parseOne = (text, what) => {
+      try { return JSON.parse(text); } catch (err) { assert.fail(`${what} is not one JSON document: ${err.message} ||| ${text.replace(/\s+/g, ' ').slice(0, 600)}`); }
+    };
+    const scanDoc = parseOne(scan.out, 'scan');
+    assert.equal(scanDoc.command, 'scan');
+    assert.equal(scanDoc.ok, true);
+    assert.ok(Array.isArray(scanDoc.workspaces) && scanDoc.workspaces.length > 0, `no workspaces: ${scan.out.slice(0, 400)}`);
+    assert.ok(scanDoc.workspaces.every((w) => typeof w.tier === 'string' && typeof w.name === 'string'), JSON.stringify(scanDoc.workspaces).slice(0, 300));
+
+    // A refusal answers in the same envelope, and keeps its exit code. An agent
+    // that has to tell "refused" from "crashed" by reading prose cannot.
+    const refused = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--json']);
+    assert.notEqual(refused.code, 0);
+    const errDoc = parseOne(refused.out, 'refusal');
+    assert.equal(errDoc.ok, false);
+    assert.equal(typeof errDoc.error.reason, 'string');
+    assert.ok(Array.isArray(errDoc.error.why), refused.out.slice(0, 300));
+    assert.ok(Array.isArray(errDoc.error.remedies), refused.out.slice(0, 300));
+    assert.ok(errDoc.error.remedies.every((r) => typeof r.command === 'string'), JSON.stringify(errDoc.error.remedies).slice(0, 300));
+    assert.equal(errDoc.error.code, refused.code, 'the exit code is in the document too');
+
+    // export
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    const ok = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--json',
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(ok.code, 0, ok.out);
+    const doc = parseOne(ok.out, 'export');
+    assert.equal(doc.command, 'export');
+    assert.equal(doc.ok, true);
+    assert.equal(typeof doc.manifest.sessions, 'number', 'a count is a number, not "3 counted"');
+    assert.ok(Array.isArray(doc.checks) && doc.checks.length >= 5, JSON.stringify(doc.checks).slice(0, 400));
+    assert.ok(doc.checks.every((c) => typeof c.label === 'string' && typeof c.ok === 'boolean'), JSON.stringify(doc.checks).slice(0, 400));
+    assert.ok(doc.checks.some((c) => /archive on disk/i.test(c.label)), 'the on-disk gate is a check too');
+    assert.equal(typeof doc.wrote.path, 'string');
+    assert.equal(typeof doc.wrote.bytes, 'number');
+
+    // Exactly one document, and nothing but the document: an agent reads stdout
+    // whole. A stray progress line makes JSON.parse throw on a successful run.
+    assert.equal(scan.out.trim().startsWith('{'), true, scan.out.slice(0, 200));
+    assert.equal(ok.out.trim().endsWith('}'), true, ok.out.slice(-200));
+
+    // The human output is untouched when the flag is absent. This is an
+    // encoding, not a fork.
+    const human = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(human.code, 0);
+    assert.doesNotMatch(human.out, /^\s*\{/m, 'no JSON leaks into the human path');
+    assert.match(human.out, /Workspaces/);
+  }],
 ];
 
 export function selftest() {

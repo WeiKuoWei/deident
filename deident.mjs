@@ -39,13 +39,26 @@ export async function main(argv, env) {
       }
       case 'command': {
         const pipeline = await import('./src/pipeline.mjs');
+        // One document per run, emitted once at the end. Begun here rather than
+        // inside each command so a throw anywhere below still lands in the
+        // envelope: renderError finishes the document itself.
+        if (opts.flags.json) report.beginMachine(opts.command);
         switch (opts.command) {
-          case 'scan':
-            return await pipeline.runScan(opts.flags, env);
-          case 'review':
-            return await pipeline.runReview(opts.flags, env);
-          case 'export':
-            return await pipeline.runExport(opts.flags, env);
+          case 'scan': {
+            const code = await pipeline.runScan(opts.flags, env);
+            report.endMachine();
+            return code;
+          }
+          case 'review': {
+            const code = await pipeline.runReview(opts.flags, env);
+            report.endMachine();
+            return code;
+          }
+          case 'export': {
+            const code = await pipeline.runExport(opts.flags, env);
+            report.endMachine();
+            return code;
+          }
           default:
             // parseCliArgs already rejected anything else.
             report.renderUsage();

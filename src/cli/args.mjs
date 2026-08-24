@@ -21,6 +21,10 @@ const FLAGS = Object.freeze({
   'skip-unreadable': { type: 'boolean', commands: ['scan', 'export'] },
   'skip-unknown-types': { type: 'boolean', commands: ['scan', 'export'] },
   'include-denied': { type: 'string', multiple: true, commands: ['export'] },
+  // An encoding of the values already in hand at each render call, not a
+  // second code path. The settled operator is an agent, and the alternative is
+  // parsing padded columns whose width is data-dependent.
+  json: { type: 'boolean', commands: ['scan', 'review', 'export'] },
   // Global, command-less.
   help: { type: 'boolean', commands: null },
   version: { type: 'boolean', commands: null },
@@ -134,6 +138,7 @@ export function parseCliArgs(argv) {
       skipUnreadable: values['skip-unreadable'] === true,
       skipUnknownTypes: values['skip-unknown-types'] === true,
       includeDenied: Object.freeze([...includeDenied]),
+      json: values.json === true,
     },
   });
 }

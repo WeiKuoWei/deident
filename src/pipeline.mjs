@@ -98,6 +98,21 @@ export async function runScan(flags, env) {
   );
   const written = writeReview(model, reviewPath);
 
+  // The decision list itself, for a caller that is not going to parse
+  // review.md. review.md stays the human surface and the durable record; this
+  // is the same rows, already frozen in the model, in a shape an agent can
+  // read without a parser. Ignored entirely in the human path.
+  if (flags.json) {
+    report.machineAdd({
+      workspaces: model.workspaces.map((w) => ({
+        name: w.name, tier: w.tier, sessions: w.sessionCount, cwd: w.cwd ?? null, note: w.note ?? null,
+      })),
+      sessions: model.sessions.map((x) => ({
+        id: x.id, decision: x.decision, workspace: x.workspace, date: x.date,
+      })),
+    });
+  }
+
   report.renderScan({
     fileCount: corpus.files.length,
     bytes: corpus.bytes,
