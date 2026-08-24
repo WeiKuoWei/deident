@@ -158,7 +158,7 @@ export function readEntities(filePath) {
   } catch (err) {
     throw new RefusalError(`${filePath} is not valid JSON`, {
       why: [err.message, 'A malformed entity list must not silently become an empty one.'],
-      remedies: [{ label: 'Fix the file', command: `notepad "${filePath}"` }],
+      remedies: [{ label: 'Fix the file', command: `edit ${filePath}` }],
     });
   }
 
@@ -166,7 +166,7 @@ export function readEntities(filePath) {
   if (!Array.isArray(raw)) {
     throw new RefusalError(`${filePath} has no "entities" array`, {
       why: ['Expected either a bare array, or an object with an "entities" array.'],
-      remedies: [{ label: 'Fix the file', command: `notepad "${filePath}"` }],
+      remedies: [{ label: 'Fix the file', command: `edit ${filePath}` }],
     });
   }
 

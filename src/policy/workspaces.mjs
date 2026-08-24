@@ -206,7 +206,7 @@ export function loadSavedDecisions(saltDir) {
     if (err.code === 'ENOENT') return EMPTY_SAVED;
     throw new RefusalError(`could not read saved workspace decisions at ${file}`, {
       why: [`${err.code}: ${err.message}`, 'deident will not guess tiers it cannot read.'],
-      remedies: [{ label: 'Fix or remove the file', command: `del "${file}"` }],
+      remedies: [{ label: 'Fix or remove the file', command: `remove ${file}` }],
     });
   }
   try {

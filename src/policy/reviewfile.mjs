@@ -140,7 +140,7 @@ export function parseReview(text, opts = {}) {
           `In review.md:  ${trimmed.slice(0, 60)}`,
           `Tiers are: ${TIERS.join(', ')}.`,
         ],
-        remedies: [{ label: 'Fix the line', command: `notepad ${REVIEW_FILENAME}` }],
+        remedies: [{ label: 'Fix the line', command: `edit ${REVIEW_FILENAME}` }],
       });
     }
     if (!name) continue;
@@ -198,7 +198,7 @@ export function parseSessionDrops(text, opts = {}) {
           `In review.md:  ${trimmed.slice(0, 60)}`,
           `Session decisions are: ${SESSION_DECISIONS.join(', ')}.`,
         ],
-        remedies: [{ label: 'Fix the line', command: `notepad ${REVIEW_FILENAME}` }],
+        remedies: [{ label: 'Fix the line', command: `edit ${REVIEW_FILENAME}` }],
       });
     }
     if (!id) continue;

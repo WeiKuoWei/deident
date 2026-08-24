@@ -3198,6 +3198,129 @@ const FIXTURES = [
     assert.equal(nby['Acme Corporation'].count, 1);
     assert.equal(nby.Acme.count, 0, 'the shorter needle does not double-count inside the longer');
   }],
+  // F93 - case folding is granted to Latin and denied to every other bicameral
+  // script, by one ASCII regex.
+  //
+  // caseInsensitive() gates on /[A-Za-z]/, so a Cyrillic or Greek spelling gets
+  // entry.lower null and matchesAt falls through to startsWith. That is F51's
+  // guarantee — the one that exists because a 1,804-occurrence leak came from a
+  // casing mismatch — withheld from Cyrillic and Greek for no reason but the
+  // character class. residual.mjs:65 derives its own fold flag from the same
+  // entry.lower, so the substituter and the residue scan go blind together.
+  //
+  // The fix must NOT open the length-changing case. Turkish dotted capital I
+  // lowercases to two code units, and matchesAt computes its end as
+  // at + entry.spelling.length, so folding a spelling whose lowercase is a
+  // different length would consume the wrong span and reversal would restore
+  // the wrong text. Fold only where the case map preserves length.
+  ['F93', 'case folding follows the script, not the ASCII range', () => {
+    const cyrillic = buildTable([{ id: 'C1', kind: 'org', pseudonym: 'X_O_1', spellings: ['Яндекс'] }]);
+    assert.equal(substituteString('партнёр ЯНДЕКС сегодня', cyrillic).out, 'партнёр X_O_1 сегодня');
+    assert.equal(substituteString('партнёр яндекс сегодня', cyrillic).out, 'партнёр X_O_1 сегодня');
+
+    const greek = buildTable([{ id: 'G1', kind: 'org', pseudonym: 'X_O_2', spellings: ['Ελλάδα'] }]);
+    assert.equal(substituteString('στην ΕΛΛΆΔΑ τώρα', greek).out, 'στην X_O_2 τώρα');
+
+    // Reversal still restores what was actually there, in the casing it was in.
+    const t = buildTable([{ id: 'C2', kind: 'org', pseudonym: 'X_O_3', spellings: ['Яндекс'] }]);
+    const r = substituteString('ЯНДЕКС и Яндекс', t);
+    assert.equal(reverseString(r.out, r.spans), 'ЯНДЕКС и Яндекс');
+
+    // A spelling whose lowercase changes length is left on the literal path
+    // rather than folded, because matchesAt measures the span with the entry's
+    // own length. Exact case still matches; the other case simply does not.
+    const turkish = buildTable([{ id: 'T1', kind: 'person', pseudonym: 'X_P_1', spellings: ['İstanbul'] }]);
+    assert.equal(substituteString('from İstanbul today', turkish).out, 'from X_P_1 today');
+    const spans = substituteString('from İstanbul today', turkish).spans;
+    assert.equal(reverseString('from X_P_1 today', spans), 'from İstanbul today');
+
+    // Latin is unchanged: this widens the gate, it does not move it.
+    const latin = buildTable([{ id: 'L1', kind: 'org', pseudonym: 'X_O_4', spellings: ['GitRoll'] }]);
+    assert.equal(substituteString('at gitroll and GITROLL', latin).out, 'at X_O_4 and X_O_4');
+    // And the short-spelling floor still applies, whatever the script.
+    const short = buildTable([{ id: 'S1', kind: 'org', pseudonym: 'X_O_5', spellings: ['Ян'] }]);
+    assert.equal(substituteString('ЯН здесь', short).out, 'ЯН здесь');
+  }],
+  // F94 - the same name in two Unicode normalisations is two byte strings, and
+  // literal matching sees two different needles.
+  //
+  // This is the macOS case and it is not exotic there, it is the default. APFS
+  // and HFS+ store filenames DECOMPOSED, so every path and filename this tool
+  // reads on a Mac arrives in NFD while the same name typed by the person, or
+  // returned by git config, or pasted into an entity list, is NFC. Measured
+  // before the fix: an entity declared NFC against NFD text replaced nothing,
+  // and the reverse replaced nothing, in both directions, with zero normalize()
+  // calls anywhere in the source.
+  //
+  // Unlike Han folding this needs no table and no judgement. NFC and NFD are a
+  // standards-defined lossless pair, so the honest fix is to carry both forms
+  // as spellings and leave the matcher literal: each form keeps its own length,
+  // which is what matchesAt's span arithmetic requires.
+  ['F94', 'a name normalises two ways and both are matched', () => {
+    const nfc = 'José';
+    const nfd = 'José';
+    assert.notEqual(nfc, nfd, 'the fixture is only meaningful if these differ');
+    assert.equal(nfc.normalize('NFC'), nfd.normalize('NFC'), 'and only if they are the same name');
+
+    assert.ok(expandVariants(nfc).includes(nfd), 'declaring the composed form covers the decomposed');
+    assert.ok(expandVariants(nfd).includes(nfc), 'and the other way round');
+
+    const table = buildTable([{ id: 'P1', kind: 'person', pseudonym: 'X_P_1', spellings: expandVariants(nfc) }]);
+    assert.equal(substituteString(`hi ${nfd} there`, table).out, 'hi X_P_1 there');
+    assert.equal(substituteString(`hi ${nfc} there`, table).out, 'hi X_P_1 there');
+
+    // Reversal restores the form that was actually in the text, not the one
+    // that was declared. A Mac path put back as NFC would no longer name the
+    // file it came from.
+    const r = substituteString(`hi ${nfd} there`, table);
+    assert.equal(reverseString(r.out, r.spans), `hi ${nfd} there`);
+
+    // A path is the measured case, so it must survive the path forms too.
+    const macPath = '/Users/josé/projects/app';
+    assert.ok(expandVariants(macPath).includes(macPath.normalize('NFD')));
+
+    // ASCII gains nothing and must not grow: NFC and NFD of pure ASCII are the
+    // same string, and a duplicate needle is a wasted bucket entry per offset.
+    const ascii = expandVariants('GitRoll');
+    assert.equal(new Set(ascii).size, ascii.length, 'no duplicate forms');
+  }],
+  // F95 - a refusal tells a Mac user to run notepad.
+  //
+  // Ten remedy commands across the source are Windows-only: eight `notepad` and
+  // two `del`. A remedy is the one part of a refusal that is supposed to be
+  // runnable, and cli-ux makes it the contract for getting unstuck. On macOS or
+  // Linux every one of them fails, which turns the tool's most careful moment
+  // into a dead end. The settled operator is an agent, and an agent copying
+  // `notepad review.md` into a shell on a Mac gets command-not-found.
+  //
+  // The invariant, not the instance: no remedy names a platform-specific
+  // program. A file the person must edit is named as a file.
+  ['F95', 'no refusal hands out a command that only exists on one platform', () => {
+    // Only the FIRST token, which is the program being invoked. A word like
+    // `copy` inside a placeholder such as `--root <older copy>` is English,
+    // not DOS, and a check that cries wolf on it is the one that gets deleted.
+    const PLATFORM_ONLY = new Set([
+      'notepad', 'del', 'explorer', 'start', 'type', 'copy', 'move', 'cls',
+      'open', 'nano', 'vim', 'rm', 'cat', 'less', 'xdg-open',
+    ]);
+    const root = fileURLToPath(new URL('.', import.meta.url));
+    const offenders = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!e.name.endsWith('.mjs') || e.name === 'selftest.mjs') continue;
+        const text = fs.readFileSync(p, 'utf8');
+        for (const m of text.matchAll(/command:\s*(`[^`]*`|'[^']*')/g)) {
+          const cmd = m[1].slice(1, -1);
+          const program = cmd.trim().split(/\s+/)[0].toLowerCase();
+          if (PLATFORM_ONLY.has(program)) offenders.push(`${e.name}: ${cmd}`);
+        }
+      }
+    };
+    walk(root);
+    assert.deepEqual(offenders, [], `platform-specific remedies: ${offenders.join('; ')}`);
+  }],
 ];
 
 export function selftest() {

@@ -74,7 +74,7 @@ export function loadUserDeny(saltDir) {
     if (err.code === 'ENOENT') return { tokens: [], patterns: [] };
     throw new RefusalError(`could not read ${file}`, {
       why: [`${err.code}: ${err.message}`, 'This file decides which of your own files never leave.'],
-      remedies: [{ label: 'Fix or remove it', command: `notepad ${file}` }],
+      remedies: [{ label: 'Fix or remove it', command: `edit ${file}` }],
     });
   }
 
@@ -84,7 +84,7 @@ export function loadUserDeny(saltDir) {
   } catch (err) {
     throw new RefusalError(`${file} is not valid JSON`, {
       why: [err.message, 'Refusing rather than exporting with none of your own deny rules.'],
-      remedies: [{ label: 'Fix it', command: `notepad ${file}` }],
+      remedies: [{ label: 'Fix it', command: `edit ${file}` }],
     });
   }
 
@@ -95,7 +95,7 @@ export function loadUserDeny(saltDir) {
   if (!Array.isArray(rules.patterns) && !Array.isArray(rules.tokens)) {
     throw new RefusalError(`${file} has neither "patterns" nor "tokens"`, {
       why: ['Read as written it would contribute nothing, and silence here is a leak.'],
-      remedies: [{ label: 'Fix it', command: `notepad ${file}` }],
+      remedies: [{ label: 'Fix it', command: `edit ${file}` }],
     });
   }
 
@@ -106,7 +106,7 @@ export function loadUserDeny(saltDir) {
     } catch (err) {
       throw new RefusalError(`${file}: ${JSON.stringify(p)} is not a valid pattern`, {
         why: [err.message],
-        remedies: [{ label: 'Fix it', command: `notepad ${file}` }],
+        remedies: [{ label: 'Fix it', command: `edit ${file}` }],
       });
     }
   }

@@ -24,6 +24,26 @@ export function expandVariants(spelling) {
 
   const out = new Set([spelling]);
 
+  // Unicode normalisation, both directions.
+  //
+  // The macOS case, and there it is the default rather than an edge: APFS and
+  // HFS+ store filenames DECOMPOSED, so every path and filename read off a Mac
+  // arrives in NFD while the same name typed by the person, returned by
+  // `git config`, or pasted into an entity list is NFC. Measured before this
+  // existed: an entity declared NFC matched nothing in NFD text and the reverse
+  // matched nothing either, with zero normalize() calls in the source.
+  //
+  // Both forms are carried as SPELLINGS rather than folded in the matcher,
+  // because matchesAt measures its span as `at + entry.spelling.length` and
+  // the two forms have different lengths. As spellings each keeps its own, the
+  // matcher stays literal, and reversal restores whichever form was actually
+  // in the text — which matters for a path, since a Mac filename put back
+  // recomposed no longer names the file it came from.
+  //
+  // Free for ASCII: both normalisations return the identical string and the Set
+  // absorbs it.
+  for (const form of [spelling.normalize('NFC'), spelling.normalize('NFD')]) out.add(form);
+
   if (looksLikePath(spelling)) {
     for (const form of pathForms(spelling)) out.add(form);
   }

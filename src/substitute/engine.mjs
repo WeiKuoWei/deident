@@ -84,8 +84,34 @@ export function leftBoundaryBlocks(s, at, entry) {
 // `gitroll` is a known entity cannot be a false positive.
 const CASE_INSENSITIVE_MIN = 4;
 
+/**
+ * Should this spelling be matched in any casing?
+ *
+ * The test used to be /[A-Za-z]/, which granted the guarantee to Latin and
+ * withheld it from every other bicameral script. Cyrillic and Greek entries got
+ * entry.lower null, matchesAt fell through to startsWith, and residual.mjs
+ * derives its own fold flag from the same entry.lower, so the substituter and
+ * the residue scan went blind together. That is F51's guarantee — the one that
+ * exists because a 1,804-occurrence leak came from a casing mismatch — denied
+ * for no reason but the character class.
+ *
+ * The replacement asks the case map instead of the alphabet: a spelling folds if
+ * it has a distinct case form at all. `gitroll` qualifies through its uppercase,
+ * which is why both directions are tested rather than just toLowerCase.
+ *
+ * The length condition is load-bearing and not a nicety. matchesAt computes its
+ * end as `at + entry.spelling.length`, so a spelling whose lowercase is a
+ * different length would consume the wrong span and reversal would restore the
+ * wrong text. Turkish dotted capital I lowercases to two code units, and German
+ * sharp s uppercases to two. Those stay on the literal path: exact case still
+ * matches, the other case simply does not, which is a miss rather than a
+ * corruption.
+ */
 function caseInsensitive(spelling) {
-  return spelling.length >= CASE_INSENSITIVE_MIN && /[A-Za-z]/.test(spelling);
+  if (spelling.length < CASE_INSENSITIVE_MIN) return false;
+  const lower = spelling.toLowerCase();
+  if (lower.length !== spelling.length) return false;
+  return lower !== spelling || spelling.toUpperCase() !== spelling;
 }
 
 /**

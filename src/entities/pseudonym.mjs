@@ -177,7 +177,7 @@ export function loadOrCreateSalt(saltDir) {
         'Replacing it silently would break reversal against every earlier export;',
         'using it as-is could mean pseudonyms derived from an all-zero salt.',
       ],
-      remedies: [{ label: 'Inspect, then remove it', command: `del "${file}"` }],
+      remedies: [{ label: 'Inspect, then remove it', command: `remove ${file}` }],
     });
   } catch (err) {
     if (err instanceof RefusalError) throw err;
