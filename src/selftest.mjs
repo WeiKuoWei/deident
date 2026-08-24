@@ -6292,6 +6292,84 @@ const FIXTURES = [
     assert.equal(run.code, 1, run.out);
     assert.match(run.out, /written 1 minute ago/, 'the file mtime never reached the refusal');
   }],
+
+  // F148 - the reader-facing surfaces argue in tiers, not in product names.
+  //
+  // deident calls no model itself, so the logic was never vendor bound. The
+  // prose was. docs/model-tier.md ran its whole argument on one vendor's three
+  // product names and src/policy/triage.mjs quoted it, so a reader on another
+  // harness met "do not run this step at the haiku tier" and had no haiku. The
+  // finding underneath is about reasoning strength and failure direction and
+  // survives the rename with every number intact.
+  //
+  // WHAT THIS ASSERTS: no model name and no subscription-plan name appears in
+  // the files a user of the tool reads, with one deliberate exception. The
+  // preamble of docs/model-tier.md, before its first section heading, may name
+  // the tiers that were actually measured, once, so the numbers stay checkable
+  // against a real run. Provenance stated once is not lock-in; an argument
+  // written in product names is.
+  //
+  // WHAT THIS DOES NOT ASSERT: that no vendor is ever named. "deident reads
+  // Claude Code session logs, Codex and Cursor write a different layout and are
+  // not read yet" is a scope limit a reader on another harness NEEDS; deleting
+  // it would make the tool silently useless to them instead of loudly out of
+  // scope. Harness names, log-format names and env var names are not matched
+  // here at all. Only model tiers and plans are, because only those assume the
+  // reader buys from one vendor.
+  //
+  // BRIEF.md and PLAN.md are out of scope: engineering history, not a reader
+  // surface, and BRIEF names model ids as measured corpus content, which is
+  // evidence about what leaks. selftest.mjs is out of scope because it is this
+  // file, and a fixture forbidding a word cannot also be forbidden from it.
+  ['F148', 'no model name and no plan name appears in the argument a reader follows', () => {
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+
+    // Neither pattern uses a backslash escape. This file has twice had a `\b`
+    // written into it as a raw U+0008 by the tooling that edits it, and a
+    // regex that matches a backspace matches nothing while still passing.
+    const MODEL_NAME = /(^|[^a-z])(haiku|sonnet|opus|fable|gpt-[0-9])([^a-z]|$)/i;
+    const PLAN_NAME = /(pro|max|plus|team|free|enterprise) (plan|tier|subscription)/i;
+    const names = (line) => MODEL_NAME.test(line) || PLAN_NAME.test(line);
+
+    // Negative control. A check that cannot fail proves nothing, and both of
+    // these are the sentence this fixture exists to stop.
+    assert.ok(names('do not run step 4 at the haiku tier'), 'MODEL_NAME matches nothing');
+    assert.ok(names('available on the Max plan'), 'PLAN_NAME matches nothing');
+
+    const surfaces = ['README.md', 'AGENTS.md', 'skills/deident/SKILL.md'];
+    const walk = (dir, prefix, keep) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) { walk(path.join(dir, e.name), `${prefix}${e.name}/`, keep); continue; }
+        if (keep(e.name)) surfaces.push(`${prefix}${e.name}`);
+      }
+    };
+    walk(path.join(repo, 'src'), 'src/', (n) => n.endsWith('.mjs') && n !== 'selftest.mjs');
+    // The whole docs tree, not a hand-kept list: a list is what lets the next
+    // document be the one nobody added.
+    walk(path.join(repo, 'docs'), 'docs/', (n) => n.endsWith('.md') || n.endsWith('.html'));
+
+    const offenders = [];
+    let provenance = 0;
+    for (const rel of surfaces) {
+      const lines = fs.readFileSync(path.join(repo, ...rel.split('/')), 'utf8').split('\n');
+      // The preamble of the measurement doc is where provenance belongs, so it
+      // is bounded by the first section heading rather than by matching the
+      // sentence: a fixture that holds its own copy of the wording passes while
+      // the shipped file says something else (F122 has the same reason).
+      const firstSection = rel === 'docs/model-tier.md' ? lines.findIndex((l) => l.startsWith('## ')) : -1;
+      lines.forEach((line, i) => {
+        if (!names(line)) return;
+        if (firstSection > 0 && i < firstSection) { provenance += 1; return; }
+        offenders.push(`${rel}:${i + 1}: ${line.trim()}`);
+      });
+    }
+    assert.deepEqual(offenders, [], `product names in the argument: ${offenders.join(' | ')}`);
+
+    // One line, not a paragraph, and not zero: a doc that never says which
+    // tiers were measured is unreproducible, which is the other way to get
+    // this wrong.
+    assert.equal(provenance, 1, `docs/model-tier.md names the measured tiers on ${provenance} preamble lines, expected 1`);
+  }],
 ];
 
 export function selftest() {

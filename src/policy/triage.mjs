@@ -18,10 +18,12 @@
 // A triage verdict may only ever move a session toward `drop`. It may never
 // propose `keep`, and it may never overturn an existing `drop`.
 //
-// docs/model-tier.md disqualifies the low tier for the entity pass because its
-// failures are MISSES, and a miss there is a disclosure: haiku found 0 and 1 of
-// the seven values that were themselves the secret, and returned a
-// full-looking list of 27 entities either way. Triage inverts that, and only
+// docs/model-tier.md disqualifies the cheapest tier for the entity pass because
+// its failures are MISSES, and a miss there is a disclosure: across two runs it
+// found 0 and 1 of the seven values that were themselves the secret, and
+// returned a full-looking list of 27 entities either way. The measurement is
+// about reasoning strength, so it transfers to whichever ladder of tiers the
+// reader can actually call. Triage inverts that, and only
 // because removal is the only power on offer: a wrong verdict here costs
 // coverage, never privacy. The moment a verdict can release a session, the
 // whole argument for a cheap reader is gone. So the constraint is in the code,
