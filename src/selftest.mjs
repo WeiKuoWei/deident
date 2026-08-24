@@ -5442,6 +5442,61 @@ const FIXTURES = [
     ], CORPUS_USER_ENV);
     assert.equal(both.code, 2, `--full with --entities is a usage error: ${both.out}`);
   }],
+
+  // F132 - which failure it is decides what goes in the candidates file, and
+  // "whatever is uncovered" is the wrong answer for one of them.
+  //
+  // Hand-editing is a first-class use of the dictionary, so the states a
+  // hand-editor can leave it in have to be states the tool handles. Delete the
+  // entities, keep the session record, and let one session change: coverage is
+  // short by one, so a file built from "whatever is uncovered" holds that one
+  // session. The reader writes a list from it, the run then succeeds (every
+  // session IS recorded as read), and the export ships a corpus whose entity
+  // list was derived from a single session. Every gate green.
+  //
+  // The rule is therefore about the failure, not the coverage. Coverage short:
+  // show the sessions that are short. No usable list at all: show the whole
+  // corpus, because there is nothing remembered to read against.
+  ['F132', 'with no usable entity list, the whole corpus is offered, not only what changed', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const second = writeLongPromptSession(root, corpus.cwd, 'PROSE-FROM-THE-SESSION-ALREADY-READ');
+
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(scan.code, 0, scan.out);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    assert.equal(
+      runCli([
+        'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+        '--entities', path.join(root, 'ents.json'),
+      ], CORPUS_USER_ENV).code,
+      0,
+    );
+
+    // The hand edit: the list goes, the record of what was read stays.
+    const dictFile = path.join(saltDir, DICTIONARY_FILENAME);
+    const dict = JSON.parse(fs.readFileSync(dictFile, 'utf8'));
+    assert.ok(Object.keys(dict.sessions).length >= 2, 'the record must survive the edit to prove anything');
+    fs.writeFileSync(dictFile, JSON.stringify({ ...dict, entities: [] }, null, 2), 'utf8');
+    // ...and one session changes, so coverage is short by exactly one and the
+    // "show whatever is uncovered" answer is available and wrong.
+    appendTurn(root, second, corpus.cwd, 'PROSE-TYPED-AFTER-THE-LAST-READ');
+
+    const refused = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.out, /semantic pass has not run/, `wrong refusal: ${refused.out}`);
+
+    const candidates = fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8');
+    assert.ok(candidates.includes('PROSE-TYPED-AFTER-THE-LAST-READ'), 'the changed session must be offered');
+    assert.ok(
+      candidates.includes('KEEP-THIS-STRING-FORM-PROMPT'),
+      'a list written from the changed session alone would cover a corpus nobody re-read',
+    );
+    assert.doesNotMatch(candidates, /not in this file/, 'nothing is omitted when there is no list to build on');
+  }],
 ];
 
 export function selftest() {

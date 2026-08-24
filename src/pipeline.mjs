@@ -645,18 +645,24 @@ export async function runExport(flags, env) {
 
   const semantic = checkSemanticPass(tier1, coverage);
   if (!semantic.ok) {
-    // Which sessions go in front of the reader.
+    // Which sessions go in front of the reader, decided by WHICH failure this
+    // is rather than by what is uncovered.
     //
-    //   uncovered only   the ordinary repeat run, and the whole economic
-    //                    argument: 915 KB of prose becomes the handful of
-    //                    sessions that changed.
-    //   everything       when the run has no usable entity list at all, so
-    //                    there is nothing remembered to read against and a
-    //                    file holding a few sessions would be a dead end.
-    //                    `--full` reaches this by marking every session
-    //                    uncovered, so it needs no branch of its own.
+    //   uncovered only   coverage is short and the list is fine: the ordinary
+    //                    repeat run, and the whole economic argument. 915 KB of
+    //                    prose becomes the handful of sessions that changed.
+    //                    `--full` arrives here with every session uncovered, so
+    //                    it needs no branch of its own.
+    //   everything       there is no usable entity list at all, so there is
+    //                    nothing remembered to read against. Showing only what
+    //                    changed here is the trap: with the entities deleted by
+    //                    hand and the session record kept, the reader would be
+    //                    handed one session, write a list from it, and the next
+    //                    run would export the whole corpus against it with
+    //                    every gate green, because every session IS recorded as
+    //                    read.
     const shown = new Set(uncovered.map((s) => s.id));
-    const showAll = shown.size === 0;
+    const showAll = semantic.why !== 'uncovered';
     const chunks = perSession
       .filter((s) => showAll || shown.has(s.id))
       .flatMap((s) => s.chunks);
