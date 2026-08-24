@@ -61,6 +61,42 @@ export function userDenyPatterns() {
 }
 
 /**
+ * A salt directory that silently has none of the person's own deny rules.
+ *
+ * The documented way to run "as if for the first time" is a fresh `--salt-dir`,
+ * and denied.json lives IN the salt directory, so the fresh run loads zero
+ * per-person rules. Nothing announces that. This module's own header names the
+ * cost: the directory named after a real person HAS a git remote, so without
+ * its token the proposed tier flips from exclude to redact and a private
+ * workspace is offered for export, with every gate green — no gate knows a rule
+ * was ever supposed to exist. It is the one configuration where the person
+ * believes they are protected and is not.
+ *
+ * A warning and not a refusal, and the condition is deliberately narrow. A
+ * genuinely first-ever run has no denied.json anywhere and must not be blocked
+ * or nagged; warning there would put this line on every first run of every
+ * install, which is §F7's cry-wolf failure. It fires only where the person is
+ * demonstrably protected in the default directory and not in this one.
+ *
+ * @param {string} saltDir the directory actually in use
+ * @param {?string} defaultDir where deident would have looked without --salt-dir
+ * @returns {?string} one warning line, or null
+ */
+export function missingDenyWarning(saltDir, defaultDir) {
+  if (typeof defaultDir !== 'string' || defaultDir.length === 0) return null;
+  if (path.resolve(saltDir) === path.resolve(defaultDir)) return null;
+  const here = path.join(saltDir, DENIED_USER_FILENAME);
+  if (fs.existsSync(here)) return null;
+  const fallback = path.join(defaultDir, DENIED_USER_FILENAME);
+  if (!fs.existsSync(fallback)) return null;
+  return (
+    `${saltDir} has no ${DENIED_USER_FILENAME}, so none of your own deny rules are loaded, ` +
+    `while ${fallback} has some. Directories you expect to be excluded will be offered for export ` +
+    `and no check will say so. Copy it first: cp "${fallback}" "${here}"`
+  );
+}
+
+/**
  * Read the rules from the salt directory.
  *
  * Missing is the normal case and means the shipped lists only. Malformed

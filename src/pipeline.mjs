@@ -80,7 +80,7 @@ import {
 import { writeZip, readZipFile, safeUnlink } from './output/zip.mjs';
 import { writePreview } from './output/preview.mjs';
 import { EXAMPLES_PER_REPORT, MIN_REPLAY_MATCH_CHARS } from './retain/constants.mjs';
-import { loadUserDeny, setUserDeny } from './policy/userdeny.mjs';
+import { loadUserDeny, setUserDeny, missingDenyWarning } from './policy/userdeny.mjs';
 import {
   loadDictionary,
   saveDictionary,
@@ -111,6 +111,32 @@ import {
  * path.resolve is inside the try because it reads process.cwd() itself for a
  * relative argument, so `--out ./here` lands on the same corner.
  */
+/**
+ * Load the person's own deny rules, and say so when this run has none.
+ *
+ * One helper rather than a check at each command, because all three commands
+ * that classify a workspace route through here and the failure it guards is
+ * silent in every one of them. See missingDenyWarning.
+ *
+ * `defaultSaltDir` is called only when --salt-dir was given, and its throw is
+ * swallowed: on a machine with no HOME, naming --salt-dir is the documented fix
+ * for that, so the run must not then fail inside a warning about it.
+ */
+function applyUserDeny(flags, env, saltDir) {
+  const rules = loadUserDeny(saltDir);
+  if (flags.saltDir !== null) {
+    let fallback = null;
+    try {
+      fallback = defaultSaltDir(env);
+    } catch {
+      fallback = null;
+    }
+    const warning = missingDenyWarning(saltDir, fallback);
+    if (warning !== null) report.renderWarning(warning);
+  }
+  setUserDeny(rules);
+}
+
 export function resolveOutDir(flags) {
   let resolved;
   try {
@@ -173,7 +199,7 @@ export async function runScan(flags, env) {
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
   // the very directory it exists to protect.
-  setUserDeny(loadUserDeny(saltDir));
+  applyUserDeny(flags, env, saltDir);
   const corpus = resolveCorpus(env, flags.root);
 
   const loaded = surveyCorpus(corpus, flags);
@@ -339,7 +365,7 @@ export async function runReview(flags, env) {
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
   // the very directory it exists to protect.
-  setUserDeny(loadUserDeny(saltDir));
+  applyUserDeny(flags, env, saltDir);
   const corpus = resolveCorpus(env, flags.root);
   const loaded = surveyCorpus(corpus, flags);
   const reviewPath = path.join(outDir, REVIEW_FILENAME);
@@ -539,7 +565,7 @@ export async function runExport(flags, env) {
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
   // the very directory it exists to protect.
-  setUserDeny(loadUserDeny(saltDir));
+  applyUserDeny(flags, env, saltDir);
   // Read here rather than at step 11, so a dictionary somebody broke while
   // hand-editing refuses in the first second instead of after the corpus has
   // been read, which is more than ten minutes on a few hundred sessions.

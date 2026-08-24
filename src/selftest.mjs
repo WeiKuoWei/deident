@@ -6516,6 +6516,57 @@ const FIXTURES = [
     assert.ok(!fs.existsSync(path.join(repo, indexNames[0])), 'the occurrence index was written into the repository');
   }],
 
+  // F152 - a fresh salt directory silently drops the person's OWN deny rules.
+  //
+  // The documented way to run "as if for the first time" is a new --salt-dir,
+  // and denied.json lives in the salt directory. So the fresh run loads zero
+  // per-person rules: the directory named after a real person HAS a git remote,
+  // so without its token the proposed tier flips from exclude to redact and the
+  // private workspace is offered for export. Every gate stays green, because no
+  // gate knows a rule was ever supposed to exist.
+  //
+  // A warning rather than a refusal: a genuinely first-ever run has no default
+  // denied.json either and must not be blocked. The warning fires only where the
+  // person is demonstrably protected somewhere else and not here.
+  ['F152', 'a salt directory with no denied.json is named when the default one has rules', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const home = path.join(root, 'home');
+    writeCorpus(root);
+    fs.mkdirSync(path.join(home, '.deident-private'), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, '.deident-private', 'denied.json'),
+      // Fabricated. SHAPE: one deny token naming a directory segment, which is
+      // the commonest thing in a real denied.json.
+      JSON.stringify({ tokens: ['auditor-notes'] }),
+      'utf8',
+    );
+    // DEIDENT_SALT_DIR blanked, because defaultSaltDir reads it before HOME and
+    // this machine may have it set.
+    const env = { ...CORPUS_USER_ENV, HOME: home, USERPROFILE: home, DEIDENT_SALT_DIR: '' };
+
+    const fresh = runCli(['scan', '--root', root, '--out', out, '--salt-dir', path.join(root, 'fresh')], env);
+    assert.equal(fresh.code, 0, fresh.out);
+    assert.match(fresh.out, /denied\.json/, `the fresh salt directory was not flagged: ${fresh.out}`);
+
+    // The default salt directory itself must never warn about itself.
+    const normal = runCli(['scan', '--root', root, '--out', out], env);
+    assert.equal(normal.code, 0, normal.out);
+    assert.ok(!/denied\.json/.test(normal.out), `the default salt directory warned about itself: ${normal.out}`);
+
+    // And a machine with no rules anywhere is a genuine first run, not a
+    // downgrade. Warning there is §F7's cry-wolf failure: the message would
+    // appear on every first run of every install and be trained away before it
+    // ever mattered.
+    const bare = path.join(root, 'bare-home');
+    fs.mkdirSync(bare, { recursive: true });
+    const virgin = runCli(
+      ['scan', '--root', root, '--out', out, '--salt-dir', path.join(root, 'fresh2')],
+      { ...env, HOME: bare, USERPROFILE: bare },
+    );
+    assert.equal(virgin.code, 0, virgin.out);
+    assert.ok(!/denied\.json/.test(virgin.out), `warned with no rules to lose: ${virgin.out}`);
+  }],
 ];
 
 export function selftest() {

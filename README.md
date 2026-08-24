@@ -154,7 +154,7 @@ diff and keep, and a prompt sequence cannot be reviewed by a second person.
 | `--apply` | `triage` | Merge a verdicts file into `review.md` instead of writing the triage file. Needs `--verdicts`. |
 | `--verdicts <file>` | `triage` | The verdicts file to apply. `verdict` is `drop` or `unsure`; `keep` is refused, because a triage verdict may only ever move a session toward `drop`. |
 | `--out <path>` | all | Output directory. Default: the current directory. |
-| `--salt-dir <path>` | all | Override `~/.deident-private`. The salt, your saved tier decisions and the remembered entity dictionary live here. |
+| `--salt-dir <path>` | all | Override `~/.deident-private`. The salt, your saved tier decisions, the remembered entity dictionary, your own `denied.json` and the occurrence index all live here. Pointing this at an empty directory is how you start over completely, and **copy `denied.json` across first**: without it none of your own deny rules load, so a directory you expect to be excluded is proposed at `redact` with every check green. deident warns when the directory in use has no `denied.json` and the default one does. |
 | `--html` | `review` | Write one self-contained `review.html`. Cannot be combined with `--entity` or `--session`. |
 | `--entity <ID>` | `review` | Print the occurrences of one entity. |
 | `--session <id>` | `review` | Print one full redacted transcript. |
