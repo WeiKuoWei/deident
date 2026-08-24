@@ -1,9 +1,12 @@
 // Per-person deny rules, loaded from beside the salt and never committed.
 //
 // The shipped deny lists can only name things that are true of the AGENT: a
-// directory called `private`, a file called `credentials.json`, the memory
-// store the harness writes. Everything else is one machine's: a dictation
-// app, an immigration folder, a directory named after a real person.
+// directory called `private`, a file called `credentials.json`, `MEMORY.md`.
+// Everything else is one machine's: a dictation app, an immigration folder, a
+// directory named after a real person, and the names a given user gives their
+// own memory files. The shipped list recognises one memory-file convention and
+// nobody else's, which is why this file is where a second user's memory
+// filenames go.
 //
 // Those were in the repository until 2026-08-23. That is a disclosure in a
 // shared repo and dead weight for every other user, and deleting them was not

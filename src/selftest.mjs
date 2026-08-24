@@ -6203,6 +6203,41 @@ const FIXTURES = [
     assert.equal(overmatch.out, 'PERSON_04天要下雨', 'the CJK over-match is a known limit, not something to silently fix here');
     assert.equal(overmatch.spans[0].cjk, true, 'and it must still be flagged');
   }],
+
+  // F146 - the agent-memory deny-list matches FILENAMES, and it knows one
+  // naming convention: MEMORY.md plus reference_/feedback_/project_/user_*.md,
+  // which is the author's own memory-index layout rather than a Claude Code
+  // universal. Two source comments asserted the opposite, and nothing in
+  // README, docs, SKILL.md or the terminal said it at all, so a second user
+  // whose memory files are named otherwise got an archive, a manifest and a
+  // green residue line with their harness-injected private notes riding along
+  // as ordinary prose.
+  //
+  // Words rather than code, because the machinery is already complete: the
+  // primary channel is a <system-reminder> span and INJECTED_SPANS drops every
+  // one of those whatever it is called. What is left is a memory file a tool
+  // READ for you, and the fix for that is one token in denied.json.
+  ['F146', 'the agent-memory deny-list says which filenames it knows, at the moment of export', () => {
+    const block = limitLines({}).join(NL);
+    assert.match(block, /agent memory a tool READ for you/, 'the limit is stated nowhere the person hits it');
+    assert.match(block, /denied\.json/, 'the disclosure names no remedy the person can run');
+
+    // Pinned here so the disclosure and the list cannot drift. Fabricated
+    // names. The SHAPE: one file using a recognised prefix, the index file
+    // itself, and one ordinary name a different user would plausibly choose.
+    assert.equal(deniedReason('reference_local_setup.md'), 'reference_local_setup.md');
+    assert.equal(deniedReason('MEMORY.md'), 'MEMORY.md');
+    assert.equal(
+      deniedReason('brain/what-i-know-about-people.md'),
+      null,
+      'a memory file under any other name ships as ordinary prose, which is the thing to disclose',
+    );
+
+    // And the same sentence is in README, because the terminal block is one
+    // line and a person deciding what to put in denied.json needs the list.
+    const readme = fs.readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8');
+    assert.match(readme, /Claude Code universal/, 'README still implies the list is universal');
+  }],
 ];
 
 export function selftest() {

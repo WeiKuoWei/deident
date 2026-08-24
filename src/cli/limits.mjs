@@ -31,6 +31,14 @@ export const ALWAYS = Object.freeze([
   // password and a private key body all have a sweep or a deny rule now, and
   // cli-ux §6 says a disclosure hiding an implemented control is worse than
   // either honest option.
+  // The deny-list that catches agent memory matches FILENAMES, and it knows one
+  // naming convention. Harness injections are stripped whatever they are
+  // called, so the residual exposure is narrower than it sounds and the line
+  // says which case it is: a memory file a TOOL read, under a name this list
+  // has never heard of.
+  'agent memory a tool READ for you, under a filename deident does not know: only',
+  '  MEMORY.md and reference_/feedback_/project_/user_*.md are recognised, which is',
+  '  one person\'s naming convention. Put your own in denied.json beside the salt',
   'a credential with no listed vendor prefix and no label beside it. The 0 secrets',
   '  row above means "none of the shapes it knows", not "no secrets", and the',
   '  semantic pass never reads tool output, so a key a command printed for you is',

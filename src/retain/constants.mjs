@@ -140,8 +140,15 @@ export const CANDIDATE_BATCH_CHARS = 120_000;
 // machine-specific belongs in DENIED_USER_FILENAME beside the salt, where it
 // is per-person by construction and is never committed.
 export const DENIED_CONTENT = Object.freeze([
-  // The agent's own memory store, whatever a given user keeps in it.
+  // The index file the harness writes. This one really is the agent's.
   /(^|[^a-z])MEMORY[.]md/i,
+  // The second pattern is NOT a Claude Code universal, and the line above it
+  // used to say it was. It is one user's memory-index taxonomy. Kept because
+  // it is a filename test rather than a person's name, so it discloses nothing
+  // and costs nothing when it does not match, but a second user whose memory
+  // files are named otherwise gets none of this and has to say so in
+  // DENIED_USER_FILENAME. The limits block prints that at the moment of
+  // export, because a limit stated in a source comment is not a disclosure.
   /(reference|feedback|project|user)_[a-z0-9_]+[.]md/i,
   // A dotted directory whose own name says it is private.
   /[.][a-z0-9-]{2,24}-private[/\\]/i,

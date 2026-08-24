@@ -399,6 +399,17 @@ prompt, that text is prose. Only the semantic pass can catch what is inside it,
 and it will only catch the identities it recognises. Quoted third-party writing
 survives as writing.
 
+**The agent-memory deny-list matches filenames, and it knows one naming
+convention.** `MEMORY.md`, and files named `reference_*.md`, `feedback_*.md`,
+`project_*.md`, `user_*.md`. That is one person's memory-index layout, not a
+Claude Code universal. Harness injections inside `<system-reminder>` spans are
+stripped whatever they are called, so the gap is narrower than it sounds: it is
+a memory file a tool **read** for you, under any other name, which ships as
+ordinary prose. Put your own memory filenames in `~/.deident-private/denied.json`
+beside the salt: a JSON array of regex strings, or
+`{"patterns": [...], "tokens": [...]}`. It is never committed, and a malformed
+one refuses the export rather than running with none of your rules.
+
 **Fragments of an entity survive.** Tool results are capped head-and-tail, and a
 cap can land in the middle of an email address or a name. The remaining fragment
 matches no spelling, so neither the substituter nor the scan sees it.
