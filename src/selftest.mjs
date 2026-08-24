@@ -4152,6 +4152,61 @@ const FIXTURES = [
     walk(root);
     assert.deepEqual(offenders, [], `POSIX-only shell syntax: ${offenders.join(' | ')}`);
   }],
+
+  // F112 - the docs handed to the team carried the author's real username.
+  //
+  // `C:\Users\devuser\projects\ops-handover\private` and
+  // `C:/Users/devuser/.claude/projects` are provenance ("these figures come from
+  // this corpus"), so the sentences stay and only the name goes. cli-ux §9
+  // already settled the spelling: `C:\Users\<you>\.claude\projects`.
+  //
+  // Two costs, and the second is the one that matters. A reader on macOS
+  // cannot follow a path that exists on one machine. And a de-identification
+  // tool shipping its author's home directory in its own documentation is the
+  // demonstration that the discipline is not applied here.
+  //
+  // Scoped to the files the team reads as documentation: docs/, README.md and
+  // the skill. BRIEF.md and PLAN.md carry the same shape 21 times inside §4
+  // measurement tables where the path form IS the datum being reported; those
+  // are the owner's spec to edit, not a portability fix, and they are named in
+  // the handover rather than changed here.
+  ['F112', 'no shipped document carries a real home directory from one machine', () => {
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    // Every absolute home-path shape the corpus actually spells (BRIEF §4.6),
+    // plus the two POSIX ones a teammate's machine produces. The captured
+    // group is the user segment, and the only accepted value is a placeholder.
+    const SHAPES = [
+      new RegExp('[A-Za-z]:[' + BS + BS + '/]Users[' + BS + BS + '/]([^\\s' + BS + BS + '/`"|)]+)', 'g'),
+      /\/c\/Users\/([^\s\\/`"|)]+)/g,
+      /(?:^|[\s`"(])\/(?:Users|home)\/([^\s\\/`"|)]+)/g,
+    ];
+    const files = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith('.md')) files.push(p);
+      }
+    };
+    walk(path.join(repo, 'docs'));
+    walk(path.join(repo, 'skills'));
+    files.push(path.join(repo, 'README.md'));
+
+    const offenders = [];
+    for (const file of files) {
+      const lines = fs.readFileSync(file, 'utf8').split(NL);
+      lines.forEach((line, i) => {
+        for (const re of SHAPES) {
+          re.lastIndex = 0;
+          for (const m of line.matchAll(re)) {
+            if (m[1].startsWith('<')) continue;
+            offenders.push(`${path.basename(file)}:${i + 1} ${m[0]}`);
+          }
+        }
+      });
+    }
+    assert.deepEqual(offenders, [], `real home paths in shipped docs: ${offenders.join(' | ')}`);
+  }],
 ];
 
 export function selftest() {
