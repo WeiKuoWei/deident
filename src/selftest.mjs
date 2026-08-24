@@ -5746,6 +5746,68 @@ const FIXTURES = [
       `the settings file was read, so nothing should say it was not: ${seeded.warnings.join(' | ')}`,
     );
   }],
+
+  // F138 - the glued-residue rows are the disclosure a person can act on: the
+  // count, the spelling, an excerpt, and "Decide per row". gluedWorthy gated
+  // them on `spelling.length >= GLUED_MIN`, so two users with identical corpora
+  // and identical leaks got different exports, and the ones who got only an
+  // aggregate count beside a green check were the ones with three- and
+  // four-character given names.
+  //
+  // The flood that justified the length gate is a class of NEIGHBOUR, not a
+  // class of length. Re-measured over ~20 MB of session logs, per seed,
+  // counting only the occurrences the boundary rule refused, split by whether
+  // the neighbour that actually blocks is a letter:
+  //
+  //   3 chars  letter-blocked median 412, worst 8,371 | sep/digit median 20, worst 52
+  //   4 chars  letter-blocked median  46, worst   113 | sep/digit median  4, worst 26
+  //
+  // One to two orders of magnitude, and the small class is where the real leaks
+  // are: this run surfaced a person's name on an identity-document filename,
+  // refused because an underscore preceded a four-character spelling. `ray`
+  // inside `array` stays out on the letter test, which is BRIEF §4.5 row 4 and
+  // is still pinned in F125.
+  ['F138', 'a short username glued to a separator or a digit gets a row, and a short name inside a word does not', () => {
+    // Fabricated. The SHAPE each value exists to preserve:
+    //   lok               a three-character romanised given name, the length
+    //                     class the old gate excluded outright
+    //   Miho              a four-character romanised given name
+    //   wei, anna         the same two lengths again, chosen because each sits
+    //                     inside an ordinary English word the way `ray` sits
+    //                     inside `array`
+    //   st_lok_prod       an underscore-joined cloud resource name
+    //   kv-Miho0123       a hyphen-and-digit resource name
+    //   HKID_MihoYan.jpg  an identity-document filename, which is the shape the
+    //                     refused real leak had
+    const short = buildTable([
+      { id: 'PERSON_01', kind: 'person', tier: 0, pseudonym: 'PERSON_01', spellings: ['lok'] },
+    ]);
+    const lok = residualScan('deploy st_lok_prod now', short, new Set());
+    assert.equal(lok.gluedHits.length, 1, 'a three-character username glued to underscores got no row');
+    assert.equal(lok.gluedHits[0].count, 1);
+    assert.ok(lok.gluedHits[0].excerpt.includes('lok'), 'the row carries an excerpt to judge it by');
+    // A report, never a gate: §4.5 row 4 makes these correct non-matches.
+    assert.equal(lok.entityCount, 0, 'a glued occurrence must not fail the export');
+
+    const four = buildTable([
+      { id: 'PERSON_02', kind: 'person', tier: 0, pseudonym: 'PERSON_02', spellings: ['Miho'] },
+    ]);
+    const digits = residualScan('kv-Miho0123 and HKID_MihoYan.jpg', four, new Set());
+    assert.equal(digits.gluedHits.length, 1, 'a four-character username on a filename got no row');
+    assert.equal(digits.gluedHits[0].count, 2, 'the digit run and the camel-hump filename are both occurrences');
+
+    // The other direction, which is what the length gate was really protecting
+    // against. Both of these abut a LETTER, so both stay out and the report
+    // stays something a person finishes reading.
+    const inWord = buildTable([
+      { id: 'PERSON_03', kind: 'person', tier: 0, pseudonym: 'PERSON_03', spellings: ['wei'] },
+    ]);
+    assert.equal(residualScan('the weight of it', inWord, new Set()).gluedHits.length, 0);
+    const anna = buildTable([
+      { id: 'PERSON_04', kind: 'person', tier: 0, pseudonym: 'PERSON_04', spellings: ['anna'] },
+    ]);
+    assert.equal(residualScan('the annals of the sample', anna, new Set()).gluedHits.length, 0);
+  }],
 ];
 
 export function selftest() {
