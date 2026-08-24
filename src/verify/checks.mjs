@@ -204,7 +204,7 @@ export function checkSemanticPass(tier1, coverage = null) {
  * The gate used to be all-or-nothing: supplying `--entities` satisfied it for
  * the whole corpus, however much of that corpus anybody had actually read.
  * With a remembered dictionary that is not good enough, because a repeat run
- * could satisfy it having read nothing new at all — and the corpus grows
+ * could satisfy it having read nothing new at all, and the corpus grows
  * between runs, which is the ordinary case rather than the exotic one.
  *
  * So the accounting is per session. A session is covered when its prose has

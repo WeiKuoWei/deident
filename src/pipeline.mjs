@@ -931,7 +931,7 @@ function writeExportMap(entries, outPath) {
  *
  * The union rather than the file alone, and the direction is deliberate. A
  * reader answering a repeat run writes a list about the sessions they were
- * just shown — a handful — and applying only that list would drop every
+ * just shown (a handful), and applying only that list would drop every
  * identity the earlier runs established while every gate stayed green, because
  * the residual scan can only look for what it was given (§F1). Dropping an
  * identity on purpose is still possible and is a hand edit of the dictionary,

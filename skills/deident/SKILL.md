@@ -146,6 +146,36 @@ That writes `deident-candidates.txt`: the session prose after the tool has
 already replaced usernames, paths, git identity, git remotes, emails and MCP
 server names. What remains is what needs a reader.
 
+**A repeat run reads far less than the first one.** What the person declared is
+remembered in `~/.deident-private/entities.json`, beside the salt, along with a
+content hash of every session that has already been put in front of a reader.
+So this file carries only the sessions that are new or that changed, and says
+so in its own header. Measured on a synthetic 60-session corpus with three
+sessions added later: 211.0 KB on the first read, 12.2 KB on the second.
+
+Three things follow, and the person should hear all three:
+
+- **`--entities` is optional once the dictionary exists.** Absent, the
+  dictionary supplies the list. Present, the file wins on the identities it
+  names and the dictionary supplies the rest, so a short list written about
+  three new sessions does not drop the forty identities the earlier runs
+  established. To remove an identity on purpose, edit the dictionary.
+- **The dictionary is a plaintext file the person may edit by hand.** Adding a
+  spelling, or deleting an entry that was wrong, is an ordinary thing to do and
+  the file states its own rules at the top. It is local only, it pairs real
+  spellings with real session ids, and it must never be shared or committed:
+  treat it the way you treat `review.md`.
+- **`--full` re-reads the whole corpus.** Use it when the person has changed
+  their mind about what counts as an identity, not routinely. It refuses the
+  export, writes the complete `deident-candidates.txt`, and the next run
+  supplies the list as usual. It cannot be combined with `--entities`.
+
+If the export refuses naming sessions that "have not been through a semantic
+pass", that is not a bug and not a corpus problem: those sessions are new, or
+their content changed since they were read, so they are the ones now in the
+candidates file. Read them, add anything they turned up to the entity list, and
+run the export again.
+
 It is a PROSE extract, and the export substitutes over everything it keeps, so
 the file shows you less than what ships. Measured 2026-08-24: a name-part check
 over the candidates file found 8 uncovered surnames and the same check over the
@@ -290,6 +320,10 @@ session.
   their repository.
 - **Sessions written since the last `scan` are held back**, counted as
   `never reviewed`. Re-run `scan` to decide them. Opt-in has to mean opt-in.
+- **A session is offered again when a setting changes what it retains**, not
+  only when the person types into it. Moving a tier, or adding a directory back
+  with `--include-denied`, changes the prose a reader would see, so it is not
+  covered by the last read.
 
 ## What it does not protect against
 

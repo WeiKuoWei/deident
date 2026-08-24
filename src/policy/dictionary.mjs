@@ -2,7 +2,7 @@
 //
 // Measured on the live corpus (2026-08-24): 205 sessions, 915 KB of prose in
 // deident-candidates.txt. Reading it is the only stage that scales with corpus
-// size, and every run started from zero — so a second run days later, with a
+// size, and every run started from zero, so a second run days later, with a
 // handful of new sessions in it, cost the same as the first for almost no new
 // information. This file is what makes the second run cheap: the entity list
 // the owner wrote, plus a per-session record of what has already been put in
@@ -56,7 +56,7 @@ const EMPTY = Object.freeze({
  * REFUSES, the way loadUserDeny refuses: silently continuing with no
  * dictionary means the entity list is empty and every session reports as never
  * read, which reads to the person as a corpus problem rather than as a broken
- * file — and is how somebody ships an export they believed was covered.
+ * file, and is how somebody ships an export they believed was covered.
  *
  * @returns {Readonly<{path, exists, entities: object[], sessions: object}>}
  *   `entities` are the DECLARED spellings, in the shape a person typed them
@@ -154,7 +154,7 @@ function at(text, err) {
  *
  * Two entries that share any spelling are the same identity and their
  * spellings union; two that share nothing stay separate. Merging by position,
- * or by first spelling, mints two pseudonyms for one person — the failure
+ * or by first spelling, mints two pseudonyms for one person: the failure
  * entities/tier1.mjs already warns the operator about ("One identity per
  * entry, or one person gets two pseudonyms and the prose stops making sense").
  * A dictionary turns that from a one-run mistake into a permanent one.
@@ -238,7 +238,11 @@ function fold(s) {
   return s.trim().toLowerCase();
 }
 
-/** First-wins de-duplication, folded, so `GitRoll` and `gitroll` both survive once each. */
+/**
+ * First-wins de-duplication on the EXACT string, so `GitRoll` and `gitroll`
+ * both survive: they are one identity, and the substituter needs each written
+ * form to match what is actually in the text (§4.5).
+ */
 function dedupe(spellings) {
   const seen = new Set();
   const out = [];
@@ -267,8 +271,13 @@ function dedupe(spellings) {
 export function proseHash(chunks) {
   const h = createHash('sha256');
   for (const chunk of chunks) {
+    // The length before the text, rather than a separator character. Without
+    // one, ["ab", "c"] and ["a", "bc"] hash identically and a session that only
+    // re-split its turns would read as unchanged; with a literal separator, the
+    // separator is one more character that has to survive every editor and
+    // escape layer between here and the file.
+    h.update(String(chunk.length));
     h.update(chunk);
-    h.update(' ');
   }
   return h.digest('hex').slice(0, 32);
 }

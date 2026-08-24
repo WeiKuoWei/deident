@@ -448,3 +448,128 @@ byte-identical output. Nothing prompts twice: tier decisions live in
 command with no review step unless a new workspace appeared.
 
 If a new workspace did appear, `export` refuses (see §8) rather than guessing.
+
+### 11b. `~/.deident-private/entities.json`, the remembered dictionary
+
+Stage 3 is the only stage whose cost grows with the corpus: 205 sessions and
+915 KB of prose, measured 2026-08-24. A second run days later has a handful of
+new sessions in it and must not cost the same as the first.
+
+```json
+{
+  "_note": "deident remembers the identities you have already declared, and which sessions you have already read …",
+  "version": 1,
+  "updated": "2026-08-24T09:14:02.117Z",
+  "entities": [
+    { "kind": "person", "spellings": ["Grace Hopper", "Grace"], "confidence": "high" }
+  ],
+  "sessions": {
+    "a3f9…": { "hash": "6b1c…", "read": "2026-08-24T09:14:02.117Z" }
+  }
+}
+```
+
+Plaintext, deliberately, and beside the salt. It is local-only on the owner's
+own machine, and plaintext is what lets them open it and add an entry by hand.
+**Hand-editing is a first-class use.** So the shape is stable, the file states
+its own rules in `_note`, and a refusal names the line for a syntax error and
+the entry index for a schema one.
+
+`entities` is the same shape as `deident-entities.json`, so a row can be
+copied either way. It holds the spellings **as typed**, never the escaping
+variants deident expands them into: a hand-editor shown a backslash-doubled
+twin of a string they never wrote cannot act on it.
+
+`sessions` records what has been put in front of a reader. The hash is taken
+over the session's **retained prose before tier-0 substitution**, because the
+cleaned text carries pseudonyms and `--namespace` takes a fresh value every
+run, so a hash of the cleaned text would report every session as changed every
+time while looking like it worked.
+
+Rules:
+
+- **Merged by identity, never by position.** Two entries that share any
+  spelling are one identity and their spellings union, transitively and
+  case-insensitively. Two that share nothing stay separate. Merging any other
+  way mints two pseudonyms for one person.
+- **`--entities` is optional once this file exists.** Absent, the dictionary
+  supplies the list. Present, the file wins on the identities it names and the
+  dictionary supplies the rest. Dropping an identity on purpose is a hand edit
+  of this file, not an omission from the flag's file: a reader answering a
+  repeat run writes about the handful of sessions they were shown, and applying
+  only that would drop every identity the earlier runs established with every
+  gate green.
+- **Missing is a first run. Unreadable or malformed refuses.** Continuing with
+  no dictionary means an empty entity list and every session reported as never
+  read, which looks like a corpus problem rather than a broken file.
+- **It is memory, never output.** Not an archive entry, not in the output
+  directory, not in the repository. It pairs real spellings with real session
+  ids, so treat it the way you treat `review.md` and `export-map.txt`.
+
+### 11c. The semantic-pass gate is per session
+
+The gate used to be all-or-nothing: supplying `--entities` satisfied it for the
+whole corpus, however much of that corpus anybody had read. A remembered
+dictionary makes that insufficient, because a repeat run could satisfy it
+having read nothing new.
+
+**Every session in an export must have been through a semantic pass, in this
+run or in a recorded earlier one.** A session that is new, or whose retained
+prose changed since it was read, has not been, and the export refuses naming
+it:
+
+```
+  ✗ Refusing to export: 3 sessions have not been through a semantic pass
+
+      a3f9…   new since the last read
+      7c02…   new since the last read
+      1de4…   changed since it was last read
+
+    A session is covered once its prose has been put in front of a reader and
+    the answer is remembered. Exporting one that never was would mean claiming
+    a semantic pass covered text nobody has seen.
+
+    The other 202 sessions are covered and were left out of the file below.
+    The tier-0-cleaned prose to read is at:  deident-candidates.txt
+```
+
+This is **stricter** than the old gate, including in a direction that has
+nothing to do with the dictionary: `export --entities an-old-list.json` over a
+corpus that has grown used to ship the new sessions on the strength of a list
+written before they existed.
+
+What it checks is that deident put the prose in front of a reader, not that the
+reader read it. That is the same limit the old gate had, one session at a time
+instead of one corpus at a time.
+
+`deident-candidates.txt` then carries only the uncovered sessions, and says so
+in its own header, because the file is what a reader is handed and a short one
+has to explain why it is short:
+
+```
+# 202 more sessions are not in this file. Their content has not changed
+# since you last read them, and deident remembers what you declared then.
+# To read the whole corpus again:  deident export --full
+```
+
+The check row carries the count:
+
+```
+    semantic pass   the dictionary at ~/.deident-private/entities.json · 47 entities · 205/205 sessions read   ok
+```
+
+A session is also re-offered when the run's own settings change what it
+retains: a tier moved, or `--include-denied` added a directory back. The prose
+a reader would see is not the prose they saw last time, so it is not covered.
+
+### 11d. `--full`
+
+Ignores the record and puts the whole corpus in front of a reader again, for a
+person who has changed their mind about what counts as an identity. Without it
+the only route back is deleting a file whose path they would have to be told.
+
+It refuses the export and writes the full `deident-candidates.txt`, then the
+next run supplies the list as usual. `--full` with `--entities` is a usage
+error: one says "show me everything again" and the other says "here is my
+answer", so a run carrying both would read the answer and then decline to use
+it.

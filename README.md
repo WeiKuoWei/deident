@@ -52,6 +52,42 @@ reads 915 KB, a 35x difference for the stage that decides whether a session
 ships at all. Stage 2 is optional; skipping it just means stage 3 reads
 sessions a person would have thrown out.
 
+### The funnel has a memory
+
+Stage 3 is the only stage whose cost grows with the corpus, and it used to be
+paid in full every time. What a person declared is now remembered in
+`~/.deident-private/entities.json`, beside the salt, along with a content hash
+of every session that has been put in front of a reader.
+
+So a second run reads only the sessions that are new or that changed:
+
+```
+   first run    deident-candidates.txt   211.0 KB    every session
+   days later   deident-candidates.txt    12.2 KB    three new sessions
+```
+
+(measured on a synthetic 60-session corpus; on the live 205-session one the
+first read is 915 KB.) And when nothing changed at all, stage 4 is one command
+with no reading in front of it:
+
+```
+   node deident.js export          # --entities is optional once the dictionary exists
+```
+
+The dictionary is plaintext and you may edit it by hand: add a spelling, or
+delete an entry that was wrong. It is local only, it pairs real spellings with
+real session ids, and it is never written into the archive, the output
+directory or this repository. `docs/cli-ux.md` §11b has the shape.
+
+The safety half of the same change: the gate that says a semantic pass ran is
+now **per session**. Every session in an export must have been through one, in
+this run or in a recorded earlier one, and one that is new or changed refuses
+the export by name. That is stricter than what it replaced, including for runs
+that use no dictionary at all: `export --entities an-old-list.json` over a
+corpus that has grown used to ship the new sessions on the strength of a list
+written before they existed. `deident export --full` re-reads everything, for
+when you have changed your mind about what counts as an identity.
+
 `deident` with no arguments prints usage and exits 0. **It never exports by
 default.** The default action of a tool that ships data off a machine is to show
 you what it would do.
@@ -85,12 +121,13 @@ diff and keep, and a prompt sequence cannot be reviewed by a second person.
 | `--apply` | `triage` | Merge a verdicts file into `review.md` instead of writing the triage file. Needs `--verdicts`. |
 | `--verdicts <file>` | `triage` | The verdicts file to apply. `verdict` is `drop` or `unsure`; `keep` is refused, because a triage verdict may only ever move a session toward `drop`. |
 | `--out <path>` | all | Output directory. Default: the current directory. |
-| `--salt-dir <path>` | all | Override `~/.deident-private`. The salt and your saved tier decisions live here. |
+| `--salt-dir <path>` | all | Override `~/.deident-private`. The salt, your saved tier decisions and the remembered entity dictionary live here. |
 | `--html` | `review` | Write one self-contained `review.html`. Cannot be combined with `--entity` or `--session`. |
 | `--entity <ID>` | `review` | Print the occurrences of one entity. |
 | `--session <id>` | `review` | Print one full redacted transcript. |
 | `--preview` | `export` | Write a `.diff` for inspection in your own editor instead of a zip. |
-| `--entities <file>` | `export` | Supply the tier-1 (semantic) entity list as JSON. Without it the export is refused. |
+| `--entities <file>` | `export` | Supply the tier-1 (semantic) entity list as JSON. Optional once `~/.deident-private/entities.json` holds one: absent, the dictionary supplies the list; present, the file wins on the identities it names and the dictionary supplies the rest. Without either, the export is refused. |
+| `--full` | `export` | Ignore what deident remembers you having read and put the whole corpus in front of a reader again. Refuses the export and writes the full `deident-candidates.txt`. Cannot be combined with `--entities`. |
 | `--namespace <TAG>` | `export` | Shift the pseudonym namespace, e.g. `X` gives `X_PERSON_01`. Must match `[A-Z][A-Z0-9]{0,7}`. Use it when the corpus already contains tokens of the default shape. |
 | `--skip-unclassified` | `export` | Confirm that workspaces you never gave a tier stay out. Without it, an unclassified workspace refuses the export rather than being silently dropped. |
 | `--skip-unreadable` | `scan`, `export` | Continue past a line that is not valid JSON instead of exiting 3. Each skipped line is reported. |
