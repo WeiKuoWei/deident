@@ -4317,6 +4317,12 @@ const FIXTURES = [
       assert.equal(sanitizeEntryName(name), name, `${name} is not a device name`);
     }
 
+    // The length cap runs before the trailing strip, because truncating at
+    // 120 can put a dot back on the end. Written the other way round first,
+    // which shipped exactly the name Windows was going to rewrite.
+    assert.equal(sanitizeEntryName(`${'a'.repeat(119)}. tail`), 'a'.repeat(119));
+    assert.equal(sanitizeEntryName(`aux${'.'.repeat(200)}`), '_aux');
+
     // The characters it already handled still go.
     assert.equal(sanitizeEntryName('a:b/c'), 'a_b_c');
     assert.equal(sanitizeEntryName(''), 'unnamed');

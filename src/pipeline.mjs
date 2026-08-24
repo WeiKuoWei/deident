@@ -1182,9 +1182,12 @@ function entryDir(dir, key) {
 const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 export function sanitizeEntryName(name) {
-  // Trailing dots and spaces first: Windows drops them, so `aux.` has to be
-  // recognised as the device name it will become.
-  const clean = name.replace(/[\\/:*?"<>|]/g, '_').replace(/[. ]+$/, '').slice(0, 120);
+  // Order matters, and it is the reverse of the order the rules were written
+  // in. The length cap has to run BEFORE the trailing-dot strip, because
+  // truncating at 120 can put a dot or a space back on the end; and the device
+  // test has to run after it, because `aux.` truncated or not is still the
+  // name Windows resolves to the AUX device.
+  const clean = name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120).replace(/[. ]+$/, '');
   if (clean === '') return 'unnamed';
   return WINDOWS_DEVICE_NAME.test(clean) ? `_${clean}` : clean;
 }
