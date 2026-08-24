@@ -294,6 +294,12 @@ Also carry back:
   plainly: renaming the resource before exporting is one fix, declaring the
   glued spelling itself in the entity list is another, and accepting it is a
   third. `manifest.gluedOccurrences` is the same finding as a single count.
+  A spelling shorter than five characters is a row only where nothing
+  alphabetic is glued to it (`kv-lok01`, an identity-document filename); where
+  a letter is, the occurrences are withheld, because at that length the list is
+  mostly ordinary words (`ray` inside `array`). `manifest.gluedNotListed`
+  names those spellings with their counts. An empty `gluedResidue` beside a
+  non-empty `gluedNotListed` means not examined, not clean.
 
 If the export refuses, the JSON has `ok: false` and an `error` with `reason`,
 `why` and runnable `remedies`. Act on the remedy; do not retry the same command.

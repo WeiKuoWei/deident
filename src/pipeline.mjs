@@ -1682,6 +1682,11 @@ function buildManifest(retained, decisions, serialized, residue, entities, cavea
     // reads as an accounting note, and "your username is in the archive 14
     // times" is a decision.
     gluedOccurrences: residue.scan.gluedCount ?? 0,
+    // The other half of the same finding, and the half that is silent: an
+    // empty row list beside a green residue line reads as clean, and the
+    // reason it is empty is the letter beside the spelling, not an absence of
+    // occurrences.
+    gluedNotListed: residue.scan.gluedNotListed ?? Object.freeze([]),
     // The residue line belongs beside the limits, not only in the checks
     // table: review.html and the preview print the limits block and used to
     // carry no residue figure at all.

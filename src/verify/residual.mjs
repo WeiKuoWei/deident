@@ -186,6 +186,16 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
   // boundary rule: both copies had the same bug, agreed with each other, and a
   // leak was reported as `known-entity residue: 0`.
   const glued = new Map();
+  // The occurrences gluedWorthy refused for the letter beside them, kept per
+  // spelling so the limits block can name them.
+  //
+  // renderGluedResidue returns without printing when there are no rows, so
+  // without this a three- or four-character username whose occurrences are all
+  // letter-blocked produces an empty list, and an empty list beside a green
+  // `known-entity residue 0` reads as a clean result. It is not: it is not
+  // examined. Counted here rather than re-derived later, because the only
+  // place that knows which side blocked is this sweep.
+  const notListed = new Map();
 
   for (let i = 0; i < bytes.length && entityHits.length <= 10_000; i += 1) {
     const bucket = byFirst.get(bytes[i]);
@@ -236,6 +246,8 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
             glued.set(entry.spelling, rec);
           }
           rec.count += 1;
+        } else if (entry.tier === 0 && entry.kind === 'person') {
+          notListed.set(entry.spelling, (notListed.get(entry.spelling) ?? 0) + 1);
         }
         break;
       }
@@ -278,6 +290,11 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
     escapeArtifacts,
     gluedHits,
     gluedCount: gluedHits.reduce((a, r) => a + r.count, 0),
+    gluedNotListed: Object.freeze(
+      [...notListed]
+        .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+        .map(([spelling, count]) => Object.freeze({ spelling, count })),
+    ),
     uuidCount: uuidHits.length,
     entitiesScanned: table.entries.length,
   });

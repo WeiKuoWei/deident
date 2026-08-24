@@ -5808,6 +5808,53 @@ const FIXTURES = [
     ]);
     assert.equal(residualScan('the annals of the sample', anna, new Set()).gluedHits.length, 0);
   }],
+
+  // F139 - what F138 still refuses has to be said out loud. renderGluedResidue
+  // returns without printing when there are no rows, so for a short spelling
+  // whose occurrences are all letter-blocked the reader sees the green
+  // `known-entity residue 0` line and nothing else. An absent list reads as a
+  // clean result, and the reason it is absent is the letter beside the
+  // spelling, not an absence of occurrences.
+  ['F139', 'a short spelling refused for the letter beside it is named in the limits block, not silently dropped', () => {
+    // Fabricated. SHAPE: `wei` is a three-character tier-0 person spelling (an
+    // email local part, lowercased) that sits inside ordinary English words,
+    // which is the exact population the row list refuses.
+    const table = buildTable([
+      { id: 'PERSON_01', kind: 'person', tier: 0, pseudonym: 'PERSON_01', spellings: ['wei'] },
+    ]);
+    const scan = residualScan('the weight and the weightings', table, new Set());
+    assert.equal(scan.gluedHits.length, 0, 'a letter-blocked short spelling must not become a row');
+    assert.deepEqual(
+      scan.gluedNotListed.map((r) => [r.spelling, r.count]),
+      [['wei', 2]],
+      'the occurrences the row list refused were not counted anywhere',
+    );
+
+    // And it reaches all three surfaces, because limits.mjs is the single
+    // source the terminal, the preview and review.html all render. F76 is the
+    // fixture that exists because this block once lived in three files.
+    const m = {
+      sessions: 1, workspaces: 1, userMessages: 1, zeros: [],
+      droppedByCwd: 0, emptiedSessions: 0, embedded: 2, escapeArtifacts: 0,
+      residueLine: '0 occurrences of 1 entity spellings', unknownTypes: [],
+      countOnly: { sessions: 0, workspaces: 0 },
+      gluedNotListed: [{ spelling: 'wei', count: 2 }],
+    };
+    const terminal = captureOutput(() => renderManifest(m));
+    const preview = renderPreview({
+      generated: 'now', strings: [], table: null, entities: [], manifest: m, checks: [],
+    });
+    const html = renderReviewHtml({
+      generated: 'now', workspaces: [], entities: [], sessions: [], flaggedSessions: [], manifest: m,
+    });
+    for (const [name, whole] of [['terminal', terminal], ['preview', preview], ['review.html', html]]) {
+      const at = whole.indexOf('NOT protected against');
+      assert.ok(at >= 0, `${name} has no NOT-protected block`);
+      const text = whole.slice(at);
+      assert.match(text, /wei/, `${name} does not name the spelling that was left out`);
+      assert.match(text, /not examined, not clean/, `${name} lets an empty row list read as a clean result`);
+    }
+  }],
 ];
 
 export function selftest() {

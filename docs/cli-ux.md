@@ -335,11 +335,30 @@ its name on; a tier-1 name belongs to a third party the reader cannot rename.
 Measured over the same archive, four seeds together produced 25
 boundary-refused occurrences and the scope reports 14 of them.
 
-Five characters minimum, measured rather than guessed. Over 18.8 MB of
-exported bytes, ten plausible seeds at each length: three characters gave a
-median of 643 boundary-refused occurrences and a worst case of 1,996; four
-gave 13 and 270; five gave 0 and 14, and the 14 were the leak. §7 and §F7 both
-say what happens to a check that fires constantly.
+Five characters and up is a row whatever is beside it, measured rather than
+guessed. Over 18.8 MB of exported bytes, ten plausible seeds at each length:
+three characters gave a median of 643 boundary-refused occurrences and a worst
+case of 1,996; four gave 13 and 270; five gave 0 and 14, and the 14 were the
+leak. §7 and §F7 both say what happens to a check that fires constantly.
+
+Below five, the row is earned on the NEIGHBOUR instead, because that average
+was over two populations. Re-measured over ~20 MB of session logs, splitting
+the refused occurrences by whether the character that blocks is a letter:
+three characters gave a letter-blocked median of 412 and a worst case of 8,371
+against a separator/digit median of 20 and worst of 52; four gave 46 and 113
+against 4 and 26. The flood is the letter class entirely, and the small class
+is where the leaks are (`project_<name>_notes.md`, `kv-<name>0123`,
+`HKID_<Name>Yan.jpg`). A length gate here denied the disclosure to every user
+with a three- or four-character given name, which is the common case for
+Chinese, Korean and Japanese romanisations.
+
+What the neighbour test still withholds is disclosed rather than dropped. The
+spellings and their counts go in the manifest as `gluedNotListed` and one line
+of the "NOT protected against" block names them, because
+`renderGluedResidue` prints nothing when there are no rows and an absent list
+beside a green residue figure reads as a clean result. Do not delete that line
+as redundant with this paragraph: a limit stated in a doc is not a disclosure
+at the moment of export.
 
 Both print to stderr as findings, carry `uncoveredNameParts` and
 `gluedResidue` in `--json`, and neither can fail an export. A gate on the

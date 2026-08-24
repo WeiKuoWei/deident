@@ -57,6 +57,19 @@ export function limitLines(m = {}) {
     lines.push(`${n(m.gluedOccurrences)} occurrences of your own username or git identity are joined to`);
     lines.push('  letters or digits (yourname-prod) and were left alone by the same rule');
   }
+  if (m.gluedNotListed && m.gluedNotListed.length > 0) {
+    // The rows above stop at the letter test, and renderGluedResidue prints
+    // nothing at all when there are no rows. So for a three- or
+    // four-character username whose occurrences are all letter-blocked the
+    // reader sees a green `known-entity residue 0` and an absent list, and an
+    // absent list reads as a clean result. It is not: it is not examined.
+    const total = m.gluedNotListed.reduce((a, r) => a + Number(r.count ?? 0), 0);
+    const named = m.gluedNotListed.map((r) => `"${r.spelling}"`).join(', ');
+    lines.push(`${n(total)} more occurrences of ${named} sit against a LETTER and are not`);
+    lines.push('  among those rows: under five characters that list is mostly ordinary');
+    lines.push('  words (ray inside array), so it is withheld rather than shown. No row');
+    lines.push('  here means not examined, not clean. grep the archive before you send it.');
+  }
   if (m.escapeArtifacts > 0) {
     // A match that begins immediately after an odd run of backslashes is inside
     // a JSON escape, so in the DECODED string those bytes are not the entity.
