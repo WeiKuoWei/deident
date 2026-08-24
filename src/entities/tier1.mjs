@@ -21,7 +21,6 @@ import fs from 'node:fs';
 import { RefusalError } from '../cli/errors.mjs';
 import { expandVariants, looseVariants } from './variants.mjs';
 import { rejectReason } from './seed.mjs';
-import { CANDIDATE_EXCERPT_CHARS } from '../retain/constants.mjs';
 import { residualScan, entityExamples } from '../verify/residual.mjs';
 
 export const CANDIDATES_FILENAME = 'deident-candidates.txt';
@@ -103,10 +102,24 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
     if (typeof chunk !== 'string') continue;
     const text = chunk.trim();
     if (text.length === 0) continue;
-    const key = text.slice(0, 80);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    parts.push(text.length > CANDIDATE_EXCERPT_CHARS ? `${text.slice(0, CANDIDATE_EXCERPT_CHARS)}…` : text);
+    // Dedupe on the WHOLE chunk, and write the WHOLE chunk.
+    //
+    // Both halves used to drop prose and neither was counted, while
+    // rememberShown recorded the session as read either way. Measured over a
+    // copy of the real corpus (216 depth-0 files, 87,797 prose chunks,
+    // pre-filter): 27,186 KB of prose extracted, 6,468 KB surviving a
+    // 400-character cap, so 76.2% of it never reached the only reader that
+    // can find a third-party name. 5,904 chunks exceeded the cap; the longest
+    // chunk was 938,529 characters. Separately, the key was a chunk's first 80
+    // characters and `seen` is global across sessions, so 1,590 chunks
+    // (10,443,749 characters) were discarded in full for merely OPENING like
+    // an earlier chunk they were not identical to.
+    //
+    // An exact duplicate is still dropped, and that one is safe: the reader
+    // has been shown those bytes, so the session recorded as read really was.
+    if (seen.has(text)) continue;
+    seen.add(text);
+    parts.push(text);
     parts.push('');
   }
   const prose = parts.slice(1).join(String.fromCharCode(10));

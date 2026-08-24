@@ -67,9 +67,6 @@ export const MIN_REPLAY_MATCH_CHARS = 40;
 /** How many example occurrences a refusal or a review row prints. */
 export const EXAMPLES_PER_REPORT = 5;
 
-/** Characters of tier-0-cleaned prose written to the candidates file. */
-export const CANDIDATE_EXCERPT_CHARS = 400;
-
 /**
  * Content that must not leave even when the session around it may.
  *

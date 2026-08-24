@@ -68,7 +68,7 @@ import {
 import { buildZip, readZip, readZipFile, MAX_ENTRIES } from './output/zip.mjs';
 import { renderPreview } from './output/preview.mjs';
 import { parseReview, parseSessionDrops, readSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
-import { readEntities } from './entities/tier1.mjs';
+import { readEntities, writeCandidates } from './entities/tier1.mjs';
 import { DICTIONARY_FILENAME, mergeEntities } from './policy/dictionary.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
@@ -5535,6 +5535,58 @@ const FIXTURES = [
     );
     assert.doesNotMatch(candidates, /not in this file/, 'nothing is omitted when there is no list to build on');
   }],
+
+  // F133 — the candidates file is the ONLY surface the semantic reader ever
+  // sees, and it used to truncate every chunk at 400 characters. Measured over
+  // a copy of the real corpus (216 depth-0 files, 87,797 prose chunks,
+  // pre-filter): 27,186 KB of prose extracted, 6,468 KB reaching the reader,
+  // so 76.2% of it was dropped. 5,904 chunks (6.7%) were longer than the cap
+  // and the longest was 938,529 characters. A name past the cap could not be
+  // declared, so the residual scan could not look for it and the export
+  // printed `known-entity residue 0` over a name nobody had been shown.
+  //
+  // "Ingrid Halvorsen" is fabricated. The shape is what the fixture needs: a
+  // two-word Latin personal name, which is exactly the class §F1 says has no
+  // regex and can only come from the reader.
+  ['F133', 'a name 900 characters into one prose chunk reaches the candidates file', () => {
+    const file = path.join(tmpdir(), 'candidates.txt');
+    const marker = 'Ingrid Halvorsen';
+    const prefix = 'the session rambles on and on. '.repeat(30).slice(0, 900);
+    const chunk = `${prefix}${marker} reviewed it.`;
+    assert.equal(chunk.indexOf(marker), 900, 'the fixture must plant the name past any excerpt cap');
+
+    const written = writeCandidates([chunk], file);
+    const body = fs.readFileSync(file, 'utf8');
+    assert.ok(body.includes(marker), 'a name past the excerpt cap never reached the reader');
+    assert.ok(body.includes(chunk), 'the whole chunk goes, not a window of it: a window can split a name');
+    assert.equal(written.chars, Buffer.byteLength(body, 'utf8'), 'the reported size must be the file');
+  }],
+
+  // F134 — the second loss, and the silent one. The dedupe key was a chunk's
+  // first 80 characters and the `seen` set is global across sessions, so a
+  // chunk that merely OPENED like an earlier one was discarded whole.
+  // Measured on the same corpus copy: 1,590 chunks (10,443,749 characters)
+  // were dropped by that key while not being byte-identical to the chunk that
+  // claimed it. Session prose opens the same way constantly — a pasted error,
+  // a repeated instruction, the same command re-run — and the names are in
+  // what comes after.
+  //
+  // Both names are fabricated; the shape is two different third parties named
+  // in two turns that begin identically.
+  ['F134', 'two chunks sharing their first 80 characters both reach the reader', () => {
+    const file = path.join(tmpdir(), 'candidates.txt');
+    const shared = 'I asked the agent to redo the database migration script and it failed again at step ';
+    assert.ok(shared.length >= 80, `the shared opening must fill the old 80-character key: ${shared.length}`);
+    const first = `${shared}four. Ingrid Halvorsen wrote it.`;
+    const second = `${shared}nine. Ottoline Marsh wrote that one.`;
+    assert.equal(first.slice(0, 80), second.slice(0, 80), 'the fixture must collide on the old key');
+
+    writeCandidates([first, second], file);
+    const body = fs.readFileSync(file, 'utf8');
+    assert.ok(body.includes('Ingrid Halvorsen'), 'the first chunk is missing');
+    assert.ok(body.includes('Ottoline Marsh'), 'a chunk was dropped for opening like another one');
+  }],
+
 ];
 
 export function selftest() {
