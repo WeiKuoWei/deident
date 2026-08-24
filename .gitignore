@@ -24,3 +24,4 @@ deident-candidates.txt
 deident-entities.json
 export-map.txt
 EXPORT-DECISIONS.md
+esc.mjs
