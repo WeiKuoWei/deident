@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "deident",
+  "description": "De-identify AI coding-agent session logs and pack them into an archive you can hand to someone else.",
+  "owner": {
+    "name": "GitRoll",
+    "url": "https://github.com/gitroll-dev/deident"
+  },
+  "plugins": [
+    {
+      "name": "deident",
+      "description": "De-identify your own Claude Code session logs and pack them into an archive you can hand to a named recipient, with every check named. Reads local files, writes local files, makes no network calls.",
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://github.com/gitroll-dev/deident",
+      "license": "MIT"
+    }
+  ]
+}
