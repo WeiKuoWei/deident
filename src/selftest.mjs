@@ -399,13 +399,17 @@ const FIXTURES = [
 
   // F07 — §4.6 three-way nested collision plus the email form. Catches an
   // interval mask that releases a region it already claimed.
-  ['F07', 'devuser / devuser / devuser@gitroll.io: nested collision', () => {
+  //
+  // SHAPE: three fabricated spellings forming a STRICT PREFIX CHAIN,
+  // nkoro < nkorox < nkorox42@gitroll.io. The nesting is the property under
+  // test; collapsing any two of them to one string deletes the fixture.
+  ['F07', 'nkoro / nkorox / nkorox42@gitroll.io: nested collision', () => {
     const t = buildTable([
-      entity('P1', 'person', 'devuser', 'PERSON_1'),
-      entity('P2', 'person', 'devuser', 'PERSON_2'),
-      entity('P3', 'person', 'devuser@gitroll.io', 'PERSON_3'),
+      entity('P1', 'person', 'nkoro', 'PERSON_1'),
+      entity('P2', 'person', 'nkorox', 'PERSON_2'),
+      entity('P3', 'person', 'nkorox42@gitroll.io', 'PERSON_3'),
     ]);
-    const s = 'devuser, devuser and devuser@gitroll.io walk in';
+    const s = 'nkoro, nkorox and nkorox42@gitroll.io walk in';
     const r = substituteString(s, t);
     assert.equal(r.out, 'PERSON_1, PERSON_2 and PERSON_3 walk in');
     for (let i = 1; i < r.spans.length; i += 1) {
@@ -1022,16 +1026,20 @@ const FIXTURES = [
   ['F34', 'allOccurrences sees matches the fast scan is allowed to skip', () => {
     // The verifier must be able to disagree with the substituter, or it proves
     // nothing. Here it sees the nested short entity that longest-match hides.
+    //
+    // SHAPE: two fabricated spellings where the shorter is a STRICT PREFIX of
+    // the longer, nkoro < nkorox. Making them one string removes the nesting
+    // the two counts (1, then 2) exist to distinguish.
     const t = buildTable([
-      entity('P1', 'person', 'devuser', 'PERSON_1'),
-      entity('P2', 'person', 'devuser', 'PERSON_2'),
+      entity('P1', 'person', 'nkoro', 'PERSON_1'),
+      entity('P2', 'person', 'nkorox', 'PERSON_2'),
     ]);
-    const s = 'devuser';
+    const s = 'nkorox';
     assert.equal(substituteString(s, t).spans.length, 1, 'the substituter takes the longest only');
     const all = allOccurrences(s, t);
-    assert.equal(all.length, 1, 'devuser inside devuser is boundary-invalid, so not an occurrence');
+    assert.equal(all.length, 1, 'nkoro inside nkorox is boundary-invalid, so not an occurrence');
     // With a valid boundary on both, the verifier sees both candidates.
-    const s2 = 'devuser devuser';
+    const s2 = 'nkoro nkorox';
     assert.equal(allOccurrences(s2, t).length, 2);
   }],
 
@@ -1553,14 +1561,18 @@ const FIXTURES = [
   ['F51', 'a non-path entity matches in any casing, and reversal restores the original', () => {
     const t = buildTable([
       entity('O1', 'org', 'gitroll', 'ORG_1'),
-      entity('P1', 'person', 'Ada', 'PERSON_1'),
+      // SHAPE: a fabricated given name of FOUR CHARACTERS OR MORE, so it is
+      // above CASE_INSENSITIVE_MIN and its all-caps spelling must still match.
+      // A three-letter replacement falls under the floor and the row below
+      // silently stops testing case folding.
+      entity('P1', 'person', 'Renata', 'PERSON_1'),
       entity('P2', 'person', 'ray', 'PERSON_2'),
     ]);
     for (const [before, after] of [
       ['GitRoll x CatalyteAI Exchange', 'ORG_1 x CatalyteAI Exchange'],
       ['the GITROLL repo', 'the ORG_1 repo'],
       ['gitroll', 'ORG_1'],
-      ['ADA wang', 'PERSON_1 wang'],
+      ['RENATA delacroix', 'PERSON_1 delacroix'],
     ]) {
       assert.equal(substituteString(before, t).out, after, before);
     }
@@ -2786,11 +2798,15 @@ const FIXTURES = [
   // F82 — a pseudonym whose plaintext original appears in the same string has
   // done nothing. Three forms reversed one without the salt, measured on a
   // real export:
-  //   `accountant = X_ORG_1684551 https://www.evansma…ory.com`   x15
+  //   `accountant = X_ORG_1684551 https://www.norbroo…ory.com`   x15
   //   `…authuser%3DX_PERSON_465285%2540gitroll.io`               (a doubly
   //      percent-encoded @, so §4.6's single-%XX escape rule saw the digit `0`
   //      and called `gitroll` embedded)
   //   `…mcgZGV2dXNlckBub3J0aHdpbmQuZXhhbXBsZQ%26…`, base64 of the work address   x30
+  //
+  // Spellings below are fabricated; the shapes are what the fixture needs.
+  // ORG_2 is MULTI-WORD and its squashed form is the domain that appears in
+  // the same string, so a one-word replacement removes the case (a) tests.
   ['F82', 'the domain, the double-encoding and the base64 of an entity are the entity', () => {
     const withVariants = (id, kind, canonical, pseudonym) => ({
       ...entity(id, kind, canonical, pseudonym),
@@ -2799,17 +2815,17 @@ const FIXTURES = [
     const t = buildTable([
       withVariants('O1', 'org', 'gitroll', 'ORG_1'),
       withVariants('P1', 'person', 'devuser@gitroll.io', 'PERSON_1'),
-      withVariants('O2', 'org', 'Acme Advisory', 'ORG_2'),
+      withVariants('O2', 'org', 'Norbrook Vance Advisory', 'ORG_2'),
     ]);
 
     // (a) the domain spelling of a multi-word org.
     assert.equal(
-      substituteString('accountant = ORG_2 https://www.evansmayadvisory.com', t).out.includes('evansmay'),
+      substituteString('accountant = ORG_2 https://www.norbrookvanceadvisory.com', t).out.includes('norbrookvance'),
       false,
     );
     // A one-word name has no squashed form to confuse with an English word.
     assert.equal(squashedForm('gitroll'), null);
-    assert.equal(squashedForm('Acme Advisory'), 'evansmayadvisory');
+    assert.equal(squashedForm('Norbrook Vance Advisory'), 'norbrookvanceadvisory');
 
     // (b) a doubly percent-encoded at-sign no longer hides the domain.
     assert.equal(substituteString('authuser%3DX%2540gitroll.io', t).out, 'authuser%3DX%2540ORG_1.io');
@@ -3237,10 +3253,11 @@ const FIXTURES = [
   //     word". The length rule shipped, the flag did not: 小明 matched inside
   //     小明天 and mangled a sentence that named nobody.
   // (b) Two overlapping declared entities collapse to one span, and the token
-  //     they SHARE disappears — so `the operator Wang` and `the operator Kuo Wang` come
-  //     out identical. I2 passes because reverseString is fed the spans, but
-  //     §3 forbids persisting them, so the reversal path that actually exists
-  //     (regenerate the list, hash candidates) cannot tell the two apart.
+  //     they SHARE disappears — so `Rosa Barnard Freight` and `Rosa Barnard
+  //     Barnard Freight` come out identical. I2 passes because reverseString
+  //     is fed the spans, but §3 forbids persisting them, so the reversal path
+  //     that actually exists (regenerate the list, hash candidates) cannot
+  //     tell the two apart.
   ['F90', 'a CJK match and an absorbed overlap are counted, not passed off as clean', () => {
     const cjk = buildTable([entity('P1', 'person', '小明', 'PERSON_1')]);
     const over = substituteString('明天小明天氣很好', cjk);
@@ -3250,18 +3267,24 @@ const FIXTURES = [
     const latin = buildTable([entity('P2', 'person', 'Jake', 'PERSON_2')]);
     assert.equal(substituteString('因為Dean他他', latin).spans[0].cjk, false);
 
+    // SHAPE: two fabricated multi-word entities SHARING A MIDDLE TOKEN,
+    // `Rosa Barnard` and `Barnard Freight`. Input (a) writes the shared token
+    // once so the spans overlap and one absorbs the other; input (b) writes it
+    // twice so they do not. Replacing either spelling with one that shares no
+    // token with the other leaves nothing to absorb and the fixture asserts
+    // something that cannot happen.
     const pair = buildTable([
-      entity('P3', 'person', 'the operator', 'PERSON_3'),
-      entity('O1', 'org', 'Kuo Wang', 'ORG_1'),
+      entity('P3', 'person', 'Rosa Barnard', 'PERSON_3'),
+      entity('O1', 'org', 'Barnard Freight', 'ORG_1'),
     ]);
-    const a = substituteString('A: the operator Wang', pair);
-    const b = substituteString('B: the operator Kuo Wang', pair);
+    const a = substituteString('A: Rosa Barnard Freight', pair);
+    const b = substituteString('B: Rosa Barnard Barnard Freight', pair);
     assert.equal(a.spans.some((sp) => sp.absorbed), true, 'the overlap is recorded as absorbed');
     assert.equal(a.out.slice(3), b.out.slice(3), 'two different inputs, one output: this is the point');
     // Span-relative reversal still works, which is exactly the distinction the
     // manifest now has to draw.
-    assert.equal(reverseString(a.out, a.spans), 'A: the operator Wang');
-    assert.equal(reverseString(b.out, b.spans), 'B: the operator Kuo Wang');
+    assert.equal(reverseString(a.out, a.spans), 'A: Rosa Barnard Freight');
+    assert.equal(reverseString(b.out, b.spans), 'B: Rosa Barnard Barnard Freight');
 
     const printed = captureOutput(() => renderManifest({
       sessions: 1, workspaces: 1, userMessages: 1, zeros: [], droppedByCwd: 0, emptiedSessions: 0,
@@ -4196,39 +4219,52 @@ const FIXTURES = [
 
   ['F109', 'a declared person name whose surname is left uncovered is reported, not silently substituted', () => {
     // Measured 2026-08-24 comparing entity lists from three model tiers on one
-    // corpus: the mid tier reliably named "Grace Hopper" and never named the
-    // bare "Morgan", and the same for Hsu, Mistry, Smith, Abdullah, Reuther
-    // and Pocock. Substituting the full name and leaving the bare surname is
-    // a half-replacement: the prose still says who it is two sentences later.
+    // corpus: every tier named the full name and the mid tier never named the
+    // bare surname, for seven different people. Substituting the full name and
+    // leaving the bare surname is a half-replacement: the prose still says who
+    // it is two sentences later, and no gate catches it because the residue
+    // scan only looks for what it was given.
     //
     // It is a REPORT and not an automatic spelling, for the same reason the
-    // probe is not a gate. May, Wise and Ray are all surnames in this corpus
-    // and all ordinary words; deriving them automatically is the 202-occurrence
-    // failure with a new source. The reader decides, holding the count.
+    // probe is not a gate. On the real corpus May, Wise and Ray were all parts
+    // of real names and all ordinary words; deriving them automatically is the
+    // 202-occurrence failure with a new source. The reader decides, holding
+    // the count.
+    //
+    // Every value here is fabricated. The SHAPE is what matters and a
+    // find-and-replace over this repo has already destroyed it once:
+    //   Grace Hopper  a full name whose surname also stands alone in the prose
+    //                 and is NOT declared. That is the whole subject.
+    //   Alan Turing   a full name that IS fully declared, so it proposes nothing.
+    //   Acme Advisory an org, to prove "Advisory" is never proposed.
     const texts = [
-      'Grace Hopper sent it. Morgan replied later, and Morgan again on Friday.',
+      'Grace Hopper sent it. Hopper replied later, and Hopper again on Friday.',
       'Alan Turing reviewed it.',
     ];
     const entities = [
-      { kind: 'person', spellings: ['Grace Hopper', 'Derek'] },
-      { kind: 'person', spellings: ['Alan Turing', 'Kartik', 'Mistry'] },
+      { kind: 'person', spellings: ['Grace Hopper', 'Grace'] },
+      { kind: 'person', spellings: ['Alan Turing', 'Alan', 'Turing'] },
       { kind: 'org', spellings: ['Acme Advisory'] },
     ];
 
     const found = uncoveredNameParts(entities, texts);
     const names = found.map((f) => f.part);
-    assert.deepEqual(names, ['Morgan'], `expected only Morgan, got ${JSON.stringify(names)}`);
+    assert.deepEqual(names, ['Hopper'], `expected only Hopper, got ${JSON.stringify(names)}`);
+
     // Two, not three. The occurrence inside "Grace Hopper" is already covered
     // by the declared full name, and the number a reader acts on is how many
-    // times the surname stands ALONE: "Morgan replied later, and Morgan again
+    // times the surname stands ALONE: "Hopper replied later, and Hopper again
     // on Friday". Counting the part by itself reports every surname in the
     // corpus, including the ones already fully handled.
     assert.equal(found[0].count, 2, 'the count is bare uses, not every occurrence');
     assert.equal(found[0].from, 'Grace Hopper');
-    assert.ok(found[0].excerpt.includes('Morgan'));
+    assert.ok(found[0].excerpt.includes('Hopper'));
 
     // Already declared: not reported again, in either case.
-    assert.equal(uncoveredNameParts([{ kind: 'person', spellings: ['Alan Turing', 'mistry'] }], texts).length, 0);
+    assert.equal(
+      uncoveredNameParts([{ kind: 'person', spellings: ['Grace Hopper', 'hopper'] }], texts).length,
+      0,
+    );
 
     // Never occurs on its own: reporting it would be noise, and this is the
     // list a person reads line by line.
