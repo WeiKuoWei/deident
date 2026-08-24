@@ -97,8 +97,9 @@ import { loadUserDeny, setUserDeny } from './policy/userdeny.mjs';
  * relative argument, so `--out ./here` lands on the same corner.
  */
 export function resolveOutDir(flags) {
+  let resolved;
   try {
-    return path.resolve(flags.out ?? process.cwd());
+    resolved = path.resolve(flags.out ?? process.cwd());
   } catch (err) {
     if (err?.code !== 'ENOENT') throw err;
     throw new RefusalError('the current directory no longer exists, so deident has nowhere to write', {
@@ -112,6 +113,41 @@ export function resolveOutDir(flags) {
       ],
     });
   }
+  return checkOutDir(resolved);
+}
+
+/**
+ * `--out` pointing at a file is one mistake, and it used to produce two
+ * different answers.
+ *
+ * Every command reads `<out>/review.md` before it writes anything. Where `out`
+ * is a regular file, Windows answers that read with ENOENT, which the readers
+ * correctly take as "not scanned yet", so the run carried on and refused at
+ * the write with `could not write <out>/review.html  EEXIST`. POSIX answers it
+ * with ENOTDIR, which is not ENOENT, so the same run refused with `could not
+ * read <out>/review.md` and offered `deident scan --out <out>` as the remedy:
+ * a command that fails the same way, for a mistake that is neither missing nor
+ * unreadable. Measured 2026-08-24 on Ubuntu, against the same fixture that
+ * passed on Windows.
+ *
+ * Checked once here rather than by teaching every reader that ENOTDIR means
+ * absent: `--out` is a directory or it is nothing, and stating that where the
+ * flag is resolved is the only place it stays one answer on both platforms.
+ */
+function checkOutDir(resolved) {
+  let stat = null;
+  try {
+    stat = fs.statSync(resolved);
+  } catch (err) {
+    // ENOENT is the ordinary case: the directory is created on first write.
+    // Anything else is left to the write, which names the file it failed on.
+    if (err?.code !== 'ENOTDIR') return resolved;
+  }
+  if (stat !== null && stat.isDirectory()) return resolved;
+  throw new RefusalError(`could not write into ${resolved}: it is a file, not a directory`, {
+    why: ['--out names the directory deident writes its report into.', 'Nothing was written.'],
+    remedies: [{ label: 'Name a directory', command: 'deident <command> --out <path>' }],
+  });
 }
 
 // ------------------------------------------------------------------- scan
