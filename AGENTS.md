@@ -98,6 +98,13 @@ That writes `deident-candidates.txt`: the session prose after the tool has
 already replaced usernames, paths, git identity, git remotes, emails and MCP
 server names. What remains is what needs a reader.
 
+**Read it yourself. Do not hand this step to a cheap subagent.** Measured across
+three model tiers on one corpus (`docs/model-tier.md`): the low tier found 0 and
+1 of the seven values that were themselves the secret, while filing `Delaware`,
+`Baltimore` and `SFO` as identities and marking almost nothing low-confidence. It
+returns a full-looking list of 27 entities either way, which is why the failure
+does not announce itself.
+
 Read it and write `deident-entities.json` beside it:
 
 ```json

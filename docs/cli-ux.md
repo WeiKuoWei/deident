@@ -211,14 +211,16 @@ Three blocks do the work:
 Not a stack trace, not a bare exit code.
 
 ```
-  ✗ Refusing to export: the semantic pass has not run.
+  ✗ Refusing to export: the semantic pass has not run
 
     Entity discovery from prose is required. The residual scan can only find
     entities it already knows about, so without this pass a "0 residue" result
     would be meaningless.
 
-    Inside Claude Code:   /deident-scan
-    Or supply a list:     deident export --entities entities.json
+    The tier-0-cleaned prose to review is at:  deident-candidates.txt
+
+    Produce the prose to read:   node deident.mjs export --preview
+    Then supply the list:        node deident.mjs export --entities deident-entities.json
 ```
 
 ```
@@ -239,7 +241,7 @@ reaching the terminal is a bug, tracked as such.
 
 ```
   ✗ Could not read session file
-      C:\Users\devuser\.claude\projects\C--Users-devuser\a3f9....jsonl
+      C:\Users\<you>\.claude\projects\C--Users-<you>\a3f9....jsonl
       line 4,102 is not valid JSON (unexpected end of input)
 
     This usually means the session was still being written. Close that Claude

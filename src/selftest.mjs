@@ -48,7 +48,7 @@ import {
   orphanedDecisions,
 } from './policy/workspaces.mjs';
 import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
-import { proposeTier, personalDataShape } from './policy/signals.mjs';
+import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from './policy/signals.mjs';
 import { readSession } from './corpus/reader.mjs';
 import { resolveRoot } from './corpus/root.mjs';
 import { setCommand, renderRefusal, renderReadError, renderManifest, captureOutput } from './cli/report.mjs';
@@ -1108,6 +1108,12 @@ const FIXTURES = [
 
     assert.equal(proposeTier(g('gitroll'), probe).tier, 'redact');
     assert.equal(proposeTier(g('scratch'), probe).tier, 'exclude', 'no remote fails closed');
+    // git missing from PATH is not the same fact as a directory without a
+    // remote, and the reason the person reads has to say which one happened.
+    const noGit = proposeTier(g('anything'), () => GIT_UNAVAILABLE);
+    assert.equal(noGit.tier, 'exclude', 'unreadable signal still fails closed');
+    assert.doesNotMatch(noGit.reason, /^no git remote$/, 'must not assert a fact it never measured');
+    assert.match(noGit.reason, /git/);
     assert.equal(proposeTier(g('private-archive', { denyToken: 'private' }), probe).tier, 'exclude');
     assert.equal(proposeTier(g(HOME_NAME), probe).tier, 'exclude');
     assert.equal(proposeTier(g('x', { unresolved: true }), probe).tier, 'unclassified');

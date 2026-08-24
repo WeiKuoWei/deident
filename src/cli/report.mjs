@@ -7,10 +7,51 @@
 //     carrying meaning on its own
 //   - every refusal names a reason and a remedy
 
+import path from 'node:path';
+
 import { DeidentError, ReadError, UsageError } from './errors.mjs';
 import { limitLines } from './limits.mjs';
 
 export const VERSION = '0.1.0';
+
+// How to type this tool, worked out from how this process was actually started.
+//
+// Every command deident printed named a bare `deident`, which is on nobody's
+// PATH: there is no package.json and no bin, and README.md and SKILL.md both
+// tell the reader to run `node <repo>/deident.mjs`. So the tool's own output
+// contradicted its own instructions, and an agent told to act on a remedy got
+// command-not-found. cli-ux §8: a remedy that cannot be run is worse than none.
+//
+// Derived, not hardcoded, because this now ships to a team on Windows and
+// macOS whose checkouts are not all named the same thing, and a second
+// hardcoded string is the same bug waiting for the first rename.
+const INVOCATION = (() => {
+  const script = process.argv[1];
+  if (typeof script !== 'string' || script === '') return 'deident';
+  const name = path.basename(script);
+  const argv0 = process.argv[0] ?? '';
+  // basename with the extension stripped, so Windows' node.exe and macOS' node
+  // print the same word.
+  const runner = path.basename(argv0, path.extname(argv0));
+  // A single-file executable reports itself in both slots. Only a runner plus a
+  // script needs two words.
+  return runner === '' || runner === name ? name : `${runner} ${name}`;
+})();
+
+/**
+ * A remedy string made runnable, at the one seam that prints.
+ *
+ * The 30 remedies across src/ are written as `deident ...` because that is what
+ * the tool is called; what to actually type is a rendering question, and
+ * answering it here cannot miss one the way 30 hand edits can. A command that
+ * does not open with the tool's name (`edit <file>`, `node --version`, `file an
+ * issue against deident`) is left exactly as its author wrote it.
+ */
+function runnable(command) {
+  return typeof command === 'string' && command.startsWith('deident ')
+    ? INVOCATION + command.slice('deident'.length)
+    : command;
+}
 
 const OUT = [];
 let capturing = false;
@@ -153,11 +194,11 @@ export function humanBytes(bytes) {
 export function renderUsage() {
   say(`deident ${VERSION}: de-identify AI coding-agent session logs
 
-  deident scan      survey what is here and propose tiers. Writes review.md only.
-  deident review    render review.md as a readable HTML file.
-  deident export    run every check, then produce the zip.
+  ${INVOCATION} scan      survey what is here and propose tiers. Writes review.md only.
+  ${INVOCATION} review    render review.md as a readable HTML file.
+  ${INVOCATION} export    run every check, then produce the zip.
 
-  Bare "deident" never exports.
+  Bare "${INVOCATION}" never exports.
 
 Flags
   --root <path>            override the resolved session-storage root
@@ -211,8 +252,8 @@ export function renderScan(census) {
   }
   say('');
   say(`  Nothing has been written except ${reviewPath}`);
-  say('  Next:  deident review        (look at it)');
-  say('         deident export        (after you have)');
+  say(`  Next:  ${INVOCATION} review        (look at it)`);
+  say(`         ${INVOCATION} export        (after you have)`);
   say('');
 }
 
@@ -350,7 +391,7 @@ export function renderUnmatched(entities) {
   for (const e of entities.slice(0, 20)) warn(`      ${pad(e.kind, 10)} ${e.canonical}`);
   if (entities.length > 20) warn(`      ... and ${n(entities.length - 20)} more`);
   warn('    Either it is not in this corpus, or tier 0 had already replaced part of');
-  warn('    the spelling. Check the row in "deident export --preview".');
+  warn(`    the spelling. Check the row in "${runnable('deident export --preview')}".`);
   warn('');
 }
 
@@ -451,7 +492,7 @@ export function renderRefusal(err) {
   if (err.remedies.length > 0) {
     warn('');
     const width = Math.max(...err.remedies.map((r) => r.label.length)) + 1;
-    for (const r of err.remedies) warn(`    ${pad(r.label + ':', width + 1)}  ${r.command}`);
+    for (const r of err.remedies) warn(`    ${pad(r.label + ':', width + 1)}  ${runnable(r.command)}`);
   }
   warn('');
 }
@@ -489,7 +530,7 @@ export function renderUsageError(err) {
   }
   if (err.remedies.length > 0) {
     warn('');
-    for (const r of err.remedies) warn(`    ${pad(`${r.label}:`, 26)} ${r.command}`);
+    for (const r of err.remedies) warn(`    ${pad(`${r.label}:`, 26)} ${runnable(r.command)}`);
   }
   warn('');
   // Usage still follows for the case it was written for: a flag typed wrong,
@@ -507,7 +548,9 @@ export function renderError(err) {
         kind: err && err.constructor ? err.constructor.name : 'Error',
         reason: err && err.reason ? err.reason : (err && err.message) || String(err),
         why: (err && err.why) || [],
-        remedies: (err && err.remedies) || [],
+        // Machine mode is read by an agent, which is the reader most likely to
+        // run a remedy verbatim rather than read around it.
+        remedies: ((err && err.remedies) || []).map((r) => ({ ...r, command: runnable(r.command) })),
         detail: (err && err.detail) || null,
         code,
       },

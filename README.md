@@ -24,8 +24,10 @@ Three commands. The first two write nothing that can leave the machine.
 2.  node deident.mjs export --preview
        Runs every check, writes deident-candidates.txt (tier-0-cleaned prose)
        and a before/after .diff. No zip.
-       Then fill in the entity list: run /deident-scan inside Claude Code, or
-       write deident-entities.json by hand.
+       Then fill in the entity list: hand this step to an agent, or write
+       deident-entities.json by hand. An agent's instructions ship twice,
+       as skills/deident/SKILL.md and as AGENTS.md, with the same text in
+       both.
 
 3.  node deident.mjs export --entities deident-entities.json
        The real thing. Every check runs again first; any failure means nothing
@@ -125,9 +127,13 @@ deident makes no network calls, so the pass is a **file contract**:
    `AdaWang` as different strings and will not find the second from the first.
 3. `export --entities deident-entities.json`.
 
-Inside Claude Code, `/deident-scan` does step 2 for you. It is a project slash
-command in `.claude/commands/`, so it is available when you run deident from
-this repository.
+An agent can do step 2 for you. What it needs to know is one document shipped in
+two places, because harnesses disagree about where to look: Claude Code loads
+`skills/deident/SKILL.md` as a skill through `.claude-plugin/plugin.json`, and
+every other agent reads `AGENTS.md`. The two carry the same text and a fixture
+checks they have not drifted, so an agent that is not Claude Code is covered by
+pointing it at `AGENTS.md`. Nothing harness-specific has to be installed, and
+there is no slash command to run.
 
 The candidates file carries **cleaned** prose, never the raw records. Handing raw
 text to a discovery pass would ship unredacted paths, your username and your
@@ -292,13 +298,14 @@ turns. Orchestration is still visible through the parent session's `Agent` and
 node deident.mjs --selftest
 ```
 
-91 fixtures, plain `node:assert`, no framework and no network. Each one exists
+106 fixtures, plain `node:assert`, no framework and no network. Each one exists
 because it catches a specific bug, named in the fixture. Several carry a negative
 control, because a check that cannot fail proves nothing.
 
 `docs/cli-ux.md` is the interface contract, `docs/privacy-tiers.md` is the
 slice-2 tier design, and `docs/adapters-research.md` records what is and is not
-established about other vendors' log formats. `BRIEF.md` is the engineering brief
+established about other vendors' log formats. `docs/model-tier.md` measures
+which model tiers can do the one step a person or an agent has to do by reading. `BRIEF.md` is the engineering brief
 and `PLAN.md` the slice-1 implementation plan; the section numbers quoted
 throughout the source refer to them.
 

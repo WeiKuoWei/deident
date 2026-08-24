@@ -18,7 +18,14 @@ import { parseRemote } from '../entities/seed.mjs';
 import { HOME_NAME } from './grouping.mjs';
 
 /**
- * The first remote of the repository containing `dir`, or null.
+ * Returned instead of null when git itself could not be run, so a caller can
+ * tell "this directory has no remote" from "nobody ever looked".
+ */
+export const GIT_UNAVAILABLE = Object.freeze({ unavailable: true });
+
+/**
+ * The first remote of the repository containing `dir`, null if there is none,
+ * or `GIT_UNAVAILABLE` if git could not be run at all.
  * `git -C` walks up, so a cwd deep inside a checkout still resolves.
  * A directory that no longer exists is not an error: it is "no remote".
  */
@@ -31,8 +38,15 @@ export function gitRemoteAt(dir) {
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 5000,
     });
-  } catch {
-    return null;
+  } catch (err) {
+    // ENOENT is git missing from PATH, which is a different fact from a
+    // directory without a remote, and this catch used to flatten both to null.
+    // Measured on this repository with PATH stripped: every workspace was
+    // proposed with the reason "no git remote" while the checkout in front of
+    // it had one. seed.mjs draws the same line at its own git call, and a
+    // proposal is only correctable if its stated reason is true.
+    if (err.code === 'ENOENT') return GIT_UNAVAILABLE;
+    return null; // Not a repo, or git refused. Expected for most directories.
   }
   for (const line of out.split('\n')) {
     const url = line.split(/\s+/)[1];
@@ -64,6 +78,14 @@ export function proposeTier(group, probeRemote) {
     return frozen('unclassified', 'no cwd was ever recorded, so no signal could be read');
   }
   const remote = probeRemote(group.cwd);
+  if (remote === GIT_UNAVAILABLE) {
+    // Still `exclude`, and deliberately not softened to a warning the person
+    // can skim past: with no remote readable, no signal below distinguishes a
+    // public checkout from a client's source tree, and the failure direction of
+    // guessing is a release. Checked before the branch below so the sentinel
+    // can never be read as if it were a parsed remote.
+    return frozen('exclude', 'could not run git (not on PATH), so no remote could be read');
+  }
   if (remote !== null) {
     // A git remote is evidence a directory is a REPOSITORY. It is not evidence
     // its content is shareable, and this row was the only thing standing
