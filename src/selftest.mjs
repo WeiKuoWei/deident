@@ -4092,6 +4092,66 @@ const FIXTURES = [
       `scan swallowed its seed warnings:\n${scan.out}`,
     );
   }],
+
+  // F111 - F95's invariant, one layer down: the PROGRAM was portable and the
+  // SHELL SYNTAX around it was not.
+  //
+  // `HOME=<path>` is the remedy for "no home directory, so deident cannot find
+  // your session storage". In bash it sets a variable. In PowerShell, which is
+  // the default shell for the team this ships to, it is a parse error:
+  //
+  //     HOME=/tmp/x : The term 'HOME=/tmp/x' is not recognized as the name of
+  //     a cmdlet, function, script file, or operable program.
+  //
+  // cli-ux §8 makes the remedy the contract for getting unstuck, and a remedy
+  // that cannot be run is worse than no remedy: the person now believes they
+  // typed the fix and it did not work. The settled operator is an agent, which
+  // runs the string verbatim rather than reading around it.
+  //
+  // No platform detection: the string has to be correct to READ on any
+  // platform, so it is either shell-neutral prose or both forms, labelled.
+  ['F111', 'no refusal hands out shell syntax that only parses in one shell', () => {
+    // Anchored at the start of the command, which is the only position where
+    // these mean what they mean. An unanchored /export\s/ matches `deident
+    // export --preview` in 19 places, and a check that cries wolf on the
+    // tool's own subcommand is the one that gets switched off (§F7).
+    const POSIX_ONLY = [
+      [/^[A-Za-z_][A-Za-z0-9_]*=/, 'a VAR=value prefix parses only in a POSIX shell'],
+      [/^export\s+[A-Za-z_][A-Za-z0-9_]*=/, 'export VAR= is not a builtin in PowerShell or cmd'],
+      [/\$[A-Za-z_{(]/, 'a $VAR or $(...) expansion'],
+      [/[0-9]?>[&\s]*\/dev\/null/, '/dev/null does not exist on Windows'],
+      [/`/, 'backtick command substitution'],
+      [/'/, 'a single-quoted token is not a quote in cmd.exe'],
+    ];
+    // The same seam F95 uses, for the same reason: cli-ux §8 makes the remedy
+    // the runnable half of a refusal, so it is the half a person or an agent
+    // pastes into a shell. The `why` prose alongside it is swept by hand
+    // rather than by regex - matching a JS array literal across comments and
+    // nested brackets needs a parser, and the approximation flagged whole
+    // functions.
+    const root = fileURLToPath(new URL('.', import.meta.url));
+    const offenders = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!e.name.endsWith('.mjs') || e.name === 'selftest.mjs') continue;
+        const text = fs.readFileSync(p, 'utf8');
+        for (const m of text.matchAll(/command:\s*(`[^`]*`|'[^']*')/g)) {
+          const raw = m[1].slice(1, -1);
+          // `${flag}` is JavaScript interpolation, not shell expansion, and a
+          // check that cannot tell them apart fires on every templated remedy
+          // in the file.
+          const cmd = raw.replace(/\$\{[^}]*\}/g, '').trim();
+          for (const [re, why] of POSIX_ONLY) {
+            if (re.test(cmd)) offenders.push(`${e.name}: ${why} in "${raw}"`);
+          }
+        }
+      }
+    };
+    walk(root);
+    assert.deepEqual(offenders, [], `POSIX-only shell syntax: ${offenders.join(' | ')}`);
+  }],
 ];
 
 export function selftest() {
