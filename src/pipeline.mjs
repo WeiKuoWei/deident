@@ -44,6 +44,7 @@ import {
   pseudonymScanPattern,
 } from './entities/pseudonym.mjs';
 import { writeCandidates, readEntities, CANDIDATES_FILENAME } from './entities/tier1.mjs';
+import { probeCounts, probeOutliers } from './entities/probe.mjs';
 import { buildTable, substituteString, leftIsWordChar } from './substitute/engine.mjs';
 import { substituteRecord, collectStrings } from './substitute/walker.mjs';
 import {
@@ -375,6 +376,16 @@ export async function runExport(flags, env) {
   const tier1Table = buildTable(tier1Assigned.entities, { forbidInside: pseudonymGuardPattern(flags.namespace) });
   report.renderPhase(`Substituting ${tier1Table.size.toLocaleString('en-US')} tier-1 spellings`);
   const final = substituteAll(cleaned.records, tier1Table);
+
+  //  12a  How many times each spelling WOULD be replaced, over the text each
+  //       pass actually sees. Not a gate: measured 2026-08-24, an ordinary noun
+  //       at 202 occurrences had to fail and a real identity at 255 had to pass,
+  //       so no threshold separates them. The number goes in front of a reader.
+  const replacementCounts = Object.freeze([
+    ...probeCounts(collectRetainedStrings(retained.records), tier0Table),
+    ...probeCounts(collectRetainedStrings(cleaned.records), tier1Table),
+  ]);
+  report.renderProbe(probeOutliers(replacementCounts));
 
   // 13  substitution invariant, at string level, before serialization.
   //

@@ -30,6 +30,7 @@ import {
   buildEntities,
 } from './entities/seed.mjs';
 import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar } from './substitute/engine.mjs';
+import { probeCounts, probeOutliers } from './entities/probe.mjs';
 import { substituteRecord } from './substitute/walker.mjs';
 import { checkSubstitution, checkSemanticPass, semanticRefusal } from './verify/checks.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from './verify/residual.mjs';
@@ -3145,6 +3146,57 @@ const FIXTURES = [
     assert.ok(prompt.keep, 'the prompt survives: §C3 keeps this class for text found nowhere else');
     assert.ok(!prompt.record.text.includes('backfill.json'), prompt.record.text);
     assert.ok(prompt.record.text.startsWith('check '), 'and the rest of the prompt is intact');
+  }],
+  // F92 - every gate asks whether a substitution was done correctly. None asks
+  // whether it should have been done at all.
+  //
+  // Measured 2026-08-24: the ordinary noun for taxation was a declared spelling,
+  // Han needles get no boundary rule because isWordChar is /[A-Za-z0-9_]/, and
+  // 202 occurrences of a common word were replaced across a corpus already
+  // delivered. Serialization invariant green, substitution invariant green,
+  // known-entity residue zero, because a reversible wrong replacement satisfies
+  // every check that exists. Twelve agent passes missed it. The probe is the
+  // instrument that makes it loud.
+  ['F92', 'the probe counts what would be replaced, and both tails are visible', () => {
+    const table = buildTable([
+      { id: 'T1', kind: 'secret', pseudonym: 'X_S_1', spellings: ['CJKWORD'] },
+      { id: 'T2', kind: 'person', pseudonym: 'X_P_1', spellings: ['Ray'] },
+      { id: 'T3', kind: 'org', pseudonym: 'X_O_1', spellings: ['NeverAppears'] },
+    ]);
+    const rows = probeCounts(['CJKWORD here and CJKWORD again', 'Ray and array and Ray'], table);
+    const by = Object.fromEntries(rows.map((r) => [r.spelling, r]));
+
+    assert.equal(by.CJKWORD.count, 2, 'both occurrences counted');
+
+    // The count is what the SUBSTITUTER would do, not what a grep would find:
+    // `Ray` inside `array` is a correct non-match per the boundary rule, and a
+    // probe that counted it would report a hazard the tool does not have.
+    assert.equal(by.Ray.count, 2, 'the occurrence inside a longer word is not counted');
+
+    // The zero tail is the same measurement's other failure: a declared
+    // redaction string that matched nothing protected nothing, silently.
+    assert.equal(by.NeverAppears.count, 0);
+    assert.equal(by.NeverAppears.excerpt, '');
+
+    // Descending, so the noun-shaped hazard is the first thing a reader sees.
+    assert.ok(rows[0].count >= rows[rows.length - 1].count);
+    const out = probeOutliers(rows);
+    assert.deepEqual(out.zeros.map((z) => z.spelling), ['NeverAppears']);
+    assert.ok(out.hits.every((h) => h.count > 0));
+
+    // An excerpt is carried so the reader can judge the sense, not just the
+    // count. A number alone cannot separate a noun from a name.
+    assert.match(by.CJKWORD.excerpt, /CJKWORD here and/);
+
+    // Overlapping needles: the longer one claims the hit, as in buildTable.
+    const nested = buildTable([
+      { id: 'T4', kind: 'org', pseudonym: 'X_O_2', spellings: ['Acme Corporation'] },
+      { id: 'T5', kind: 'org', pseudonym: 'X_O_3', spellings: ['Acme'] },
+    ]);
+    const nrows = probeCounts(['Acme Corporation shipped it'], nested);
+    const nby = Object.fromEntries(nrows.map((r) => [r.spelling, r]));
+    assert.equal(nby['Acme Corporation'].count, 1);
+    assert.equal(nby.Acme.count, 0, 'the shorter needle does not double-count inside the longer');
   }],
 ];
 

@@ -408,7 +408,10 @@ function byteLength(v) {
 /** The first DENIED_TEXT pattern this prose trips, or null. */
 export function deniedTextReason(text) {
   if (typeof text !== 'string' || text.length === 0) return null;
-  for (const re of DENIED_TEXT) {
+  // Same list as deniedReason at the sibling below. These two diverged and this
+  // one gated user and assistant PROSE with the shipped patterns only, so a
+  // per-person pattern withheld a tool result and not the sentence beside it.
+  for (const re of [...DENIED_TEXT, ...userDenyPatterns()]) {
     re.lastIndex = 0;
     const m = re.exec(text);
     if (m !== null) return m[0].trim();

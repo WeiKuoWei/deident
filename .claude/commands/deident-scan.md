@@ -31,7 +31,10 @@ Steps:
    }
    ```
 
-   `kind` is one of `person | org | client | workspace | machine`.
+   `kind` is one of the kinds listed in the candidates file's own header. Read it
+   there rather than from this document: the header interpolates the live list, and
+   this copy drifted 62 commits behind it, omitting the three kinds that carry
+   value-level redaction.
    `confidence` is `high` or `low`. Mark it `low` whenever you are guessing;
    low-confidence entities are listed individually in the review and are never
    collapsed into a count.

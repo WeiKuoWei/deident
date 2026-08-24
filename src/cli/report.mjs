@@ -288,6 +288,36 @@ export function renderUnmatched(entities) {
   warn('');
 }
 
+/**
+ * How often each declared spelling would be replaced, both tails, no verdict.
+ *
+ * stderr, like every other finding about the run. Deliberately not a gate: on
+ * the 2026-08-24 corpus the ordinary noun for taxation counted 202 and had to
+ * be refused, a real brokerage counted 255 and had to be kept, and a personal
+ * name counted 17. No threshold orders those three correctly, so printing the
+ * number beside an excerpt and letting a reader decide is the only honest
+ * shape. The middle of the distribution is omitted because it is unremarkable
+ * by construction, and a list nobody finishes reading is a list nobody reads.
+ */
+export function renderProbe({ hits, zeros }) {
+  if (hits.length === 0 && zeros.length === 0) return;
+  warn('');
+  warn('  Replacement counts, highest first. A common word here is a false positive');
+  warn('  that every gate will pass, because a reversible wrong replacement is still');
+  warn('  reversible.');
+  for (const h of hits) {
+    warn(`      ${String(h.count).padStart(6)}  ${pad(h.kind, 9)} ${h.spelling.slice(0, 46)}`);
+    if (h.excerpt) warn(`              ${h.excerpt.slice(0, 96)}`);
+  }
+  if (zeros.length > 0) {
+    warn('');
+    warn(`  ! ${n(zeros.length)} declared spelling${zeros.length === 1 ? '' : 's'} matched nothing, so ${zeros.length === 1 ? 'it protects' : 'they protect'} nothing:`);
+    for (const z of zeros.slice(0, 12)) warn(`      ${pad(z.kind, 9)} ${z.spelling.slice(0, 60)}`);
+    if (zeros.length > 12) warn(`      ... and ${n(zeros.length - 12)} more`);
+  }
+  warn('');
+}
+
 export function renderNote(text) {
   say(`  ${text}`);
 }
