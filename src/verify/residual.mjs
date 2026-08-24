@@ -270,7 +270,14 @@ function excerptAt(bytes, at, len) {
   return bytes.slice(start, end).replace(/\s+/g, ' ');
 }
 
-const EXCERPT_CONTEXT = Number(process.env.DEIDENT_EXCERPT_CONTEXT ?? 30);
+// The same `??` root cause as the MCP seeder, with a smaller blast radius and
+// a worse failure. `??` treats only null and undefined as absent, so a blank
+// DEIDENT_EXCERPT_CONTEXT became Number('') === 0 and every printed example
+// lost its surrounding context. A non-numeric value was worse still: NaN
+// reaches String.prototype.slice, every excerpt comes out empty, and the
+// examples ARE the remedy a residue refusal offers.
+const EXCERPT_CONTEXT_SET = Number(process.env.DEIDENT_EXCERPT_CONTEXT);
+const EXCERPT_CONTEXT = Number.isFinite(EXCERPT_CONTEXT_SET) && EXCERPT_CONTEXT_SET > 0 ? EXCERPT_CONTEXT_SET : 30;
 
 /** The report line. cli-ux §7: this exact wording, never "safe". */
 export function residueLine(scan) {

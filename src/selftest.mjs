@@ -5708,6 +5708,44 @@ const FIXTURES = [
     assert.equal(residualScan(text, table, new Set()).entityCount, 1, 'the residue scan agreed with the bug');
   }],
 
+  // F137 — root.mjs diagnoses this exact failure for this exact variable, in a
+  // comment, and fixes it with nonBlank. The MCP seeder was never told: it read
+  // `env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude')`, and `??` treats only
+  // null and undefined as absent, so a shell profile that exports the variable
+  // unconditionally left it as '' and path.join('', 'settings.json') became a
+  // bare relative path read against the cwd.
+  //
+  // Silent on top of that: the "no Claude settings file found" warning fires
+  // only when NONE of the three candidates was read, and ~/.claude.json is one
+  // of them, so on most machines the seeder lost settings.json and .mcp.json
+  // and said nothing at all.
+  ['F137', 'a blank CLAUDE_CONFIG_DIR falls through to the default, and MCP names are still seeded', () => {
+    const home = tmpdir();
+    fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+    // Fabricated server name. The shape is what matters: an mcpServers key, in
+    // the settings file the blank value hid.
+    fs.writeFileSync(
+      path.join(home, '.claude', 'settings.json'),
+      JSON.stringify({ mcpServers: { 'harbourline-notes': { command: 'node' } } }),
+      'utf8',
+    );
+
+    const seeded = seedEntities(
+      { HOME: home, USERPROFILE: home, USERNAME: 'devuser', CLAUDE_CONFIG_DIR: '' },
+      { files: [] },
+      { cwds: [], repoDirs: [], texts: [] },
+    );
+    const canonicals = seeded.entities.map((e) => e.canonical);
+    assert.ok(
+      canonicals.includes('harbourline-notes'),
+      `a blank CLAUDE_CONFIG_DIR sent the seeder to the cwd: ${canonicals.join(', ')}`,
+    );
+    // And the warning that hid it must not be the thing reporting success.
+    assert.ok(
+      !seeded.warnings.some((w) => w.includes('no Claude settings file found')),
+      `the settings file was read, so nothing should say it was not: ${seeded.warnings.join(' | ')}`,
+    );
+  }],
 ];
 
 export function selftest() {

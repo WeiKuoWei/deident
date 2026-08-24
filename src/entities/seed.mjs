@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { expandVariants, looseVariants, isCjkOnly } from './variants.mjs';
-import { homeDir } from '../corpus/root.mjs';
+import { homeDir, nonBlank } from '../corpus/root.mjs';
 
 export const KINDS = Object.freeze([
   'person', 'org', 'workspace', 'client', 'machine', 'secret', 'phone', 'idnumber', 'account',
@@ -726,7 +726,14 @@ export function parseRemote(url) {
  */
 function mcpServerNames(env, warnings) {
   const home = homeDir(env);
-  const configDir = env.CLAUDE_CONFIG_DIR ?? (home === null ? null : path.join(home, '.claude'));
+  // nonBlank, not `??`: `??` treats only null and undefined as absent, so an
+  // empty CLAUDE_CONFIG_DIR survived and path.join('', 'settings.json') became
+  // a bare relative path read against the cwd. root.mjs diagnoses this exact
+  // failure for this exact variable and fixes it the same way; the fix had not
+  // been propagated to its sibling. The warning below could not report it
+  // either, because ~/.claude.json is one of the three candidates and sets the
+  // found flag, so the seeder silently lost only settings.json and .mcp.json.
+  const configDir = nonBlank(env.CLAUDE_CONFIG_DIR) ?? (home === null ? null : path.join(home, '.claude'));
   if (configDir === null) {
     warnings.push('no home directory and no CLAUDE_CONFIG_DIR; MCP server names were not seeded');
     return [];

@@ -84,7 +84,16 @@ export function resolveRoot(env, override = null) {
   });
 }
 
-function nonBlank(v) {
+/**
+ * A string value, or null when it is absent OR blank.
+ *
+ * Exported because `??` is wrong for every environment variable this tool
+ * reads and the rule had been written out here and then not propagated: the
+ * MCP seeder in entities/seed.mjs used `??`, so an unconditionally-exported
+ * empty CLAUDE_CONFIG_DIR made `path.join('', 'settings.json')` a relative
+ * path read against the cwd.
+ */
+export function nonBlank(v) {
   return typeof v === 'string' && v.trim() !== '' ? v : null;
 }
 
