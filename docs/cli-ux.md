@@ -310,8 +310,8 @@ Not a stack trace, not a bare exit code.
 
     The tier-0-cleaned prose to review is at:  deident-candidates.txt
 
-    Produce the prose to read:   node deident.mjs export --preview
-    Then supply the list:        node deident.mjs export --entities deident-entities.json
+    Produce the prose to read:   node deident.js export --preview
+    Then supply the list:        node deident.js export --entities deident-entities.json
 ```
 
 ```

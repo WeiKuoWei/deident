@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// deident — the only entry point.
+// deident: the only entry point.
 //
 // This file owns the process exit code and is the single try/catch that turns
 // any escaped error into one of the three message shapes in PLAN §6.4.
@@ -102,13 +102,21 @@ const isDirectRun =
 const invokedAsScript =
   isDirectRun || (process.argv[1] ?? '').replace(/\\/g, '/').endsWith('/deident.mjs');
 
-if (invokedAsScript) {
-  main(process.argv.slice(2), process.env).then(
-    (code) => {
-      process.exitCode = code;
-    },
-    (err) => {
-      process.exitCode = report.renderError(wrapUnexpected(err, 'starting up'));
-    },
-  );
+/**
+ * Run and set the process exit code.
+ *
+ * Exported because deident.js, the ES5 version gate, reaches this module
+ * through a dynamic import and has no other way in. A gate written in ESM
+ * cannot load on the runtime it exists to reject, so the gate is CommonJS and
+ * this is the seam between them.
+ */
+export async function run(argv = process.argv.slice(2), env = process.env) {
+  try {
+    process.exitCode = await main(argv, env);
+  } catch (err) {
+    process.exitCode = report.renderError(wrapUnexpected(err, 'starting up'));
+  }
+  return process.exitCode;
 }
+
+if (invokedAsScript) run();

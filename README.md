@@ -18,22 +18,22 @@ list. That ordering is the design: nothing expensive should ever read a session
 that was never going to be exported.
 
 ```
-1.  node deident.mjs scan                              cheap: one pass, no reader
+1.  node deident.js scan                              cheap: one pass, no reader
        Surveys the corpus and writes review.md. Nothing else.
        Open review.md and set a tier for each workspace: exclude, count-only,
        redact or open. A workspace you do not touch stays excluded.
 
-2.  node deident.mjs triage                            ~7k tokens of reading
+2.  node deident.js triage                            ~7k tokens of reading
        Writes deident-triage.txt: one block per session still proposed keep,
        carrying its first user prompt truncated to 300 characters. Only the
        head of each session file is read.
        A reader writes deident-triage.json, then:
-         node deident.mjs triage --apply --verdicts deident-triage.json
+         node deident.js triage --apply --verdicts deident-triage.json
        A verdict can only ever DROP a session. There is no keep verdict and a
        verdict cannot overturn a drop, which is why a cheap model is the right
        one here (docs/model-tier.md).
 
-3.  node deident.mjs export --preview                  ~250k tokens of reading
+3.  node deident.js export --preview                  ~250k tokens of reading
        Runs every check, writes deident-candidates.txt (tier-0-cleaned prose)
        and a before/after .diff. No zip.
        Then fill in the entity list: hand this step to an agent, or write
@@ -41,7 +41,7 @@ that was never going to be exported.
        as skills/deident/SKILL.md and as AGENTS.md, with the same text in
        both.
 
-4.  node deident.mjs export --entities deident-entities.json
+4.  node deident.js export --entities deident-entities.json
        The real thing, and the only stage that writes an archive. Every check
        runs again first; any failure means nothing is written. Measured at
        more than ten minutes on a few hundred sessions.
@@ -317,7 +317,7 @@ turns. Orchestration is still visible through the parent session's `Agent` and
 ## Development
 
 ```
-node deident.mjs --selftest
+node deident.js --selftest
 ```
 
 106 fixtures, plain `node:assert`, no framework and no network. Each one exists

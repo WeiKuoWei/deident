@@ -17,7 +17,7 @@ decision list in front of the person.
 Everything below is one CLI. Find it once and reuse the path:
 
 ```
-node <repo>/deident.mjs --version
+node <repo>/deident.js --version
 ```
 
 `<repo>` is wherever this plugin's repository is checked out. If the command
@@ -38,7 +38,7 @@ Three rules that hold for the whole flow:
 ## 1. Survey
 
 ```
-node <repo>/deident.mjs scan --out <workdir> --json
+node <repo>/deident.js scan --out <workdir> --json
 ```
 
 This writes `review.md` in `<workdir>` and changes nothing else. The JSON
@@ -82,7 +82,7 @@ Write decisions back by editing `review.md` in place: column 1 of the
 ## 3. Triage: cut the list before anything expensive reads it
 
 ```
-node <repo>/deident.mjs triage --out <workdir> --json
+node <repo>/deident.js triage --out <workdir> --json
 ```
 
 That writes `deident-triage.txt`: one block per session your review still
@@ -119,7 +119,7 @@ rubric in the file's own header rather than a stricter one of your own.
 Then apply them:
 
 ```
-node <repo>/deident.mjs triage --apply --verdicts <workdir>/deident-triage.json \
+node <repo>/deident.js triage --apply --verdicts <workdir>/deident-triage.json \
   --out <workdir> --json
 ```
 
@@ -139,7 +139,7 @@ paste it into a ticket.
 The export refuses without this. Run:
 
 ```
-node <repo>/deident.mjs export --out <workdir> --preview --json
+node <repo>/deident.js export --out <workdir> --preview --json
 ```
 
 That writes `deident-candidates.txt`: the session prose after the tool has
@@ -211,7 +211,7 @@ listed individually for the person rather than collapsed into a count.
 ## 5. Export
 
 ```
-node <repo>/deident.mjs export --out <workdir> --json \
+node <repo>/deident.js export --out <workdir> --json \
   --entities <workdir>/deident-entities.json \
   --audience <teammate|company|public> \
   --namespace <two letters nobody has used yet>

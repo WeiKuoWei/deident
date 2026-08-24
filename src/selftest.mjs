@@ -4678,6 +4678,63 @@ const FIXTURES = [
     assert.match(header, /coverage/, 'and must say what a wrong verdict costs');
     assert.match(header, /model-tier\.md/, 'and must point at the measurement it rests on');
   }],
+  ['F123', 'the ES5 version gate agrees with the real floor, and stays parseable by the runtime it rejects', () => {
+    // Measured 2026-08-24 in a clean Ubuntu 20.04 install, which is what a
+    // teammate on a stock LTS box has: `apt-get install nodejs` gives Node
+    // 10.19, and running the tool on it printed a SyntaxError stack from
+    // deident.mjs line 9. src/cli/runtime.mjs exists to prevent exactly that
+    // picture and never got to run, because it lives inside the ESM the old
+    // parser choked on. A guard that cannot load on the runtime it guards
+    // against is not a guard.
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const gate = fs.readFileSync(path.join(repo, 'deident.js'), 'utf8');
+
+    // The floor is stated twice, in two languages, so it can drift. This is
+    // the check that makes the duplication safe rather than a second bug.
+    const major = /major:\s*(\d+)/.exec(gate);
+    assert.ok(major, 'the gate does not state a major version');
+    assert.equal(Number(major[1]), REQUIRED_NODE.major, 'gate and runtime.mjs disagree on the major');
+    for (const [maj, min] of Object.entries(REQUIRED_NODE.minors)) {
+      // Built from String.raw, because in a plain template literal `\s` is not
+      // an escape and silently collapses to `s`, which matched nothing and
+      // made this assertion fire on a gate that was correct.
+      assert.match(gate, new RegExp(String.raw`${maj}:\s*${min}`), `the gate is missing the ${maj}.${min} floor`);
+    }
+
+    // ES5 only. Anything newer and the file fails the same way the file it
+    // protects does, on the same runtimes, for the same reason.
+    const banned = [
+      [/\bconst\s/, 'const'],
+      [/\blet\s/, 'let'],
+      [/=>/, 'arrow function'],
+      [/`/, 'template literal'],
+      [/\?\./, 'optional chaining'],
+      [/\?\?/, 'nullish coalescing'],
+      [/\.\.\./, 'spread'],
+    ];
+    // Comments carry prose that would trip the scan, so only code is examined.
+    const code = gate
+      .split(NL)
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join(NL);
+    for (const [re, name] of banned) {
+      assert.ok(!re.test(code), `deident.js uses ${name}, which the runtime it rejects cannot parse`);
+    }
+
+    // The dynamic import must never appear as a bare token: written literally
+    // it is itself a syntax error on the runtime being rejected.
+    // The dynamic import may appear exactly once, and only inside the string
+    // handed to new Function. Written as a bare token it is itself a syntax
+    // error on the runtime being rejected, so this file would fail the same
+    // way the file it protects does.
+    const importLines = code.split(NL).filter((l) => /import\s*\(/.test(l));
+    assert.equal(importLines.length, 1, 'import( appears somewhere unexpected in the gate');
+    assert.match(importLines[0], /new Function\(/, 'the gate must defer the import token to runtime');
+
+    // And the seam it reaches for has to exist.
+    const entry = fs.readFileSync(path.join(repo, 'deident.mjs'), 'utf8');
+    assert.match(entry, /export async function run\(/, 'deident.js calls mod.run()');
+  }],
 ];
 
 export function selftest() {
