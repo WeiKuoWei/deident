@@ -592,11 +592,93 @@ export function renderWarning(text) {
 
 // ---------------------------------------------------------------- review
 
-export function renderEntityOccurrences(id, occurrences) {
-  say(`  ${n(occurrences.length)} occurrences, ${n(new Set(occurrences.map((o) => o.session)).size)} sessions:`);
-  for (const o of occurrences) {
-    say(`    ${o.date}  ${pad(o.workspace, 20)} turn ${padLeft(o.turn, 4)}   ${o.excerpt}`);
+/**
+ * Every occurrence of one entity, so a count can be checked rather than
+ * believed.
+ *
+ * The excerpts are the text BEFORE substitution, which is the only form that
+ * answers the question the reader has: whether a spelling replaced N times is
+ * a person's name or an ordinary word. That makes this output a
+ * re-identification key, so it says so. A person who does not know that will
+ * paste it into a ticket, and unlike the archive there is no gate between this
+ * and a chat window.
+ */
+export function renderEntityOccurrences(rec, source) {
+  if (machine !== null) {
+    machineAdd({
+      entity: rec.pseudonym,
+      kind: rec.kind,
+      spellings: rec.spellings,
+      total: rec.total,
+      occurrences: rec.occurrences,
+      source,
+      localOnly: true,
+    });
+    return;
   }
+  // Grouped by session rather than one flat table with a session column. The
+  // id is 36 characters and identical down a run of rows, so repeating it
+  // pushed the excerpt off the right of an 80-column terminal — and the excerpt
+  // is the only column that answers the question. Grouping also puts the id on
+  // its own line, which is the argument for the --session query below it.
+  const bySession = new Map();
+  for (const o of rec.occurrences) {
+    if (!bySession.has(o.session)) bySession.set(o.session, []);
+    bySession.get(o.session).push(o);
+  }
+  say('');
+  say(`  ${rec.pseudonym}   ${rec.kind}   ${rec.spellings.map((s) => JSON.stringify(s)).join(', ')}`);
+  say(`  ${n(rec.total)} occurrence${rec.total === 1 ? '' : 's'}, ${n(bySession.size)} session${bySession.size === 1 ? '' : 's'}:`);
+  for (const [session, list] of bySession) {
+    say('');
+    say(`    ${list[0].date}  ${pad(list[0].workspace, 18)} ${session}`);
+    for (const o of list) say(`        turn ${padLeft(o.turn, 5)}   ${o.excerpt.slice(0, 110)}`);
+  }
+  if (rec.occurrences.length < rec.total) {
+    say('');
+    say(`    ... ${n(rec.total - rec.occurrences.length)} more occurrences counted and not listed`);
+  }
+  say('');
+  say('  Read one of these sessions in full:   deident review --session <id above>');
+  say('');
+  sayLocalOnly(source);
+}
+
+/**
+ * The paragraph that has to be on every drill-down answer.
+ *
+ * §5's two queries are the only ones whose whole job is joining what shipped
+ * back to a real person, so their output is as sensitive as export-map.txt and
+ * gets the same sentence the skill already gives that file. Unlike the archive
+ * there is no gate between this and a chat window.
+ */
+function sayLocalOnly(source) {
+  say(`  Read from ${source}.`);
+  say('  Local only: this is not in the archive and must not be sent with it. It joins');
+  say('  what shipped back to the real names and session ids on this machine, which is');
+  say('  the join the archive exists to break.');
+  say('');
+}
+
+/**
+ * One session as it actually shipped, read back out of the archive.
+ *
+ * Read from the zip rather than re-rendered from the corpus, for the reason
+ * journey-and-pitfalls 2.1 gives: on the delivery run a reviewer was handed
+ * something that was not what shipped three separate times, and each time the
+ * gap was where the leak lived.
+ */
+export function renderSessionTranscript(id, entry, body, source) {
+  if (machine !== null) {
+    machineAdd({ session: id, entry, transcript: body, source, localOnly: true });
+    return;
+  }
+  say('');
+  say(`  ${id}   ->   ${entry}`);
+  say('');
+  for (const line of body.split('\n')) say(line);
+  say('');
+  sayLocalOnly(source);
 }
 
 export function renderTranscript(lines) {

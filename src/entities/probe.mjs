@@ -37,11 +37,19 @@ const EXCERPT_CONTEXT = 60;
  * boundary rule rejects is not counted: the reader is being told what the
  * substituter would do, not what a grep would find.
  *
- * @param {Iterable<string>} texts pre-substitution strings
+ * An item may be a bare string, or `{text, at}` where `at` says which session
+ * and which record the string came from. The tagged form is what lets one
+ * sweep answer both questions: `sink` is called once per occurrence and builds
+ * the drill-down index cli-ux §5 needs, so §5 costs no extra pass over the
+ * corpus. A bare string never calls `sink`, which is why uncoveredNameParts,
+ * which probes throwaway candidate tables, records nothing.
+ *
+ * @param {Iterable<string|{text: string, at: object}>} texts pre-substitution strings
  * @param {object} table from buildTable
- * @returns {ReadonlyArray<{entityId, kind, spelling, count, excerpt}>} descending by count
+ * @param {?(entry: object, at: object, s: string, from: number, to: number) => void} sink
+ * @returns {ReadonlyArray<{entityId, pseudonym, kind, spelling, count, excerpt}>} descending by count
  */
-export function probeCounts(texts, table) {
+export function probeCounts(texts, table, sink = null) {
   const byFirst = new Map();
   for (const entry of table.entries) {
     if (entry.spelling.length === 0) continue;
@@ -65,7 +73,10 @@ export function probeCounts(texts, table) {
   for (const bucket of byFirst.values()) bucket.sort((a, b) => b.entry.spelling.length - a.entry.spelling.length);
 
   const counts = new Map();
-  for (const s of texts) {
+  for (const item of texts) {
+    const tagged = typeof item !== 'string' && item !== null && typeof item === 'object';
+    const s = tagged ? item.text : item;
+    const at = tagged ? item.at ?? null : null;
     if (typeof s !== 'string' || s.length === 0) continue;
     for (let i = 0; i < s.length; i += 1) {
       const bucket = byFirst.get(s[i]);
@@ -84,6 +95,10 @@ export function probeCounts(texts, table) {
         if (rec === undefined) {
           rec = {
             entityId: entry.entityId,
+            // The token a reader drills into. Without it the count and
+            // `review --entity` are two disconnected facts and the reader has
+            // to guess which pseudonym a spelling became.
+            pseudonym: entry.pseudonym,
             kind: entry.kind,
             spelling: entry.spelling,
             count: 0,
@@ -92,6 +107,7 @@ export function probeCounts(texts, table) {
           counts.set(entry.spelling, rec);
         }
         rec.count += 1;
+        if (sink !== null && at !== null) sink(entry, at, s, i, end);
         i = end - 1;
         break;
       }
@@ -105,6 +121,7 @@ export function probeCounts(texts, table) {
     if (counts.has(entry.spelling)) continue;
     counts.set(entry.spelling, {
       entityId: entry.entityId,
+      pseudonym: entry.pseudonym,
       kind: entry.kind,
       spelling: entry.spelling,
       count: 0,

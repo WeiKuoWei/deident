@@ -2169,12 +2169,17 @@ const FIXTURES = [
     assert.ok(!text.includes('Wang'), 'no fragment of a declared entity may survive the excerpt');
   }],
 
-  // F65 — `review --entity` and `review --session` are specified in cli-ux §5
-  // as part of the slice-1 contract and are not implemented. They printed a
-  // note and exited 0, pointing at `export --preview`, which answers neither —
-  // so a scripted check of "can I drill into PERSON_11" passed while nothing
-  // happened. BRIEF §2: a flag that exits 0 without doing its job is a failure.
-  ['F65', 'an unimplemented query says so instead of exiting 0', () => {
+  // F65 — cli-ux §5's two queries used to print a note and exit 0, pointing at
+  // `export --preview`, which answers neither: a scripted check of "can I drill
+  // into PERSON_11" passed while nothing happened. BRIEF §2 calls that a
+  // failure, and it is the rule that outlives the implementation.
+  //
+  // They are implemented now (F148, F150), so what this guards is the state
+  // where there is still nothing to answer from. Both queries read an index the
+  // EXPORT writes, so on a machine that has only ever scanned there is none,
+  // and the honest answer is a refusal naming the command that builds one.
+  // "0 occurrences" here would read as "this entity is clean".
+  ['F65', 'a query with nothing to answer from refuses and names the command that builds one', () => {
     const root = tmpdir();
     const out = path.join(root, 'out');
     const saltDir = path.join(root, 'salt');
@@ -2183,9 +2188,9 @@ const FIXTURES = [
 
     for (const [flag, value] of [['--entity', 'PERSON_11'], ['--session', '2026-08-20']]) {
       const r = runCli(['review', '--root', root, '--out', out, '--salt-dir', saltDir, flag, value]);
-      assert.equal(r.code, 2, `${flag} must be a usage error, not success`);
-      assert.match(r.out, /not implemented in slice 1/);
-      assert.match(r.out, /cli-ux/);
+      assert.equal(r.code, 1, `${flag} must refuse, not succeed: ${r.out}`);
+      assert.match(r.out, /export --out/, `${flag} does not name what to run first: ${r.out}`);
+      assert.ok(!/0 occurrences|no occurrences/i.test(r.out), 'a missing index must not read as an empty result');
     }
 
     // `review` itself still works.
@@ -6292,6 +6297,225 @@ const FIXTURES = [
     assert.equal(run.code, 1, run.out);
     assert.match(run.out, /written 1 minute ago/, 'the file mtime never reached the refusal');
   }],
+
+  // ------------------------------------------------- cli-ux §5, the drill-down
+  //
+  // "A count nobody can drill into is a count nobody believes." The export
+  // reports a spelling replaced N times and offers ONE excerpt for it, so the
+  // owner's real question - are those N a person's name or an ordinary word -
+  // has no answer on the machine. §5's own worked example of the failure is the
+  // 202-occurrence common noun that passed all five gates.
+  //
+  // Every fixture below drives the real CLI rather than the index module,
+  // because the property under test is that the answer survives the round trip
+  // through a file written by one process and read by another.
+
+  // F148 - the count is drillable, and the drill-down says out loud that it is
+  // a re-identification key. This is the one command whose whole job is mapping
+  // a pseudonym back to a real person, so the excerpt it prints is the real
+  // spelling. A reader who does not know that will paste it into a ticket.
+  ['F148', 'review --entity prints every occurrence with its session, and says the mapping is local', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const sid = '11111111-1111-4111-8111-111111111111';
+    // Fabricated. SHAPE: a two-word Latin personal name occurring TWICE in one
+    // record, so "2 occurrences, 1 session" separates a per-occurrence index
+    // from a per-record one.
+    const NAME = 'Marisol Ferrand';
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    appendTurn(root, sid, corpus.cwd, `called ${NAME} about the invoice, then ${NAME} rang back`);
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+
+    const ents = path.join(root, 'drill.json');
+    fs.writeFileSync(ents, JSON.stringify({ entities: [{ kind: 'person', spellings: [NAME], confidence: 'high' }] }), 'utf8');
+    const exp = runCli(
+      ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', ents, '--json'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(exp.code, 0, exp.out);
+    const doc = JSON.parse(exp.out);
+
+    // The report has to hand the reader the token they then drill into, or the
+    // count and the query are two disconnected facts.
+    const row = doc.replacementCounts.hits.find((h) => h.spelling === NAME);
+    assert.ok(row !== undefined, `the declared spelling was never counted: ${JSON.stringify(doc.replacementCounts)}`);
+    assert.equal(row.count, 2, 'both occurrences in one record must be counted separately');
+    assert.ok(typeof row.pseudonym === 'string' && row.pseudonym.length > 0, 'the count row does not name a drillable token');
+
+    const q = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', row.pseudonym],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(q.code, 0, q.out);
+    assert.match(q.out, /2 occurrences, 1 session/, `wrong shape: ${q.out}`);
+    assert.ok(q.out.includes(sid), 'the occurrence does not name the session it is in');
+    assert.ok(q.out.includes(NAME), 'the excerpt does not show how the word is actually used');
+    assert.match(q.out, /not in the archive|never leaves this machine|local/i, 'nothing says the mapping must not be sent');
+
+    const j = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', row.pseudonym, '--json'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(j.code, 0, j.out);
+    const jd = JSON.parse(j.out);
+    assert.equal(jd.entity, row.pseudonym);
+    assert.equal(jd.occurrences.length, 2, `--json must carry the same rows: ${j.out}`);
+    assert.equal(jd.occurrences[0].session, sid);
+    assert.ok(jd.occurrences[0].excerpt.includes(NAME));
+  }],
+
+  // F149 - a token that is not in the index, AFTER an export that did replace
+  // things. F65 covers the machine that has never exported; this is the case
+  // that looks like a working query returning nothing, which is the one a
+  // script cannot tell from success. The commonest way to arrive here is a
+  // token copied from an earlier export: the salt is stable, --namespace is
+  // not, so the same person gets a different token per namespace.
+  ['F149', 'review --entity refuses by name for a token the last export never replaced', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+
+    // Fabricated. SHAPE: a well-formed pseudonym of the namespace deident
+    // mints, so the refusal cannot be blamed on a malformed argument.
+    const ABSENT = 'PERSON_4820517';
+
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    assert.equal(
+      runCli(
+        ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', path.join(root, 'ents.json')],
+        CORPUS_USER_ENV,
+      ).code,
+      0,
+    );
+
+    const after = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', ABSENT],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(after.code, 1, `an unknown token must not exit 0: ${after.out}`);
+    assert.ok(after.out.includes(ABSENT), 'the refusal does not name the token that was asked for');
+
+    // And on the JSON path the exit code is inside the document, so an agent
+    // reading stdout sees the failure rather than an empty occurrence list.
+    const j = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', ABSENT, '--json'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(j.code, 1);
+    const jd = JSON.parse(j.out);
+    assert.equal(jd.ok, false, `--json reported success for a token that does not exist: ${j.out}`);
+    assert.ok(!Array.isArray(jd.occurrences), 'a refusal must not also carry an empty result');
+  }],
+
+  // F150 - the other half of §5. The transcript printed is the one that
+  // SHIPPED, read back out of the archive, rather than a second rendering of
+  // the corpus that could disagree with it. journey-and-pitfalls 2.1: three
+  // times on the delivery run a reviewer was handed something that was not what
+  // shipped, and each time the gap was where the leak lived.
+  ['F150', 'review --session prints the redacted transcript that is actually in the archive', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const sid = '11111111-1111-4111-8111-111111111111';
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    assert.equal(
+      runCli(
+        ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', path.join(root, 'ents.json')],
+        CORPUS_USER_ENV,
+      ).code,
+      0,
+    );
+
+    const q = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--session', sid],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(q.code, 0, q.out);
+    assert.ok(q.out.includes('KEEP-THIS-STRING-FORM-PROMPT'), `no transcript body: ${q.out.slice(0, 600)}`);
+    // Redacted, not raw: the cwd every one of those turns carries is replaced
+    // in the archive, and a transcript printed from anywhere else would show it.
+    assert.ok(!q.out.includes(corpus.cwd), 'the printed transcript is not the redacted one');
+    assert.ok(!q.out.includes(corpus.private), 'prose from the denied directory reached the transcript');
+
+    const unknown = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--session', 'no-such-session'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(unknown.code, 1, `an unknown session must not exit 0: ${unknown.out}`);
+    assert.ok(unknown.out.includes('no-such-session'), 'the refusal does not name the session asked for');
+  }],
+
+  // F151 - the index pairs a pseudonym with the real spelling it replaced, so
+  // it is the one artifact on the machine that re-identifies the archive. It
+  // gets F126's treatment exactly: salt directory only, never the output
+  // directory, never an archive entry, never the repository.
+  ['F151', 'the occurrence index is memory, and reaches no file the export produces', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const sid = '11111111-1111-4111-8111-111111111111';
+    // Fabricated. SHAPE: a two-word Latin personal name, distinct enough that a
+    // substring search over the archive cannot hit it by accident.
+    const NAME = 'Marisol Ferrand';
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    appendTurn(root, sid, corpus.cwd, `called ${NAME} about the invoice`);
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    const ents = path.join(root, 'drill.json');
+    fs.writeFileSync(ents, JSON.stringify({ entities: [{ kind: 'person', spellings: [NAME], confidence: 'high' }] }), 'utf8');
+    assert.equal(
+      runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', ents], CORPUS_USER_ENV).code,
+      0,
+    );
+
+    // Found by its content rather than by its name, so renaming the file cannot
+    // quietly retire this fixture.
+    const indexNames = fs.readdirSync(saltDir).filter((name) => {
+      try {
+        return Array.isArray(JSON.parse(fs.readFileSync(path.join(saltDir, name), 'utf8')).occurrences);
+      } catch {
+        return false;
+      }
+    });
+    assert.equal(indexNames.length, 1, `expected exactly one occurrence index in the salt directory: ${fs.readdirSync(saltDir)}`);
+    const index = JSON.parse(fs.readFileSync(path.join(saltDir, indexNames[0]), 'utf8'));
+    assert.ok(typeof index._note === 'string' && /never/i.test(index._note), 'a file this dangerous needs its own header');
+    assert.ok(
+      JSON.stringify(index).includes(NAME),
+      'the index does not carry the real spelling, so it answers nothing',
+    );
+
+    for (const name of fs.readdirSync(out)) {
+      assert.notEqual(name, indexNames[0], 'the occurrence index reached the output directory');
+      if (name.endsWith('.zip')) continue;
+      assert.ok(
+        !fs.readFileSync(path.join(out, name), 'utf8').includes(NAME),
+        `the real spelling reached ${name} in the output directory`,
+      );
+    }
+    const zips = fs.readdirSync(out).filter((f) => f.endsWith('.zip'));
+    assert.equal(zips.length, 1, 'exactly one archive');
+    const entries = readZipFile(path.join(out, zips[0]));
+    assert.ok(!entries.some((e) => e.name.includes(indexNames[0])), 'the occurrence index is an archive entry');
+    const bytes = entries.map((e) => `${e.name}${NL}${e.data}`).join(NL);
+    assert.ok(!bytes.includes(NAME), 'the real spelling the index maps reached the archive');
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    assert.ok(!fs.existsSync(path.join(repo, indexNames[0])), 'the occurrence index was written into the repository');
+  }],
+
 ];
 
 export function selftest() {

@@ -224,23 +224,51 @@ them itself:
 
 A count nobody can drill into is a count nobody believes.
 
-**Not implemented in slice 1.** Both queries below need an occurrence index the
-export pass builds and throws away; neither is wired up. They exit 2 with a
-usage error naming this section, because a flag that exits 0 without doing its
-job is worse than a flag that is not accepted: a scripted check of "can I drill
-into PERSON_11" passes.
+Both queries read an index the export writes. The export already sweeps every
+retained string with the shipped matcher to produce `replacementCounts`; that
+sweep records each occurrence as it goes, so the drill-down costs no extra pass
+over the corpus and cannot disagree with the number that sent the reader to it.
 
 ```
 $ deident review --entity PERSON_11
+
+  PERSON_11   person   "Grace Hopper"
   4 occurrences, 3 sessions:
-    2026-08-14  gitroll  turn 47   "...跟 <PERSON_11> 約了 call..."
-    2026-08-14  gitroll  turn 51   "...<PERSON_11> 說他下週..."
+
+    2026-08-14  gitroll            a3f91c04-6b2e-4d7a-9f10-2c5581bb8f21
+        turn    47   ...跟 Grace Hopper 約了 call...
+        turn    51   ...Grace Hopper 說他下週...
+
+  Read one of these sessions in full:   deident review --session <id above>
 ```
 
 ```
-$ deident review --session 2026-08-14-a3f9
+$ deident review --session a3f91c04-6b2e-4d7a-9f10-2c5581bb8f21
   full redacted transcript of one session, to stdout
 ```
+
+Three properties, each load-bearing:
+
+- **The excerpts are the text BEFORE substitution.** That is the only form that
+  answers the question the reader actually has, which is whether a spelling
+  replaced 991 times is a person's name or an ordinary word. It also makes this
+  the one command whose whole job is re-identification, so every answer ends
+  with a paragraph saying the output is local and must not be sent.
+- **The transcript is read back out of the archive**, not re-rendered from the
+  corpus. journey-and-pitfalls 2.1: three times on the delivery run a reviewer
+  was handed something that was not what shipped, and each time the gap was
+  where the leak lived.
+- **Neither query reads the corpus, and neither can answer before an export.**
+  These counts are what the substituter DID; a read-only pass over the corpus
+  would produce a different number under the same name. With no index on the
+  machine both refuse and name `deident export`, because "0 occurrences" here
+  reads as "this entity is clean".
+
+The index lives at `~/.deident-private/occurrences.json`, beside the salt and
+the dictionary. It pairs pseudonyms with real spellings AND with real session
+ids, which is strictly more than either `entities.json` or `export-map.txt`
+holds on its own, so it gets the same handling as both: never an archive entry,
+never the output directory, never the repository.
 
 ## 6. `export` — the gate is a manifest of what leaves, not a spinner
 

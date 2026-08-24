@@ -122,6 +122,25 @@ machine says which entry is which session. It pairs a local id with a local id,
 never a pseudonym with a name, but treat it like `review.md`: **local only,
 never shared, never committed.** A failed export removes it along with the zip.
 
+A successful export also writes `~/.deident-private/occurrences.json`, beside
+the salt rather than beside the zip. It records every occurrence the
+substituter replaced, with the session it was in and the text around it, so a
+count can be checked instead of believed:
+
+```
+deident review --entity PERSON_11      every occurrence, grouped by session
+deident review --session <id>          one full transcript, read back out of the zip
+```
+
+That is what answers "is this spelling replaced 991 times a person's name or an
+ordinary word", which no check can answer, because a wrong replacement that is
+reversible passes every one of them. The excerpts are the text **before**
+substitution, so this file pairs pseudonyms with real names AND real session
+ids. It is the most re-identifying thing deident writes, it is never an archive
+entry and never in the output directory, and it must not be shared or
+committed. Both queries refuse until an export has run: these counts are what
+the substituter did, not what a search would find.
+
 `review.md` is both the report and the config. The decision is made by editing a
 text file, not by answering prompts: an engineer trusts a file they can grep,
 diff and keep, and a prompt sequence cannot be reviewed by a second person.
