@@ -78,7 +78,7 @@ person facing 29 questions answers none of them. Every row that carries a
 readable signal gets a proposal and the person corrects the ones that are wrong.
 
 Three notes on what the table can and cannot do, measured while implementing it
-(2026-08-22, Ray's corpus, 43 workspaces).
+(2026-08-22, Sam's corpus, 43 workspaces).
 
 **`open` is never proposed.** Repository visibility is not on disk. A remote URL
 says nothing about who may read it, and BRIEF §2 forbids the network call that

@@ -62,7 +62,7 @@ let capturing = false;
 // arrives as an ASYNCHRONOUS 'error' event on the stdout socket, so it never
 // passes through main()'s try/catch — a synchronous try/catch cannot catch it,
 // and Node's default handler turns it into a full V8 traceback. BRIEF §2: a
-// traceback on Ray's machine is a failed delivery.
+// traceback on Sam's machine is a failed delivery.
 //
 // Attached here rather than in the entry point because this is the only module
 // that writes to either stream, so a future entry point cannot forget.

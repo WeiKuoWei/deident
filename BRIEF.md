@@ -29,13 +29,13 @@ abstractions are worth keeping, not which features get built now.
 
 ## 2. Non-negotiable constraints
 
-- **It must not throw when Ray runs it.** A traceback on his machine is a
+- **It must not throw when Sam runs it.** A traceback on his machine is a
   failed delivery regardless of how correct the logic is. Every path he can
   hit needs a handled error and a useful message.
 - **Full git history.** Commit per meaningful step with Conventional Commit
   messages (`feat:`, `fix:`, `docs:`, `test:`, `chore:`). No squashing.
   **No AI attribution trailers of any kind** (`Co-Authored-By: Claude`,
-  `Generated with…`, `Claude-Session:`). Commits are authored by Ray's git
+  `Generated with…`, `Claude-Session:`). Commits are authored by Sam's git
   identity only.
 - **Node only, no npm dependencies.** Node v22. Standard library only.
   A dependency is a supply-chain question for a privacy tool; do not open it.
@@ -48,7 +48,7 @@ abstractions are worth keeping, not which features get built now.
 
 | Question | Decision |
 |---|---|
-| Pseudonyms reversible? | **Stable salted hash, no plaintext map file.** `pseudonym = hash(salt + entity)`, salt at `~/.deident-private/salt`. Reversal is done by regenerating the local entity list and hashing candidates. A plaintext map is a portable re-identification key for data that has already left the machine; the raw logs are not. Do not write one. **Qualified 2026-08-22:** where two declared entities OVERLAP in the text the substituter replaces the union and emits both tokens, so the token they shared is gone and two different inputs (`the operator Wang`, `the operator Kuo Wang`) produce identical output. That collapse is not reversible by the documented path, because the spans that would resolve it exist in memory only. The invariant in §4.7(a) is span-relative and still holds; the export prints the count of merged replacements so the caveat is visible rather than implied. |
+| Pseudonyms reversible? | **Stable salted hash, no plaintext map file.** `pseudonym = hash(salt + entity)`, salt at `~/.deident-private/salt`. Reversal is done by regenerating the local entity list and hashing candidates. A plaintext map is a portable re-identification key for data that has already left the machine; the raw logs are not. Do not write one. **Qualified 2026-08-22:** where two declared entities OVERLAP in the text the substituter replaces the union and emits both tokens, so the token they shared is gone and two different inputs (`the operator Wang`, `the operator Reed Wang`) produce identical output. That collapse is not reversible by the documented path, because the spans that would resolve it exist in memory only. The invariant in §4.7(a) is span-relative and still holds; the export prints the count of merged replacements so the caveat is visible rather than implied. |
 | Salt shared across people? | **Per-uploader salt.** Seven teammates uploading to one recipient who also holds the roster is a seven-way guess; a shared salt means cracking one cracks all. AI fluency is scored per person, so cross-uploader entity joins have no consumer. |
 | Semantic (LLM) entity discovery | **Mandatory, not optional.** Without it the tool cannot honestly claim safety (see F1 below). If it did not run, **refuse to emit the zip**. |
 | Code content | **Never exported.** Replaced by a count. There is no per-workspace "is this client code" question and no UI for it. |
@@ -140,11 +140,17 @@ Measured, identical pattern, same inputs:
 
 ```
                         Python \b   Node \b   lookaround
-因為Dean他他想要 / Jake      MISS       HIT        HIT
-Ivy跟小語 / Wei            MISS       HIT        HIT
-林先生 / 郭                MISS       MISS       HIT
+因為Dean他想要 / Dean      MISS       HIT        HIT
+Ivy跟小語 / Ivy            MISS       HIT        HIT
+林先生 / 林                MISS       MISS       HIT
 array index / ray         MISS       MISS       MISS   <- correct non-match
 ```
+
+The four names are fabricated. What each row has to carry is its shape, and
+losing the shape loses the row: `Dean` is a Latin name with CJK on the leading
+side, `Ivy` is a Latin name with CJK on the trailing side, `林` is a
+single-character CJK entity sitting inside a longer CJK word, and `ray` is a
+three-character name embedded in a longer Latin word.
 
 `/\w/` matches CJK in Python and not in JS. `\b` can never match a pure-CJK
 entity in either runtime.
@@ -155,7 +161,7 @@ prevent over-matching inside a longer CJK word. The length rule shipped and the
 flag did not, so `小明` matched inside `小明天` and corrupted a sentence naming
 nobody with every gate green. Each CJK occurrence is counted, and the count is in
 the manifest. Both cases go in the self-check
-with `因為Dean他他` and `林先生` as fixtures.
+with `因為Dean他` and `林先生` as fixtures.
 
 **Correction, measured 2026-08-22 over a real export.** `_` in that character
 class is wrong, and the cost is not marginal: 870 known-entity occurrences were
@@ -169,7 +175,7 @@ FAILING on `ray` inside `array`; it does not justify one bucket for both.
 
 The rule is therefore: `_` is a token boundary for a spelling of five
 characters or more, and a camel-case hump is a token boundary always, because
-`MeetingAda` is two words in any reading. `ray` inside `array` is untouched
+`MeetingNora` is two words in any reading. `ray` inside `array` is untouched
 by either exception — three characters, starts lowercase — so row 4 still
 holds. Fixture F50 pins both directions.
 
@@ -463,11 +469,11 @@ no server, no browser UI.
    is written.**
 7. `--preview` writes a diff to a file for inspection in the user's own editor;
    otherwise write the zip.
-8. One `--selftest` with assert-based fixtures covering, at minimum: `因為Dean他他`,
+8. One `--selftest` with assert-based fixtures covering, at minimum: `因為Dean他`,
    `林先生`, `array`/`ray` non-match, an `ls -l` line, a prefix-collision pair, an
    `Edit` record whose net line count is 0 but whose added count is not.
 
-Test data is Ray's own real mixed zh/en sessions, not synthetic fixtures.
+Test data is Sam's own real mixed zh/en sessions, not synthetic fixtures.
 
 **Slice 2 and beyond — do not build until triggered.**
 
@@ -526,7 +532,7 @@ exports carry prose and timestamps only, so they can support Framing / Precision
 ## 9. Definition of done
 
 - `node deident.mjs --selftest` passes.
-- `node deident.mjs --preview` runs to completion on Ray's real corpus with no
+- `node deident.mjs --preview` runs to completion on Sam's real corpus with no
   unhandled exception.
 - A full export produces a zip, and the residual scan reports zero known-entity
   residue.

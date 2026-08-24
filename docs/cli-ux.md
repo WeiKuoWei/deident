@@ -298,8 +298,8 @@ added none of that, and found five real half-replacements the person rule
 could not see.
 
 A word starting with a lowercase Latin letter never joins a run. `Founders and
-Wei` proposed `and Wei` at 7 occurrences, every one of them the declared name
-`Wei`: the longer run outranks the declared spelling in the probe table and
+Ivy` proposed `and Ivy` at 7 occurrences, every one of them the declared name
+`Ivy`: the longer run outranks the declared spelling in the probe table and
 claims spans that are already covered.
 
 **Seed spellings that are glued to alphanumerics.** The word-boundary rule is

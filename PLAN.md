@@ -67,7 +67,7 @@ old space, peaked at 2,895 MB working set, and aborted with
 `FATAL ERROR: Ineffective mark-compacts near heap limit` on a 1.78 GB corpus with the
 default heap. That is a process-level abort: the entry point's catch never runs, no
 refusal is printed, and nothing tells the user what happened — BRIEF §2's "it must not
-throw when Ray runs it", failing in the one way no error handling can cover. The pipeline
+throw when Sam runs it", failing in the one way no error handling can cover. The pipeline
 therefore surveys each file, reduces it to its per-line cwd values and a few counters, and
 releases it; the namespace check rides along as a per-line probe because it is the only
 step that reads raw line text; the retention pass re-reads. Two reads of a file are cheap,
@@ -448,9 +448,9 @@ content. Each fixture exists because it catches one specific bug.
 
 | # | Fixture | The bug it catches |
 |---:|---|---|
-| F01 | `因為Dean他他想要` with entity `Jake` | A `\b` boundary silently missing a Latin entity abutting CJK (§4.5 row 1). Regression guard if anyone "simplifies" the lookaround back to `\b`. |
-| F02 | `Ivy跟小語` with entity `Wei` | Same class, other side of the CJK boundary (§4.5 row 2). |
-| F03 | `林先生` with entity `郭` | A one-character CJK entity over-matching inside a longer word. Asserts the length >= 2 rule rejects it and flags it for review instead of substituting (§4.5 row 3). |
+| F01 | `因為Dean他想要` with entity `Dean` | A `\b` boundary silently missing a Latin entity abutting CJK (§4.5 row 1). Regression guard if anyone "simplifies" the lookaround back to `\b`. |
+| F02 | `Ivy跟小語` with entity `Ivy` | Same class, other side of the CJK boundary (§4.5 row 2). |
+| F03 | `林先生` with entity `林` | A one-character CJK entity over-matching inside a longer word. Asserts the length >= 2 rule rejects it and flags it for review instead of substituting (§4.5 row 3). |
 | F04 | `array index` with entity `ray` | The correct **non**-match (§4.5 row 4). Catches the over-eager substring substituter someone reaches for after seeing F03 fail. |
 | F05 | An `ls -l` line: `-rw-r--r-- 1 devuser 197609    929 ...` | §F3. Bare username outside any path, where longest-prefix path substitution never fires. It asserted nothing at all about the UID beside it, and the real pipeline shipped 786 copies of it; F57 now seeds the UID from that column and asserts it is replaced. |
 | F06 | `gitroll` and `gitroll-agentic` in one string | §4.6 prefix collision: a short entity eating the prefix of a longer one. Requires sort-by-length-descending. |
@@ -459,7 +459,7 @@ content. Each fixture exists because it catches one specific bug.
 | F09 | An `Edit` record: added 7, removed 7, net 0 | §4.2 / §4.3. Asserts `code_added_lines === 7`, not `0`. This is the 24.1%-of-edits case that manufactures a false "abandoned" session. |
 | F10 | An `Edit` record whose `toolUseResult` is a **string** (C6) | Asserts `code_added_lines === null`, not `0`, and no crash on the non-object form. |
 | F11 | A `Write` record with no `structuredPatch` | Asserts `null`, not `0` (§4.3: the two are different and `0` is the dangerous one). |
-| F12 | A line containing `PERSON_1` | I3. Asserts abort, then asserts `--namespace X` succeeds. This fires on the real corpus today (C4), so the test protects a path Ray will hit on his first run. |
+| F12 | A line containing `PERSON_1` | I3. Asserts abort, then asserts `--namespace X` succeeds. This fires on the real corpus today (C4), so the test protects a path Sam will hit on his first run. |
 | F13 | One string carrying `C:\Users\devuser`, `C:/Users/devuser`, `/c/Users/devuser`, `C:\\Users\\devuser`, `%3Ddevuser%40gitroll.io`, and a backslash-u-escaped CJK name | §4.6 variant expansion. Catches a variant table that covers the common form and leaks the other five. |
 | F14 | A file whose last line is a truncated JSON object | Exit 3 with the cli-ux §9 message shape, no stack trace (§9 definition of done). |
 | F15 | A record with `"type":"future-thing"` | I7. Asserts refusal, not a silent drop. |
@@ -472,7 +472,7 @@ content. Each fixture exists because it catches one specific bug.
 | F22 | A tier-1 entity string that overlaps an emitted pseudonym | The pseudonym guard at step 12. Catches a semantic pass returning `PERSON` and destroying every tier-0 replacement. |
 | F23 | Full pipeline run twice over the same three-record fixture, second run forced to fail | I10 idempotence, and I11: no `.part`, no zip, nothing left behind. |
 
-Beyond `--selftest`, per BRIEF §7 and §9: `--preview` over Ray's real corpus is the
+Beyond `--selftest`, per BRIEF §7 and §9: `--preview` over Sam's real corpus is the
 acceptance run. Real mixed zh/en sessions, not synthetic fixtures.
 
 ---

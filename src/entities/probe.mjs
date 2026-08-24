@@ -170,8 +170,8 @@ const MAX_RUN_WORDS = 4;
  * One condition on top, and it is a correctness rule rather than a tidiness
  * one: a word that starts with a lowercase Latin letter cannot be part of a
  * run. Measured on the live corpus after the run rule went in, a declared
- * `Founders and Wei` proposed `and Wei` at 7 occurrences, and every one of
- * them was an occurrence of the declared name `Wei`. The probe table is sorted
+ * `Founders and Ivy` proposed `and Ivy` at 7 occurrences, and every one of
+ * them was an occurrence of the declared name `Ivy`. The probe table is sorted
  * longest first, so a run that merely prefixes a declared spelling with a
  * connector outranks it and claims spans that are already covered, and the
  * report then says the prose still names someone the export replaces.

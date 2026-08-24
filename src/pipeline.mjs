@@ -1031,7 +1031,7 @@ function rememberDecisions(saltDir, decisions, sessionDrops) {
 /**
  * Steps 2, 3 and 4, one file at a time.
  *
- * The parsed records of a file are NOT kept. Measured on Ray's 833 MB corpus
+ * The parsed records of a file are NOT kept. Measured on Sam's 833 MB corpus
  * (2026-08-22): holding the raw text, the parsed value and a second array of
  * raw lines for the whole corpus needed between 2.5 and 3.0 GB of old space and
  * aborted the process with a V8 heap-limit FATAL ERROR — which no try/catch can
