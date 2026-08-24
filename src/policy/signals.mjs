@@ -103,6 +103,27 @@ export function proposeTier(group, probeRemote) {
         `git remote ${remote.raw}, but "${personal}" reads like personal data, so decide this one yourself`,
       );
     }
+    // Both guards above are English words matched over `/[^a-z0-9]+/`
+    // segments, so neither of them reads a name written in another script at
+    // all. Measured by running this function: a directory named in Han or in
+    // Cyrillic got denyToken null, personalDataShape null and a `redact`
+    // proposal, so a second user's private archive named in their own language
+    // is offered for export with no typed confirmation. That is the incident
+    // above with the instrument removed rather than answered, and silence from
+    // an instrument that could not look is not a clearance. Fails closed the
+    // same way GIT_UNAVAILABLE does.
+    //
+    // The remedy is named here because this is the moment the person is
+    // deciding, and because one token in that file feeds both matchDenyToken
+    // and deniedPathToken, so it closes the per-line path gate too.
+    const unreadable = [group.name, remote.repo].find((s) => typeof s === 'string' && NON_ASCII.test(s));
+    if (unreadable !== undefined) {
+      return frozen(
+        'unclassified',
+        `git remote ${remote.raw}, but the deny-list is English words and could not read ` +
+          `"${unreadable}": decide this one yourself, or add a token to denied.json beside your salt`,
+      );
+    }
     return frozen('redact', `git remote ${remote.raw} (set "open" yourself if it is public)`);
   }
   if (group.name === HOME_NAME) {
@@ -116,6 +137,10 @@ export function proposeTier(group, probeRemote) {
 // Whole segments only, split on the separators a repository name uses. A
 // substring test would call `pipeline` and `timeline` personal data, which is
 // §F7's over-reporting arriving as noise in the review.
+// A name with any non-ASCII character in it is outside what either English
+// word list can read.
+const NON_ASCII = /[^\x00-\x7F]/;
+
 const PERSONAL_TOKENS = new Set([
   'archive', 'archives', 'chat', 'chats', 'line', 'whatsapp', 'wechat', 'telegram',
   'messages', 'sms', 'dm', 'dms', 'journal', 'diary', 'health', 'medical',

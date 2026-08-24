@@ -50,6 +50,7 @@ import {
 } from './policy/workspaces.mjs';
 import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
 import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from './policy/signals.mjs';
+import { setUserDeny } from './policy/userdeny.mjs';
 import { readSession } from './corpus/reader.mjs';
 import { probeCaseFolding, setCaseFolding, caseFolding, normalizeCwd } from './corpus/cwdtrack.mjs';
 import { uncoveredNameParts } from './entities/probe.mjs';
@@ -5853,6 +5854,46 @@ const FIXTURES = [
       const text = whole.slice(at);
       assert.match(text, /wei/, `${name} does not name the spelling that was left out`);
       assert.match(text, /not examined, not clean/, `${name} lets an empty row list read as a clean result`);
+    }
+  }],
+
+  // F140 - both name-based guards in this file are English words matched over
+  // /[^a-z0-9]+/ segments, so neither of them reads a directory named in
+  // another script at all. Measured by running the real code: for a directory
+  // named in Han or Cyrillic, denyToken came back null, personalDataShape came
+  // back null, and proposeTier answered `redact`. So a second user's private
+  // archive, named in their own language and carrying a git remote, is offered
+  // for export with no typed confirmation and the green residue check prints
+  // afterwards.
+  //
+  // personalDataShape exists BECAUSE of the incident at signals.mjs: a personal
+  // message archive shipped a third party's real name 10 times on the strength
+  // of its remote alone. Silence from an instrument that could not look is not
+  // a clearance, so this fails closed the same way GIT_UNAVAILABLE does.
+  ['F140', 'a workspace named in a script the deny-list cannot read is not cleared by its remote', () => {
+    const remote = (raw) => ({ raw, owner: raw.split('/')[0], repo: raw.split('/')[1], host: null });
+    const group = (name) => ({ name, cwd: `C:${BS}x${BS}${name}`, denyToken: null, unresolved: false });
+
+    // Fabricated. SHAPE: an ordinary directory name written in a non-Latin
+    // script, one Han and one Cyrillic. The words themselves carry nothing;
+    // what they preserve is that DENY_TOKENS and PERSONAL_TOKENS cannot read
+    // either of them, whatever they say.
+    for (const name of ['私人紀錄', 'личное']) {
+      const p = proposeTier(group(name), () => remote(`me/${name}`));
+      assert.equal(p.tier, 'unclassified', `${name} was cleared by an instrument that could not read it`);
+      assert.match(p.reason, /denied\.json/, `${name} refused without naming a remedy the person can run`);
+    }
+
+    // Latin work names are untouched, or the review row becomes 29 questions.
+    assert.equal(proposeTier(group('ledger'), () => remote('northwind-co/ledger')).tier, 'redact');
+    // And the per-person file is what actually closes it, in both directions:
+    // one token added there feeds matchDenyToken and deniedPathToken alike.
+    setUserDeny({ tokens: ['私人'] });
+    try {
+      assert.equal(matchDenyToken(`C:${BS}x${BS}私人紀錄`), '私人');
+      assert.equal(proposeTier({ ...group('私人紀錄'), denyToken: '私人' }, () => remote('me/x')).tier, 'exclude');
+    } finally {
+      setUserDeny({});
     }
   }],
 ];

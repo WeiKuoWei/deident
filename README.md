@@ -220,8 +220,18 @@ empty list would satisfy "the pass ran" while delivering nothing.
 
 A workspace deident has not seen before is `unclassified`, which means excluded.
 It is never swept in. Beyond that, a workspace whose name (or whose per-line
-`cwd`) contains `private`, `identity`, `payroll` or a token you add yourself is excluded and needs
+`cwd`) contains `private`, `identity`, `payroll` or a token you add to
+`~/.deident-private/denied.json` (`{"tokens": ["私人"]}`, any script) is excluded and needs
 `--include-denied <exact-name>` typed out to include.
+
+The three shipped tokens are English words and match nothing else, and the
+"reads like personal data" check beside them is English words too. So a
+workspace whose name contains any non-ASCII character is proposed
+`unclassified`, which means excluded until you decide it, however ordinary the
+name is: neither list can read it, and silence from an instrument that could
+not look is not a clearance. Decide it once in `review.md`, or put your own
+token in `denied.json` and it is excluded for good. One token there feeds the
+workspace check and the per-line `cwd` check alike.
 
 The per-line `cwd` filter matters more than it sounds. The largest session file
 on the development machine spans **11 distinct working directories**, two of them
