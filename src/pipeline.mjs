@@ -663,14 +663,19 @@ export async function runExport(flags, env) {
   ]);
   report.renderProbe(probeOutliers(replacementCounts));
 
-  //  12b  Surnames of declared people that still stand alone in the text.
+  //  12b  Pieces of a declared spelling that still stand alone in the text: a
+  //       surname of a declared person, and a contiguous run of words from a
+  //       declared spelling of any other kind.
   //
   //       Measured over the tier-0-cleaned text, which is what the semantic
   //       pass read, so a part the reader could have declared and did not is
   //       what shows up. Reported and not substituted: docs/model-tier.md
   //       measured every tier naming "Grace Hopper" while the mid tier never
   //       named the bare "Morgan", and in this corpus May, Wise and Ray are
-  //       all parts of real names and all ordinary words.
+  //       all parts of real names and all ordinary words. Measured 2026-08-24
+  //       over the live corpus, the run half found five more: a street and a
+  //       district from an office address declared as one string, and an org
+  //       name whose only declared form carried a trailing partner list.
   report.renderNameParts(
     uncoveredNameParts(tier1Entities, collectRetainedStrings(cleaned.records)),
   );
@@ -710,6 +715,16 @@ export async function runExport(flags, env) {
   });
 
   report.renderChecks(toReportRows(checks));
+
+  //  15a  The occurrences the boundary rule refused, per spelling, for the
+  //       tier-0 spellings that identify the uploader. Measured 2026-08-24: the
+  //       OS username shipped inside cloud resource names (`stdevuser-prod`,
+  //       `kv-devuser37557093578778`) while this same scan printed
+  //       `known-entity residue 0`, because a seed glued to alphanumerics can
+  //       never match. A report and not a gate: the boundary rule is correct
+  //       and §4.5 row 4 requires the non-match.
+  report.renderGluedResidue(residue.scan.gluedHits);
+
   for (const w of [...loaded.warnings, ...seeded.warnings]) report.renderWarning(w);
 
   if (!substitution.ok) throw substitutionRefusal(substitution);
@@ -1490,6 +1505,11 @@ function buildManifest(retained, decisions, serialized, residue, entities, cavea
     cjkSpans: caveats.cjk,
     embedded: residue.scan.embedded,
     escapeArtifacts: residue.scan.escapeArtifacts ?? 0,
+    // A subset of `embedded`, and the only subset a reader can act on. It gets
+    // its own limits line because "2,278 spellings abut a letter or digit"
+    // reads as an accounting note, and "your username is in the archive 14
+    // times" is a decision.
+    gluedOccurrences: residue.scan.gluedCount ?? 0,
     // The residue line belongs beside the limits, not only in the checks
     // table: review.html and the preview print the limits block and used to
     // carry no residue figure at all.

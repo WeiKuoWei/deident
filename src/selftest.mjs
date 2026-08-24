@@ -4889,6 +4889,171 @@ const FIXTURES = [
     const entry = fs.readFileSync(path.join(repo, 'deident.mjs'), 'utf8');
     assert.match(entry, /export async function run\(/, 'deident.js calls mod.run()');
   }],
+
+  ['F124', 'a multi-word spelling of any kind contributes contiguous runs, and only a person contributes single words', () => {
+    // F109 restricted the name-part report to `person`. On the 2026-08-24 live
+    // run a registered office address was declared as ONE string, so only the
+    // whole string was ever a needle, and the archive still carried the street
+    // on its own. Nothing could catch it: the residue scan looks only for the
+    // spellings it was given, and the probe never split a non-person entity.
+    //
+    // The rule, measured before it was chosen (see probe.mjs): a single word
+    // is proposed only from a `person`, and a contiguous run of two or more
+    // words is proposed from any kind. Proposing single words from every kind
+    // on the live entity list produced 52 candidates of which 16 occurred, led
+    // by `and` at 337 and followed by `Pro`, `Commercial`, `USD`, `Road`,
+    // `Industry` and `South`, all ordinary words at the top of a list a person
+    // supposed to read line by line, which is §F7's cry-wolf failure.
+    //
+    // Every value below is fabricated. The SHAPE is what matters and a
+    // find-and-replace over this repo has already destroyed it once:
+    //   the address   a registered office declared as one comma-separated
+    //                 string, whose street also stands alone in the prose.
+    //   Acme Advisory a two-word org, to prove no single word is ever proposed
+    //                 from a non-person: `Advisory` is a common noun.
+    //   Grace Hopper  a person whose surname stands alone, so the single-word
+    //                 path is exercised in the same call.
+    const address = 'Rm 4, 12/F, Northgate Commercial Centre, 20-28 Bramble Road, Harbour Point';
+    const texts = [
+      'Invoices go to Bramble Road. The Bramble Road office signs for them.',
+      'The Centre 20-28 sign is on the wall, and Advisory work is billed monthly.',
+      'Grace Hopper sent it, and Hopper replied.',
+    ];
+    const entities = [
+      { kind: 'secret', spellings: [address] },
+      { kind: 'org', spellings: ['Acme Advisory'] },
+      { kind: 'person', spellings: ['Grace Hopper', 'Grace'] },
+    ];
+
+    const parts = uncoveredNameParts(entities, texts).map((r) => r.part);
+
+    // The escape itself. Two words of the declared address, standing alone.
+    assert.ok(parts.includes('Bramble Road'), `expected Bramble Road, got ${JSON.stringify(parts)}`);
+
+    // The precision half, and the reason the rule is runs and not words. Each
+    // of these occurs in the text above on its own.
+    for (const noise of ['Road', 'Centre', 'Commercial', 'Advisory', 'Point', 'Northgate']) {
+      assert.ok(!parts.includes(noise), `${noise} is a single word of a non-person and must not be proposed`);
+    }
+
+    // A run never crosses the punctuation the writer put there: the address
+    // reads "Centre, 20-28" and "Centre 20-28" is a phrase nobody wrote, so it
+    // is not proposed even though the text happens to contain it.
+    assert.ok(!parts.includes('Centre 20-28'), 'a run crossed a comma');
+
+    // The person path is untouched by any of this, in the same call.
+    assert.ok(parts.includes('Hopper'), 'the single-word person part stopped being reported');
+
+    // Counted through the shipped matcher, so the number is bare uses. Both
+    // occurrences of "Bramble Road" stand alone; neither is inside the
+    // declared address, which does not appear in the text at all.
+    const row = uncoveredNameParts(entities, texts).find((r) => r.part === 'Bramble Road');
+    assert.equal(row.count, 2, 'the count is bare uses of the run');
+    assert.equal(row.from, address, 'the row names the declared spelling it came from');
+
+    // And it names the form the person TYPED, not an escaping variant of it.
+    // readEntities runs every declared spelling through expandVariants, so a
+    // path-shaped address arrives carrying a backslash-doubled twin that is
+    // longer than the original. Labelling the row with that twin shows the
+    // reader a string they never wrote, in the one column that tells them
+    // which entry to edit.
+    const variant = address.replace('12/F', `12${SEP}${SEP}F`);
+    const labelled = uncoveredNameParts(
+      [{ kind: 'secret', spellings: [variant, address] }],
+      texts,
+    ).find((r) => r.part === 'Bramble Road');
+    assert.equal(labelled.from, address, `the row was labelled with an escaping variant: ${labelled.from}`);
+
+    // A run that IS the whole declared spelling proposes nothing: it is
+    // already a needle, so reporting it would be a row with no action behind
+    // it. Two-word orgs are therefore silent, which is most of them.
+    assert.deepEqual(
+      uncoveredNameParts([{ kind: 'org', spellings: ['Acme Advisory'] }], ['Acme Advisory bills monthly']),
+      [],
+    );
+
+    // A lowercase connector never joins a run, and this one is a correctness
+    // rule rather than a tidiness rule.
+    //
+    // Measured on the live corpus after the run rule went in: a declared
+    // workspace "Founders and Wei" proposed "and Wei", which occurred 7 times
+    // and every one of them was an occurrence of the declared name "Wei". The probe
+    // table is sorted longest first, so the 7-character run outranked the
+    // 3-character declared spelling and claimed spans that were already
+    // covered. The report then said "the prose still names them" about a name
+    // the export replaces.
+    //
+    // The cost is stated rather than hidden: a name with a lowercase particle
+    // ("van Dijk") proposes no run. For a person the single-word path still
+    // proposes "Dijk", which is the half that carries the identity.
+    const connector = uncoveredNameParts(
+      [{ kind: 'workspace', spellings: ['Founders and Wei'] }, { kind: 'person', spellings: ['Wei Chen'] }],
+      ['Founders and Wei met, and Wei signed it, and Wei filed it.'],
+    ).map((r) => r.part);
+    assert.ok(!connector.includes('and Wei'), `a lowercase connector joined a run: ${JSON.stringify(connector)}`);
+  }],
+
+  ['F125', 'a tier-0 spelling of the uploader glued to alphanumerics is reported, with the boundary rule off', () => {
+    // Measured 2026-08-24 over a shipped archive (18.8 MB of exported bytes):
+    // the OS username survived inside cloud resource names, glued to letters
+    // and digits on both sides. The boundary rule refuses every one of them,
+    // correctly by its own terms, because §4.5 row 4 makes `ray` inside `array`
+    // a CORRECT non-match, so the export printed `known-entity residue 0` while
+    // the username sat in the archive.
+    //
+    // A REPORT, never a gate. A gate here would fail every export forever over
+    // behaviour BRIEF §4.5 demands.
+    //
+    // Fabricated values. The SHAPE:
+    //   devuser                    the OS username, this repo's standing
+    //                              placeholder for it
+    //   stdevuser-prod etc.        cloud resource names that glue a username
+    //                              to a prefix, a suffix or a digit run, which
+    //                              is how the real ones were shaped
+    //   /home/devuser/notes        a bounded occurrence, which belongs to the
+    //                              residue GATE and must not appear here twice
+    const bytes = [
+      '["stdevuser-prod","ai-devuser01","kv-devuser37557093578778"]',
+      'storageAccounts stdevuser3756557093578778',
+      'the file /home/devuser/notes was read',
+    ].join(' ');
+    const table = buildTable([
+      { id: 'PERSON_01', kind: 'person', tier: 0, pseudonym: 'PERSON_01', spellings: ['devuser'] },
+    ]);
+
+    const scan = residualScan(bytes, table, new Set());
+    assert.equal(scan.gluedHits.length, 1, 'one spelling, one row');
+    const hit = scan.gluedHits[0];
+    assert.equal(hit.spelling, 'devuser');
+    // Four glued occurrences. The fifth, inside the path, is bounded on the
+    // left by `/` and on the right by `/`, so the substituter replaced it and
+    // the residue gate owns it. Counting it here would report a handled
+    // occurrence as an unhandled one.
+    assert.equal(hit.count, 4, `expected the four glued occurrences, got ${hit.count}`);
+    assert.ok(hit.excerpt.includes('devuser'), 'the row carries an excerpt to judge it by');
+
+    // Scope, and the two halves of it that keep this from crying wolf.
+    //
+    // A workspace path is out: it is substituted as a path and matches its own
+    // longer form, so every deeper path under it would be a row.
+    const workspace = buildTable([
+      { id: 'WORKSPACE_01', kind: 'workspace', tier: 0, pseudonym: 'WORKSPACE_01', spellings: ['projects'] },
+    ]);
+    assert.equal(residualScan('myprojectsdir', workspace, new Set()).gluedHits.length, 0);
+
+    // A short spelling is out. Measured over the same 18.8 MB: at three
+    // characters the median seed produced 643 glued occurrences and the worst
+    // 1,996; at four, 13 and 270; at five, 0 and 14, and the 14 were the real
+    // leak. Five is where the report becomes something a person finishes.
+    const short = buildTable([
+      { id: 'PERSON_02', kind: 'person', tier: 0, pseudonym: 'PERSON_02', spellings: ['ray'] },
+    ]);
+    assert.equal(residualScan('an array index', short, new Set()).gluedHits.length, 0);
+
+    // Still counted in the aggregate the manifest already prints, so the two
+    // numbers cannot disagree about the same occurrence.
+    assert.ok(scan.embedded >= 4, 'the glued rows are the same occurrences the embedded counter sees');
+  }],
 ];
 
 export function selftest() {

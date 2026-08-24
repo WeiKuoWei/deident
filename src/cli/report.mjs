@@ -467,12 +467,14 @@ export function renderProbe({ hits, zeros }) {
 }
 
 /**
- * Surnames of declared people that still stand alone in the exported text.
+ * Pieces of a declared spelling that still stand alone in the exported text.
  *
  * Substituting "Grace Hopper" and leaving the bare "Morgan" is a half
  * replacement: the pseudonym appears once and the prose names him again two
- * sentences later. No gate can catch it, because the residue scan only looks
- * for what it was given, and every check stays green.
+ * sentences later. The same shape reaches every other kind through multi-word
+ * spellings. An office address declared as one string shipped its street
+ * on its own. No gate can catch either, because the residue scan only
+ * looks for what it was given, and every check stays green.
  *
  * Printed rather than fixed, because the fix is not mechanical: in this corpus
  * May, Wise and Ray are all parts of real names and all ordinary words. The
@@ -482,17 +484,52 @@ export function renderNameParts(rows) {
   if (machine !== null) { machineAdd({ uncoveredNameParts: rows }); return; }
   if (rows.length === 0) return;
   warn('');
-  warn(`  ! ${n(rows.length)} name part${rows.length === 1 ? '' : 's'} of a declared person still stand${rows.length === 1 ? 's' : ''} alone in the text.`);
-  warn('    The full name was replaced; these were not, so the prose still names them.');
+  warn(`  ! ${n(rows.length)} part${rows.length === 1 ? '' : 's'} of a declared entity still stand${rows.length === 1 ? 's' : ''} alone in the text.`);
+  warn('    The full spelling was replaced; these were not, so the text still carries them.');
   for (const r of rows.slice(0, 12)) {
     warn(`      ${String(r.count).padStart(6)}  ${pad(r.part, 18)} from "${r.from}"`);
     if (r.excerpt) warn(`              ${r.excerpt.slice(0, 96)}`);
   }
   if (rows.length > 12) warn(`      ... and ${n(rows.length - 12)} more`);
   warn('');
-  warn('    Add the ones that are really this person to the entity list and re-run.');
+  warn('    Add the ones that really are this entity to the entity list and re-run.');
   warn('    Leave out any that are ordinary words: that costs nothing, and adding');
   warn('    one replaces a common word everywhere with every check still green.');
+  warn('');
+}
+
+/**
+ * Spellings of the uploader that are still in the output, glued to letters or
+ * digits so the boundary rule could never match them.
+ *
+ * Measured 2026-08-24 over a shipped archive: the OS username survived inside
+ * cloud resource names, glued on both sides, while the export printed
+ * `known-entity residue 0`. The boundary rule is correct and does not change.
+ * BRIEF §4.5 row 4 makes `ray` inside `array` a required non-match, so the
+ * only honest handling is to say which spellings it refused and let the reader
+ * decide.
+ *
+ * A finding, not a gate, and stderr like every other finding. The wording has
+ * to say that the substituter DECIDED not to replace these, or a reader reads
+ * the block as a bug report against deident and files it instead of acting.
+ */
+export function renderGluedResidue(rows) {
+  if (machine !== null) { machineAdd({ gluedResidue: rows }); return; }
+  if (rows.length === 0) return;
+  const total = rows.reduce((a, r) => a + r.count, 0);
+  warn('');
+  warn(`  ! ${n(total)} occurrence${total === 1 ? '' : 's'} of your own username or git identity are still in the`);
+  warn('    output, joined to letters or digits (yourname-prod, kv-yourname01234).');
+  warn('    The substituter did not replace them and that is deliberate: the word');
+  warn('    boundary rule cannot tell them from your name inside an ordinary word.');
+  for (const r of rows.slice(0, 12)) {
+    warn(`      ${String(r.count).padStart(6)}  ${pad(r.spelling, 24)} ${r.entityId}`);
+    if (r.excerpt) warn(`              ${r.excerpt.slice(0, 96)}`);
+  }
+  if (rows.length > 12) warn(`      ... and ${n(rows.length - 12)} more`);
+  warn('');
+  warn('    Decide per row. A resource name you can rename before exporting is one');
+  warn('    fix; declaring the glued spelling itself in the entity list is another.');
   warn('');
 }
 

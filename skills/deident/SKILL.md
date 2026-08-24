@@ -245,11 +245,25 @@ Also carry back:
   is expected.
 - `replacementCounts.zeros` — spellings that matched nothing, so they protected
   nothing. Usually a typo in the entity list.
-- `uncoveredNameParts` — surnames of people you declared that still stand alone
-  in the text. `Grace Hopper` replaced and a bare `Morgan` left behind is a half
-  replacement, and no check catches it: the residue scan only looks for what it
-  was given. Add the ones that are really that person and re-run. Leave out any
-  that are ordinary words.
+- `uncoveredNameParts`: pieces of a spelling you declared that still stand
+  alone in the text. `Grace Hopper` replaced and a bare `Morgan` left behind is
+  a half replacement, and no check catches it: the residue scan only looks for
+  what it was given. The same shape reaches every other kind through multi-word
+  spellings. An office address declared as one comma-separated string shipped
+  its street on its own, because only the whole string was ever a needle. A
+  single word is proposed only from a `person`; from any other kind only a
+  contiguous run of two or more words is, which is what admits the street out
+  of an address without ever proposing `Road`. Add the ones that really are that entity and re-run.
+  Leave out any that are ordinary words.
+- `gluedResidue`: occurrences of the person's own username or git identity that
+  are still in the archive, joined to letters or digits (`yourname-prod`,
+  `kv-yourname01234`). The substituter refused these on purpose: the word
+  boundary rule cannot tell them from a name sitting inside an ordinary word,
+  and BRIEF §4.5 requires that non-match. **Not a bug and not a failed check.**
+  It is a decision to hand back. Each row carries a count and an excerpt. Say so
+  plainly: renaming the resource before exporting is one fix, declaring the
+  glued spelling itself in the entity list is another, and accepting it is a
+  third. `manifest.gluedOccurrences` is the same finding as a single count.
 
 If the export refuses, the JSON has `ok: false` and an `error` with `reason`,
 `why` and runnable `remedies`. Act on the remedy; do not retry the same command.

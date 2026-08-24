@@ -27,6 +27,52 @@ function isWordChar(ch) {
 
 const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
 
+// A glued spelling shorter than this is noise, measured rather than guessed.
+//
+// Over one shipped archive (18.8 MB of exported bytes, 2026-08-24), counting
+// occurrences the boundary rule refused, for ten plausible seeds at each
+// length:
+//
+//   3 characters   median 643 occurrences, worst 1,996
+//   4 characters   median  13 occurrences, worst   270
+//   5 characters   median   0 occurrences, worst    14
+//
+// The 14 at five characters were the finding this report exists for. Below
+// five the report is a wall of `array`, and docs/cli-ux.md §7 and §F7 both say
+// what happens to a check that fires constantly. Five is also where the
+// substituter draws SEPARATOR_BOUNDARY_MIN, for the same reason: shorter than
+// that and an accidental match is the likelier reading.
+const GLUED_MIN = 5;
+
+/**
+ * Is this a spelling whose glued occurrences are worth putting in front of a
+ * reader?
+ *
+ * Tier 0 and `person`, which is exactly the set of spellings that identify the
+ * UPLOADER: the OS username, `git config user.name`, `git config user.email`
+ * and its local part, and their own handles swept out of an address. Those are
+ * the measured cases. The username survived inside cloud resource names such
+ * as `stdevuser-prod` and `kv-devuser37557093578778`, glued on both sides, and
+ * the export reported zero residue.
+ *
+ * The other kinds are deliberately out, and each for its own reason rather
+ * than for tidiness:
+ *
+ *   workspace  a path is already substituted as a path, so its glued form is
+ *              its own longer form and every deeper path under it would be a
+ *              row.
+ *   org        a remote owner glued to a digit or a hyphenless suffix is a
+ *              repo, a bucket or a resource the org already puts its name on.
+ *   machine    an MCP server name occurs only as `mcp__NAME__tool`, and the
+ *              substituter's `_` exception already matches every one.
+ *   tier 1     these come from the semantic pass, which names third parties.
+ *              A reader cannot act on a glued occurrence of someone else's
+ *              surname the way they can act on their own username.
+ */
+function gluedWorthy(entry) {
+  return entry.tier === 0 && entry.kind === 'person' && entry.spelling.length >= GLUED_MIN;
+}
+
 /**
  * @param {string} bytes     the serialized output, as one string
  * @param {object} table     the substitution table (entries carry spellings)
@@ -100,6 +146,15 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
   // `known-entity residue 0`. Exempting it silently was the part that was
   // wrong, not the exemption.
   let escapeArtifacts = 0;
+  // The same occurrences as `embedded`, kept per spelling and scoped, so a
+  // reader gets rows they can act on instead of one aggregate they cannot.
+  //
+  // Collected in THIS sweep rather than a second one. A separate boundary-off
+  // scanner would be a second matcher over the same bytes, and this file's own
+  // header records what happened last time the scan had its own copy of the
+  // boundary rule: both copies had the same bug, agreed with each other, and a
+  // leak was reported as `known-entity residue: 0`.
+  const glued = new Map();
 
   for (let i = 0; i < bytes.length && entityHits.length <= 10_000; i += 1) {
     const bucket = byFirst.get(bytes[i]);
@@ -133,6 +188,19 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       if (end > bytes.length) continue;
       if (leftBoundaryBlocks(bytes, i, entry) || rightBoundaryBlocks(bytes, end, entry)) {
         embedded += 1;
+        if (gluedWorthy(entry)) {
+          let rec = glued.get(entry.spelling);
+          if (rec === undefined) {
+            rec = {
+              entityId: entry.entityId,
+              spelling: entry.spelling,
+              count: 0,
+              excerpt: excerptAt(bytes, i, form.length),
+            };
+            glued.set(entry.spelling, rec);
+          }
+          rec.count += 1;
+        }
         break;
       }
       entityHits.push(
@@ -160,12 +228,20 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
     if (uuidHits.length > 10_000) break;
   }
 
+  const gluedHits = Object.freeze(
+    [...glued.values()]
+      .sort((a, b) => b.count - a.count || (a.spelling < b.spelling ? -1 : 1))
+      .map((r) => Object.freeze(r)),
+  );
+
   return Object.freeze({
     entityHits: Object.freeze(entityHits),
     uuidHits: Object.freeze(uuidHits),
     entityCount: entityHits.length,
     embedded,
     escapeArtifacts,
+    gluedHits,
+    gluedCount: gluedHits.reduce((a, r) => a + r.count, 0),
     uuidCount: uuidHits.length,
     entitiesScanned: table.entries.length,
   });
