@@ -3,7 +3,7 @@
 //
 // cli-ux §5: "A count nobody can drill into is a count nobody believes." The
 // export reports a spelling replaced N times and offers ONE excerpt for it, so
-// the owner's real question — are those N a person's name or an ordinary word —
+// the owner's real question (are those N a person's name or an ordinary word)
 // has no answer on this machine. Measured 2026-08-24 on the live corpus, that
 // is not hypothetical: an ordinary noun meaning "meeting" counted 202 and had
 // to fail, a brokerage counted 255 and had to pass, and no threshold separates
@@ -42,7 +42,7 @@ const EXCERPT_CONTEXT = 40;
  * were replaced 26,505 times across a handful of spellings, so an uncapped
  * index writes tens of megabytes of excerpts nobody will read, for the one
  * entity class whose identity was never in doubt. The cap sits above the
- * counts a person actually drills into — §5's worked example is 991 — and the
+ * counts a person actually drills into (§5's worked example is 991), and the
  * file records the true total beside the rows, so a truncated answer says it
  * is truncated rather than under-reporting the count.
  */

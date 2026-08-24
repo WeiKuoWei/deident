@@ -40,15 +40,15 @@ Three rules that hold for the whole flow:
 Everything the tool remembers is in one directory, `~/.deident-private`, which
 `--salt-dir` overrides:
 
-- `salt` — makes one person get the same pseudonym in every run. Delete it and
+- `salt`: makes one person get the same pseudonym in every run. Delete it and
   everybody is renumbered.
-- `entities.json` — the identities already declared, plus a hash of every
+- `entities.json`: the identities already declared, plus a hash of every
   session already put in front of a reader. This is what makes a repeat run
   cheap, and it is the file a person may edit by hand.
-- `workspaces.json` — the tier decisions, so scanning into a new working
+- `workspaces.json`: the tier decisions, so scanning into a new working
   directory does not lose them.
-- `denied.json` — the person's OWN deny rules, on top of the shipped ones.
-- `occurrences.json` — every occurrence the last export replaced. Read with
+- `denied.json`: the person's OWN deny rules, on top of the shipped ones.
+- `occurrences.json`: the occurrences the last export replaced. Read with
   `review --entity`, below.
 
 Everything else (`review.md`, the candidates file, the archive, `export-map.txt`)
@@ -61,7 +61,7 @@ identities and the read-session record together, which is the point.
 **Copy `denied.json` into the fresh salt directory first.** It is the one file
 whose absence is silent and dangerous: without it none of the person's own deny
 rules load, so a directory they expect to be excluded is proposed at `redact`
-and offered for export, with every check green — no check knows a rule was
+and offered for export, with every check green, and no check knows a rule was
 supposed to exist.
 
 ```

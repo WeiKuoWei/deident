@@ -2169,7 +2169,7 @@ const FIXTURES = [
     assert.ok(!text.includes('Wang'), 'no fragment of a declared entity may survive the excerpt');
   }],
 
-  // F65 — cli-ux §5's two queries used to print a note and exit 0, pointing at
+  // F65 - cli-ux §5's two queries used to print a note and exit 0, pointing at
   // `export --preview`, which answers neither: a scripted check of "can I drill
   // into PERSON_11" passed while nothing happened. BRIEF §2 calls that a
   // failure, and it is the rule that outlives the implementation.

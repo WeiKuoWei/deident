@@ -618,7 +618,7 @@ export function renderEntityOccurrences(rec, source) {
   }
   // Grouped by session rather than one flat table with a session column. The
   // id is 36 characters and identical down a run of rows, so repeating it
-  // pushed the excerpt off the right of an 80-column terminal — and the excerpt
+  // pushed the excerpt off the right of an 80-column terminal, and the excerpt
   // is the only column that answers the question. Grouping also puts the id on
   // its own line, which is the argument for the --session query below it.
   const bySession = new Map();

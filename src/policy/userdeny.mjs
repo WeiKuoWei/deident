@@ -68,7 +68,7 @@ export function userDenyPatterns() {
  * per-person rules. Nothing announces that. This module's own header names the
  * cost: the directory named after a real person HAS a git remote, so without
  * its token the proposed tier flips from exclude to redact and a private
- * workspace is offered for export, with every gate green — no gate knows a rule
+ * workspace is offered for export, with every gate green: no gate knows a rule
  * was ever supposed to exist. It is the one configuration where the person
  * believes they are protected and is not.
  *
