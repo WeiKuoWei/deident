@@ -346,12 +346,25 @@ miss rather than a corruption, and it is the right way round.
 
 **Credentials and phone numbers are matched by shape, and only by shape.**
 Anything with an unambiguous vendor prefix (`github_pat_`, `ghp_`, `sk-ant-`,
-`xoxb-`, `AKIA`, `ntn_`, `AIza`) is force-replaced, and so is any `+<country
-code><8-15 digits>` phone number. Both are tuned for precision: an entropy
+`xoxb-`, `AKIA`, `ntn_`, `AIza`, `sk-proj-`, `sk_live_`, `npm_`, `glpat-`,
+`hf_`, `xapp-`, and the rest of one greppable list in `src/entities/seed.mjs`)
+is force-replaced, and so is any `+<country code><8-15 digits>` phone number.
+So is a value whose **label** says what it is, which is the rule the prefix
+list cannot be: `api_key`, `secret_key`, `access_token`, `auth_token`,
+`client_secret`, `password`, a `Bearer ` header, an `X-Amz-` parameter in a
+signed URL, a password written inline in a database URL. A
+`-----BEGIN … PRIVATE KEY-----` block is dropped whole rather than replaced,
+because half a key is still a key. All of it is tuned for precision: an entropy
 heuristic would fire on every hash and uuid in your logs, and a scan that cries
-wolf is the first thing switched off. **A credential in a shape not on that list
-is not detected.** A password typed in prose, a bearer token with no prefix, a
-private key body: those are text, and only the semantic pass can catch them.
+wolf is the first thing switched off.
+
+**A credential with neither a listed prefix nor a label beside it is not
+detected, and nothing downstream recovers it.** The residue scan only searches
+for entities it already knows. The semantic pass reads your prose and the
+model's, never tool output, so a key printed by a command you ran is caught by
+shape or it is not caught at all. The `0 secrets` row in the manifest means
+"none of the shapes deident knows", not "no secrets", and the export block says
+so at the moment you run it.
 
 **Identity-document numbers are found by their label, in English and Chinese
 only.** A number is seeded when a label word sits beside it: `passport`,

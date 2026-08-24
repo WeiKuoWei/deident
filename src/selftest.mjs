@@ -51,6 +51,7 @@ import {
 import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
 import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from './policy/signals.mjs';
 import { setUserDeny } from './policy/userdeny.mjs';
+import { limitLines } from './cli/limits.mjs';
 import { readSession } from './corpus/reader.mjs';
 import { probeCaseFolding, setCaseFolding, caseFolding, normalizeCwd } from './corpus/cwdtrack.mjs';
 import { uncoveredNameParts } from './entities/probe.mjs';
@@ -5967,6 +5968,39 @@ const FIXTURES = [
     ].join(NL);
     assert.equal(deniedReason(pem), '-----BEGIN OPENSSH PRIVATE KEY-----');
     assert.equal(deniedReason('we discussed rotating the deploy key'), null);
+  }],
+
+  // F142 - the other half of F141, and the half that cannot be closed by code:
+  // enumerating prefixes stays reactive forever, so whatever the sweep knows
+  // today there is a vendor tomorrow it does not. The manifest prints
+  // `0 secrets  0 replaced` as a zeros row whose whole purpose is to be
+  // believed, and the limits block six lines below said nothing about
+  // unrecognised credential shapes. An affirmative zero from a detector reads
+  // louder and closer than a pointer to README.
+  //
+  // The block must also not list a shape the tool DOES handle. cli-ux §6: a
+  // disclosure hiding an implemented-but-inert control is worse than either
+  // honest option, which is what F76 exists for.
+  ['F142', 'the limits block says what the 0 secrets row does not cover, without claiming a handled shape is unhandled', () => {
+    const block = limitLines({}).join(NL);
+    assert.match(block, /none of the shapes it knows/, 'the zeros row is left to speak for itself');
+    assert.match(block, /never reads tool output/, 'the block does not say why nothing downstream recovers it');
+    // Handled now, so naming them here would be the disclosure hiding a real
+    // control: a labelled value, a signed URL, an inline database password and
+    // a private key body all have a sweep or a deny rule.
+    for (const handled of [/private key/i, /database URL/i, /Bearer/i]) {
+      assert.ok(!handled.test(block), `the block claims an implemented control is missing: ${handled}`);
+    }
+
+    // README said "only the semantic pass can catch them" of exactly these
+    // shapes, and that is false in the direction that matters: the semantic
+    // pass reads prose only, and every measured credential leak was tool
+    // output.
+    const readme = fs.readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8');
+    assert.ok(
+      !readme.includes('only the semantic pass can catch them'),
+      'README still points at a pass that never sees tool output',
+    );
   }],
 ];
 

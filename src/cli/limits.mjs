@@ -23,6 +23,18 @@ export const ALWAYS = Object.freeze([
   'the bare NAME of a file or directory you discussed, where prose quotes it without a path',
   'your own account inventory: vault item names, login ids, which tokens are live',
   'ids from a service deident does not sweep: a board, document or channel id',
+  // The manifest prints `0 secrets  0 replaced` six lines above this block, as
+  // a zeros row whose whole purpose is to be believed. Enumerating vendor
+  // prefixes stays reactive forever, so the affirmative zero has to say what
+  // it is a zero OF. Only the shapes that really are unswept are named here:
+  // a labelled value, a Bearer header, a signed URL, an inline database
+  // password and a private key body all have a sweep or a deny rule now, and
+  // cli-ux §6 says a disclosure hiding an implemented control is worse than
+  // either honest option.
+  'a credential with no listed vendor prefix and no label beside it. The 0 secrets',
+  '  row above means "none of the shapes it knows", not "no secrets", and the',
+  '  semantic pass never reads tool output, so a key a command printed for you is',
+  '  caught by shape or it is not caught at all',
 ]);
 
 /**
