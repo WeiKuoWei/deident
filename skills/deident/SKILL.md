@@ -91,6 +91,16 @@ That writes `deident-candidates.txt`: the session prose after the tool has
 already replaced usernames, paths, git identity, git remotes, emails and MCP
 server names. What remains is what needs a reader.
 
+It is a PROSE extract, and the export substitutes over everything it keeps, so
+the file shows you less than what ships. Measured 2026-08-24: a name-part check
+over the candidates file found 8 uncovered surnames and the same check over the
+export found 17. Step 5 is where that gap closes, so do not treat this file as
+the whole surface.
+
+Every UUID in it is already a pseudonym: session and message ids were replaced
+before it was written. Do not declare one. Doing so made the export refuse
+against deident's own output.
+
 **Read it yourself. Do not hand this step to a cheap subagent.** Measured across
 three model tiers on one corpus (`docs/model-tier.md`): the low tier found 0 and
 1 of the seven values that were themselves the secret, while filing `Delaware`,
