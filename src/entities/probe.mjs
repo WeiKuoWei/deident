@@ -4,8 +4,10 @@
 // asks whether it should have been done at all, and a wrong replacement that is
 // reversible satisfies all five of them.
 //
-// Measured 2026-08-24 on the live entity file: `課稅` — an ordinary noun meaning
-// taxation — was a declared spelling, so it was a needle. `isWordChar` is
+// Measured 2026-08-24 on the live entity file: `會議` — an ordinary noun meaning
+// "meeting" — was a declared spelling, so it was a needle. The word is
+// fabricated and the counts are real; the shape is that it is HAN, which is
+// what leaves it with no boundary rule. `isWordChar` is
 // /[A-Za-z0-9_]/, so a Han needle gets needsLeft false and needsRight false and
 // therefore no boundary rule at all. 202 occurrences of a common word were
 // replaced with a pseudonym across a corpus that had already been delivered,
@@ -14,8 +16,8 @@
 // find it. This file would have printed it on the first run.
 //
 // It is deliberately NOT a gate. Frequency does not separate a noun from a name:
-// on the same corpus 課稅 (noun, must not be replaced) counted 202, 小凱拉 (a
-// name, must be replaced) counted 17, and 富途 (a brokerage, a real identity)
+// on the same corpus 會議 (noun, must not be replaced) counted 202, 林大明 (a
+// name, must be replaced) counted 17, and 遠帆 (a brokerage, a real identity)
 // counted 255 in between. A threshold that catches the first would refuse the
 // third, which is §F7's cry-wolf failure arriving on schedule. The number goes
 // in front of a reader; the reader decides.

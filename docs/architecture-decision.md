@@ -141,8 +141,8 @@ is the only instrument proposed anywhere in the debate that makes a wrong fold l
 is the exact failure direction the winner concedes the tool cannot detect.
 
 **And the probe corrects the winner's own plan.** The fold proposal wanted a frequency
-threshold as the gate. Measured: 課稅 (an ordinary noun meaning taxation) at 202 occurrences
-must fail, 小凱拉 (a name) at 17 must pass, and 富途 (a brokerage) at 255 sits between them
+threshold as the gate. Measured: 會議 (an ordinary noun meaning meeting) at 202 occurrences
+must fail, 林大明 (a name) at 17 must pass, and 遠帆 (a brokerage) at 255 sits between them
 and is a legitimate identity. Frequency separates the noun from the name only sometimes. So
 the probe prints counts into `review.md` for adjudication and does not auto-refuse.
 
@@ -157,9 +157,11 @@ guarantee that Latin has, for no reason but the regex.
 
 ## Postscript: what the debate found in the operator's own work
 
-The synthesis measured the live entity file and found that `課稅`, `健身日報`, `富途`, `QQQ`
+The synthesis measured the live entity file and found that `會議`, `產業日報`, `遠帆`, `QQQ`
 and `Baltimore` were all spellings of **one** entity carrying 31 of them, whose canonical was
-a sentence fragment. One pseudonym stood for taxation, a newsletter, a brokerage, an ETF
+a sentence fragment. (The spellings are fabricated and the counts are real. The shape is that
+five different KINDS of thing shared one pseudonym, which is why the list has to stay
+heterogeneous.) One pseudonym stood for an ordinary noun, a newsletter, a brokerage, an ETF
 ticker and a city, and 202 occurrences of an ordinary noun were being replaced in prose.
 
 The cause was mechanical chunking: an agent's redaction list was sliced twenty at a time into
@@ -175,5 +177,5 @@ headcount, stated as a measurement rather than as a preference.
 
 Fixed: ordinary words removed, the bags split so one fact mints one pseudonym, duplicate
 spellings deduped after the split — caught, correctly, by the bijectivity gate refusing the
-export. 294 entities, 421 spellings. The ordinary words are back in the prose (課稅 11, 健身
-日報 21, 境外所得 10, 扣繳憑單 10) and everything that should be gone still is.
+export. 294 entities, 421 spellings. The ordinary words are back in the prose (會議 11, 產業
+日報 21, 年度報表 10, 審查紀錄 10) and everything that should be gone still is.

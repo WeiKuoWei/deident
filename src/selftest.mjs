@@ -3436,7 +3436,7 @@ const FIXTURES = [
   // F92 - every gate asks whether a substitution was done correctly. None asks
   // whether it should have been done at all.
   //
-  // Measured 2026-08-24: the ordinary noun for taxation was a declared spelling,
+  // Measured 2026-08-24: the ordinary noun for "meeting" was a declared spelling,
   // Han needles get no boundary rule because isWordChar is /[A-Za-z0-9_]/, and
   // 202 occurrences of a common word were replaced across a corpus already
   // delivered. Serialization invariant green, substitution invariant green,

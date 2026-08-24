@@ -448,7 +448,7 @@ export function renderUnmatched(entities) {
  * How often each declared spelling would be replaced, both tails, no verdict.
  *
  * stderr, like every other finding about the run. Deliberately not a gate: on
- * the 2026-08-24 corpus the ordinary noun for taxation counted 202 and had to
+ * the 2026-08-24 corpus the ordinary noun for "meeting" counted 202 and had to
  * be refused, a real brokerage counted 255 and had to be kept, and a personal
  * name counted 17. No threshold orders those three correctly, so printing the
  * number beside an excerpt and letting a reader decide is the only honest
