@@ -9,6 +9,47 @@ It reads local files and writes local files. That property is the product.
 Status: slice 1. Claude Code logs only, depth-0 sessions only, no server and no
 browser UI.
 
+## Install it as a Claude Code plugin
+
+The CLI runs straight from a checkout (`node <repo>/deident.js --version`) and
+needs no install. The plugin is how you get the skill, which is what drives the
+whole flow in a conversation instead of by hand:
+
+```
+claude plugin marketplace add <repo>
+claude plugin install deident@deident
+claude plugin details deident          # -> Skills (1)  deident
+```
+
+The third line is the check. It is Claude Code's own component inventory, so it
+says the skill was parsed rather than that a file is on disk. The skill appears
+in a session started **after** the install; restart an open one.
+
+**Installing copies the repository into
+`~/.claude/plugins/cache/deident/deident/<version>/`, and that copy does not
+follow your edits.** Verified 2026-08-24 on Windows: after editing
+`skills/deident/SKILL.md`, `plugin marketplace update` and `plugin update` both
+reported "already at the latest version" and left the old copy in place, because
+the check is on the `version` string in `.claude-plugin/plugin.json` and not on
+the content. Two copies of this document have already drifted once, which is why
+a fixture compares `SKILL.md` against `AGENTS.md`. So, after changing anything a
+user of the plugin sees:
+
+```
+# bump "version" in .claude-plugin/plugin.json, then
+claude plugin marketplace update deident
+claude plugin update deident@deident   # says: Restart to apply changes
+```
+
+Working on the repo itself and not cutting a version? Reinstall instead, which
+always re-copies:
+
+```
+claude plugin uninstall deident@deident && claude plugin install deident@deident
+```
+
+To remove it entirely, add `claude plugin marketplace remove deident`.
+
 ---
 
 ## Install
@@ -198,6 +239,25 @@ machine says which entry is which session. It pairs a local id with a local id,
 never a pseudonym with a name, but treat it like `review.md`: **local only,
 never shared, never committed.** A failed export removes it along with the zip.
 
+A successful export also writes `~/.deident-private/occurrences.json`, beside
+the salt rather than beside the zip. It records every occurrence the
+substituter replaced, with the session it was in and the text around it, so a
+count can be checked instead of believed:
+
+```
+deident review --entity PERSON_11      every occurrence, grouped by session
+deident review --session <id>          one full transcript, read back out of the zip
+```
+
+That is what answers "is this spelling replaced 991 times a person's name or an
+ordinary word", which no check can answer, because a wrong replacement that is
+reversible passes every one of them. The excerpts are the text **before**
+substitution, so this file pairs pseudonyms with real names AND real session
+ids. It is the most re-identifying thing deident writes, it is never an archive
+entry and never in the output directory, and it must not be shared or
+committed. Both queries refuse until an export has run: these counts are what
+the substituter did, not what a search would find.
+
 `review.md` is both the report and the config. The decision is made by editing a
 text file, not by answering prompts: an engineer trusts a file they can grep,
 diff and keep, and a prompt sequence cannot be reviewed by a second person.
@@ -211,7 +271,7 @@ diff and keep, and a prompt sequence cannot be reviewed by a second person.
 | `--apply` | `triage` | Merge a verdicts file into `review.md` instead of writing the triage file. Needs `--verdicts`. |
 | `--verdicts <file>` | `triage` | The verdicts file to apply. `verdict` is `drop` or `unsure`; `keep` is refused, because a triage verdict may only ever move a session toward `drop`. |
 | `--out <path>` | all | Output directory. Default: the current directory. |
-| `--salt-dir <path>` | all | Override `~/.deident-private`. The salt, your saved tier decisions and the remembered entity dictionary live here. |
+| `--salt-dir <path>` | all | Override `~/.deident-private`. The salt, your saved tier decisions, the remembered entity dictionary, your own `denied.json` and the occurrence index all live here. Pointing this at an empty directory is how you start over completely, and **copy `denied.json` across first**: without it none of your own deny rules load, so a directory you expect to be excluded is proposed at `redact` with every check green. deident warns when the directory in use has no `denied.json` and the default one does. |
 | `--html` | `review` | Write one self-contained `review.html`. Cannot be combined with `--entity` or `--session`. |
 | `--entity <ID>` | `review` | Print the occurrences of one entity. |
 | `--session <id>` | `review` | Print one full redacted transcript. |

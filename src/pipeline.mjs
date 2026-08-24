@@ -14,7 +14,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 
 import * as report from './cli/report.mjs';
-import { RefusalError, UsageError } from './cli/errors.mjs';
+import { RefusalError, UsageError, osErrorLine } from './cli/errors.mjs';
 import { estimateTokens, tokenCost } from './cli/tokens.mjs';
 import { resolveCorpus, corpusDateRange } from './corpus/root.mjs';
 import { readSession, roundTripRefusal, nestingError } from './corpus/reader.mjs';
@@ -53,6 +53,12 @@ import {
 } from './entities/pseudonym.mjs';
 import { writeCandidates, readEntities, buildEntityList, CANDIDATES_FILENAME } from './entities/tier1.mjs';
 import { probeCounts, probeOutliers, uncoveredNameParts } from './entities/probe.mjs';
+import {
+  newOccurrenceIndex,
+  occurrencePath,
+  readOccurrences,
+  writeOccurrences,
+} from './entities/occurrences.mjs';
 import { buildTable, substituteString, leftIsWordChar } from './substitute/engine.mjs';
 import { substituteRecord, collectStrings } from './substitute/walker.mjs';
 import {
@@ -75,7 +81,7 @@ import {
 import { writeZip, readZipFile, safeUnlink } from './output/zip.mjs';
 import { writePreview } from './output/preview.mjs';
 import { EXAMPLES_PER_REPORT, MIN_REPLAY_MATCH_CHARS } from './retain/constants.mjs';
-import { loadUserDeny, setUserDeny } from './policy/userdeny.mjs';
+import { loadUserDeny, setUserDeny, missingDenyWarning } from './policy/userdeny.mjs';
 import {
   loadDictionary,
   saveDictionary,
@@ -106,6 +112,32 @@ import {
  * path.resolve is inside the try because it reads process.cwd() itself for a
  * relative argument, so `--out ./here` lands on the same corner.
  */
+/**
+ * Load the person's own deny rules, and say so when this run has none.
+ *
+ * One helper rather than a check at each command, because all three commands
+ * that classify a workspace route through here and the failure it guards is
+ * silent in every one of them. See missingDenyWarning.
+ *
+ * `defaultSaltDir` is called only when --salt-dir was given, and its throw is
+ * swallowed: on a machine with no HOME, naming --salt-dir is the documented fix
+ * for that, so the run must not then fail inside a warning about it.
+ */
+function applyUserDeny(flags, env, saltDir) {
+  const rules = loadUserDeny(saltDir);
+  if (flags.saltDir !== null) {
+    let fallback = null;
+    try {
+      fallback = defaultSaltDir(env);
+    } catch {
+      fallback = null;
+    }
+    const warning = missingDenyWarning(saltDir, fallback);
+    if (warning !== null) report.renderWarning(warning);
+  }
+  setUserDeny(rules);
+}
+
 export function resolveOutDir(flags) {
   let resolved;
   try {
@@ -168,7 +200,7 @@ export async function runScan(flags, env) {
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
   // the very directory it exists to protect.
-  setUserDeny(loadUserDeny(saltDir));
+  applyUserDeny(flags, env, saltDir);
   const corpus = resolveCorpus(env, flags.root);
 
   const loaded = surveyCorpus(corpus, flags);
@@ -227,13 +259,114 @@ export async function runScan(flags, env) {
 
 // ----------------------------------------------------------------- review
 
+/**
+ * cli-ux §5, `--entity`: every occurrence of one pseudonym.
+ *
+ * A lookup in the index the export wrote, and nothing else. It reads no
+ * session file, which is both faster and the honest shape: these counts are
+ * what the substituter DID, and a read-only command that recomputed them would
+ * be answering a different question with the same number.
+ */
+function runEntityQuery(token, saltDir) {
+  const file = occurrencePath(saltDir);
+  const index = readOccurrences(saltDir, '--entity');
+  const rows = Array.isArray(index.occurrences) ? index.occurrences : [];
+  const rec = rows.find((r) => r.pseudonym === token);
+  if (rec === undefined) {
+    // Naming what IS there, because the commonest way to arrive here is a
+    // token copied from an older export: the salt is stable but the namespace
+    // is not, and a run with --namespace mints a different token for the same
+    // person. An empty success would read as "this entity is clean".
+    const known = rows.slice(0, 5).map((r) => r.pseudonym);
+    throw new RefusalError(`${token} is not in the occurrence index`, {
+      why: [
+        `The last export (${index.at ?? 'unknown date'}) replaced ${rows.length} entities and none of them is ${token}.`,
+        known.length === 0
+          ? 'That export replaced nothing at all, so there is nothing to drill into.'
+          : `Tokens it did replace, highest count first: ${known.join(', ')}.`,
+        'A token from an earlier export will not be found here: --namespace changes the token for the same person.',
+      ],
+      remedies: [
+        { label: 'List every token this export replaced', command: `read the "occurrences" array in ${file}` },
+        { label: 'Or re-export and read the counts it prints', command: 'deident export --out <path> --json' },
+      ],
+    });
+  }
+  report.renderEntityOccurrences(rec, file);
+  return 0;
+}
+
+/**
+ * cli-ux §5, `--session`: one full redacted transcript.
+ *
+ * The archive entry verbatim, because that is what "redacted" means here: the
+ * bytes the recipient opens. A second renderer over the corpus would be a
+ * second copy of the retention table, and this repository's own history is a
+ * list of two copies of one rule drifting apart.
+ *
+ * ponytail: printed as the JSONL it is, not pretty-printed. A formatter would
+ * be another thing to keep in step with the record types.
+ */
+function runSessionQuery(id, saltDir) {
+  const file = occurrencePath(saltDir);
+  const index = readOccurrences(saltDir, '--session');
+  const sessions = Array.isArray(index.sessions) ? index.sessions : [];
+  // Either name works: the id on this machine, or the entry name inside the
+  // archive, which is the only id a person holding the zip can see.
+  const match = sessions.find(
+    (s) => s.id === id || s.entry === id || path.basename(s.entry ?? '', '.jsonl') === id,
+  );
+  if (match === undefined) {
+    throw new RefusalError(`${id} is not a session in the last export`, {
+      why: [
+        `The export of ${index.at ?? 'unknown date'} wrote ${sessions.length} sessions, and none of them is ${id}.`,
+        'A session held back at the review step is not in the archive, so it cannot be printed from one.',
+      ],
+      remedies: [
+        { label: 'See which sessions are in the archive', command: `read export-map.txt beside the zip` },
+        { label: 'Or find the session id from an entity', command: 'deident review --entity <TOKEN>' },
+      ],
+    });
+  }
+
+  const archive = index.archive ?? null;
+  let entries;
+  try {
+    entries = readZipFile(archive);
+  } catch (err) {
+    throw new RefusalError(`could not read the archive at ${archive}`, {
+      why: [
+        osErrorLine(err),
+        'The transcript printed here is read back out of the archive, so that it cannot disagree with what shipped.',
+      ],
+      remedies: [{ label: 'Export again', command: 'deident export --out <path>' }],
+    });
+  }
+  const entry = entries.find((e) => e.name === match.entry);
+  if (entry === undefined) {
+    throw new RefusalError(`${match.entry} is not in ${archive}`, {
+      why: ['The archive on disk is not the one this index was written for.'],
+      remedies: [{ label: 'Export again', command: 'deident export --out <path>' }],
+    });
+  }
+  report.renderSessionTranscript(match.id ?? id, match.entry, entry.data, `${file} and ${archive}`);
+  return 0;
+}
+
 export async function runReview(flags, env) {
-  const outDir = resolveOutDir(flags);
   const saltDir = flags.saltDir ?? defaultSaltDir(env);
+  // cli-ux §5's two queries answer from the index the export wrote, so they run
+  // before the corpus is opened: `review` promises to write nothing, and
+  // rebuilding the whole review model to answer them would read every session
+  // file for a question already answered on disk.
+  if (flags.entity !== null) return runEntityQuery(flags.entity, saltDir);
+  if (flags.session !== null) return runSessionQuery(flags.session, saltDir);
+
+  const outDir = resolveOutDir(flags);
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
   // the very directory it exists to protect.
-  setUserDeny(loadUserDeny(saltDir));
+  applyUserDeny(flags, env, saltDir);
   const corpus = resolveCorpus(env, flags.root);
   const loaded = surveyCorpus(corpus, flags);
   const reviewPath = path.join(outDir, REVIEW_FILENAME);
@@ -266,19 +399,6 @@ export async function runReview(flags, env) {
     report.renderNote(`wrote ${target}. Open it in your browser. No server was started.`);
     return 0;
   }
-  // cli-ux §5 specifies both queries and they are part of the slice-1 contract,
-  // but neither is implemented. They used to print a note and exit 0, pointing
-  // at `export --preview`, which does not answer either question — so a scripted
-  // check of "can I drill into PERSON_11" passed while nothing happened. A flag
-  // that exits 0 without doing its job is the shape of failure BRIEF §2 is
-  // about, and refusing is strictly more honest than accepting.
-  for (const [flag, value] of [['--entity', flags.entity], ['--session', flags.session]]) {
-    if (value === null) continue;
-    throw new UsageError(`${flag} is specified in docs/cli-ux.md §5 but is not implemented in slice 1`, {
-      why: [`No occurrence index is built yet, so ${flag} cannot be answered.`],
-    });
-  }
-
   report.renderTranscript(
     model.workspaces.map(
       (w) => `  ${w.tier.padEnd(12)} ${w.name.padEnd(26)} ${w.sessionCount} sessions   ${w.cwd ?? ''}`.trimEnd(),
@@ -451,7 +571,7 @@ export async function runExport(flags, env) {
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
   // the very directory it exists to protect.
-  setUserDeny(loadUserDeny(saltDir));
+  applyUserDeny(flags, env, saltDir);
   // Read here rather than at step 11, so a dictionary somebody broke while
   // hand-editing refuses in the first second instead of after the corpus has
   // been read, which is more than ten minutes on a few hundred sessions.
@@ -764,9 +884,18 @@ export async function runExport(flags, env) {
   //       pass actually sees. Not a gate: measured 2026-08-24, an ordinary noun
   //       at 202 occurrences had to fail and a real identity at 255 had to pass,
   //       so no threshold separates them. The number goes in front of a reader.
+  //
+  //       The same sweep builds the drill-down index (cli-ux §5). The counts
+  //       and the occurrences behind them come from ONE walk with ONE matcher,
+  //       so a reader who drills into a count cannot be shown a different
+  //       number from the one that sent them there. Written to the salt
+  //       directory at the end of a successful run, never to the output
+  //       directory: see occurrences.mjs.
+  const occurrenceIndex = newOccurrenceIndex();
+  const cleanedTexts = taggedRetainedStrings(cleaned.records);
   const replacementCounts = Object.freeze([
-    ...probeCounts(collectRetainedStrings(retained.records), tier0Table),
-    ...probeCounts(collectRetainedStrings(cleaned.records), tier1Table),
+    ...probeCounts(taggedRetainedStrings(retained.records), tier0Table, occurrenceIndex.sink),
+    ...probeCounts(cleanedTexts, tier1Table, occurrenceIndex.sink),
   ]);
   report.renderProbe(probeOutliers(replacementCounts));
 
@@ -783,9 +912,7 @@ export async function runExport(flags, env) {
   //       over the live corpus, the run half found five more: a street and a
   //       district from an office address declared as one string, and an org
   //       name whose only declared form carried a trailing partner list.
-  report.renderNameParts(
-    uncoveredNameParts(tier1Entities, collectRetainedStrings(cleaned.records)),
-  );
+  report.renderNameParts(uncoveredNameParts(tier1Entities, cleanedTexts));
 
   // 13  substitution invariant, at string level, before serialization.
   //
@@ -930,6 +1057,23 @@ export async function runExport(flags, env) {
     // pseudonyms to real names, so it is not a re-identification key for the
     // data that left.
     writeExportMap(serialized.entries, mapPath);
+    // Beside the salt, not beside the zip. It carries pseudonym -> real
+    // spelling AND real session id, which is strictly more than export-map.txt,
+    // so the output directory is the one place it must never be: that is the
+    // directory a person zips up and sends.
+    //
+    // Written here, after the on-disk residue scan, so an index can never
+    // describe an archive that was refused and removed.
+    writeOccurrences(
+      occurrencePath(saltDir),
+      {
+        at: nowStamp(),
+        archive: written.path,
+        sessions: serialized.entries.map((e) => ({ id: e.source ?? null, entry: e.name })),
+        occurrences: occurrenceIndex.rows(),
+      },
+      (w) => report.renderWarning(w),
+    );
     // After the archive is on disk, so a run that refused at the on-disk scan
     // does not record identities against an export that never happened.
     rememberEntities(saltDir, dictionary, minted.entities, rewriteUuid.minted);
@@ -1502,6 +1646,38 @@ function collectRetainedStrings(sessions) {
   const out = [];
   for (const s of sessions) {
     for (const rec of s.records) collectStrings(rec, out);
+  }
+  return out;
+}
+
+/**
+ * The same strings, each carrying which session and which record it came from.
+ *
+ * probeCounts accepts either shape, so the drill-down index cli-ux §5 needs is
+ * built by the sweep that was already running rather than by a third pass over
+ * the corpus. One `at` object per RECORD, shared by every string inside it: a
+ * record holds many strings and allocating an identical tag for each of them
+ * doubled the peak footprint of a stage that already holds the whole corpus.
+ *
+ * `turn` is the record's 1-based position among the ones this session
+ * RETAINED, which is what the archive contains and therefore the only numbering
+ * a reader can follow to the line. It is deliberately not the source file's
+ * line number: the retention table drops most of a session, so a line number
+ * would point at prose that is not in the export and often not shown anywhere.
+ */
+function taggedRetainedStrings(sessions) {
+  const out = [];
+  for (const s of sessions) {
+    for (let i = 0; i < s.records.length; i += 1) {
+      const at = Object.freeze({
+        session: s.file.sessionId,
+        workspace: s.workspace.name,
+        date: new Date(s.file.mtimeMs).toISOString().slice(0, 10),
+        turn: i + 1,
+      });
+      const strings = collectStrings(s.records[i], []);
+      for (const text of strings) out.push({ text, at });
+    }
   }
   return out;
 }

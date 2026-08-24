@@ -42,6 +42,49 @@ Three rules that hold for the whole flow:
   instead of aligned columns, including on a refusal, where the exit code is
   inside the document.
 
+## What carries between runs
+
+Everything the tool remembers is in one directory, `~/.deident-private`, which
+`--salt-dir` overrides:
+
+- `salt`: makes one person get the same pseudonym in every run. Delete it and
+  everybody is renumbered.
+- `entities.json`: the identities already declared, plus a hash of every
+  session already put in front of a reader. This is what makes a repeat run
+  cheap, and it is the file a person may edit by hand.
+- `workspaces.json`: the tier decisions, so scanning into a new working
+  directory does not lose them.
+- `denied.json`: the person's OWN deny rules, on top of the shipped ones.
+- `occurrences.json`: the occurrences the last export replaced. Read with
+  `review --entity`, below.
+
+Everything else (`review.md`, the candidates file, the archive, `export-map.txt`)
+lives in `--out` and belongs to one run.
+
+**To run as if for the first time**, give every command in the flow a fresh
+`--salt-dir` and a fresh `--out`. That discards the pseudonyms, the declared
+identities and the read-session record together, which is the point.
+
+**Copy `denied.json` into the fresh salt directory first.** It is the one file
+whose absence is silent and dangerous: without it none of the person's own deny
+rules load, so a directory they expect to be excluded is proposed at `redact`
+and offered for export, with every check green, and no check knows a rule was
+supposed to exist.
+
+```
+cp ~/.deident-private/denied.json <fresh-salt-dir>/
+```
+
+deident warns when the salt directory in use has no `denied.json` and the
+default one does. If you see that line, stop and copy the file; do not read past
+it. A machine with no `denied.json` anywhere is a genuine first run and gets no
+warning.
+
+`--full` is a different question and a much smaller hammer: it re-reads the
+whole corpus for the semantic pass while keeping the salt and the declared
+identities. Use it when the person has changed their mind about what counts as
+an identity. A fresh salt directory is for starting over completely.
+
 ## 1. Survey
 
 ```
@@ -294,6 +337,25 @@ Also carry back:
   is expected.
 - `replacementCounts.zeros` — spellings that matched nothing, so they protected
   nothing. Usually a typo in the entity list.
+
+**When a count looks wrong, drill into it rather than guessing.** Each hit row
+carries a `pseudonym`; pass it back:
+
+```
+node <repo>/deident.js review --entity <PSEUDONYM> --salt-dir <same> --json
+```
+
+That prints every occurrence with the session it was in and the text around it,
+which is the only thing that separates a name replaced 991 times from an
+ordinary word replaced 991 times. `review --session <id>` then prints one full
+transcript, read back out of the archive. Both refuse if no export has run.
+
+**This output is a re-identification key and it must not leave the machine.**
+The excerpts are the text BEFORE substitution, so they carry the real names
+beside the pseudonyms that replaced them. Treat it exactly as you treat
+`export-map.txt`: never paste it into a ticket, a chat or a commit. Report the
+verdict to the person ("those 991 are the client's name" / "those 202 are the
+ordinary word for meeting"), not the rows.
 - `uncoveredNameParts`: pieces of a spelling you declared that still stand
   alone in the text. `Grace Hopper` replaced and a bare `Morgan` left behind is
   a half replacement, and no check catches it: the residue scan only looks for

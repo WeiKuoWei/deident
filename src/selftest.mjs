@@ -2178,12 +2178,17 @@ const FIXTURES = [
     assert.ok(!text.includes('Wang'), 'no fragment of a declared entity may survive the excerpt');
   }],
 
-  // F65 — `review --entity` and `review --session` are specified in cli-ux §5
-  // as part of the slice-1 contract and are not implemented. They printed a
-  // note and exited 0, pointing at `export --preview`, which answers neither —
-  // so a scripted check of "can I drill into PERSON_11" passed while nothing
-  // happened. BRIEF §2: a flag that exits 0 without doing its job is a failure.
-  ['F65', 'an unimplemented query says so instead of exiting 0', () => {
+  // F65 - cli-ux §5's two queries used to print a note and exit 0, pointing at
+  // `export --preview`, which answers neither: a scripted check of "can I drill
+  // into PERSON_11" passed while nothing happened. BRIEF §2 calls that a
+  // failure, and it is the rule that outlives the implementation.
+  //
+  // They are implemented now (F148, F150), so what this guards is the state
+  // where there is still nothing to answer from. Both queries read an index the
+  // EXPORT writes, so on a machine that has only ever scanned there is none,
+  // and the honest answer is a refusal naming the command that builds one.
+  // "0 occurrences" here would read as "this entity is clean".
+  ['F65', 'a query with nothing to answer from refuses and names the command that builds one', () => {
     const root = tmpdir();
     const out = path.join(root, 'out');
     const saltDir = path.join(root, 'salt');
@@ -2192,9 +2197,9 @@ const FIXTURES = [
 
     for (const [flag, value] of [['--entity', 'PERSON_11'], ['--session', '2026-08-20']]) {
       const r = runCli(['review', '--root', root, '--out', out, '--salt-dir', saltDir, flag, value]);
-      assert.equal(r.code, 2, `${flag} must be a usage error, not success`);
-      assert.match(r.out, /not implemented in slice 1/);
-      assert.match(r.out, /cli-ux/);
+      assert.equal(r.code, 1, `${flag} must refuse, not succeed: ${r.out}`);
+      assert.match(r.out, /export --out/, `${flag} does not name what to run first: ${r.out}`);
+      assert.ok(!/0 occurrences|no occurrences/i.test(r.out), 'a missing index must not read as an empty result');
     }
 
     // `review` itself still works.
@@ -6461,6 +6466,114 @@ const FIXTURES = [
     assert.equal(tdoc.triage.tokenEstimate.files[0].label, 'triage');
     assert.ok(tdoc.triage.tokenEstimate.total > 0);
   }],
+  // ------------------------------------------------- cli-ux §5, the drill-down
+  //
+  // "A count nobody can drill into is a count nobody believes." The export
+  // reports a spelling replaced N times and offers ONE excerpt for it, so the
+  // owner's real question - are those N a person's name or an ordinary word -
+  // has no answer on the machine. §5's own worked example of the failure is the
+  // 202-occurrence common noun that passed all five gates.
+  //
+  // Every fixture below drives the real CLI rather than the index module,
+  // because the property under test is that the answer survives the round trip
+  // through a file written by one process and read by another.
+
+  // F148 - the count is drillable, and the drill-down says out loud that it is
+  // a re-identification key. This is the one command whose whole job is mapping
+  // a pseudonym back to a real person, so the excerpt it prints is the real
+  // spelling. A reader who does not know that will paste it into a ticket.
+  ['F148', 'review --entity prints every occurrence with its session, and says the mapping is local', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const sid = '11111111-1111-4111-8111-111111111111';
+    // Fabricated. SHAPE: a two-word Latin personal name occurring TWICE in one
+    // record, so "2 occurrences, 1 session" separates a per-occurrence index
+    // from a per-record one.
+    const NAME = 'Marisol Ferrand';
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    appendTurn(root, sid, corpus.cwd, `called ${NAME} about the invoice, then ${NAME} rang back`);
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+
+    const ents = path.join(root, 'drill.json');
+    fs.writeFileSync(ents, JSON.stringify({ entities: [{ kind: 'person', spellings: [NAME], confidence: 'high' }] }), 'utf8');
+    const exp = runCli(
+      ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', ents, '--json'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(exp.code, 0, exp.out);
+    const doc = JSON.parse(exp.out);
+
+    // The report has to hand the reader the token they then drill into, or the
+    // count and the query are two disconnected facts.
+    const row = doc.replacementCounts.hits.find((h) => h.spelling === NAME);
+    assert.ok(row !== undefined, `the declared spelling was never counted: ${JSON.stringify(doc.replacementCounts)}`);
+    assert.equal(row.count, 2, 'both occurrences in one record must be counted separately');
+    assert.ok(typeof row.pseudonym === 'string' && row.pseudonym.length > 0, 'the count row does not name a drillable token');
+
+    const q = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', row.pseudonym],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(q.code, 0, q.out);
+    assert.match(q.out, /2 occurrences, 1 session/, `wrong shape: ${q.out}`);
+    assert.ok(q.out.includes(sid), 'the occurrence does not name the session it is in');
+    assert.ok(q.out.includes(NAME), 'the excerpt does not show how the word is actually used');
+    assert.match(q.out, /not in the archive|never leaves this machine|local/i, 'nothing says the mapping must not be sent');
+
+    const j = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', row.pseudonym, '--json'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(j.code, 0, j.out);
+    const jd = JSON.parse(j.out);
+    assert.equal(jd.entity, row.pseudonym);
+    assert.equal(jd.occurrences.length, 2, `--json must carry the same rows: ${j.out}`);
+    assert.equal(jd.occurrences[0].session, sid);
+    assert.ok(jd.occurrences[0].excerpt.includes(NAME));
+  }],
+
+  // F149 - a token that is not in the index, AFTER an export that did replace
+  // things. F65 covers the machine that has never exported; this is the case
+  // that looks like a working query returning nothing, which is the one a
+  // script cannot tell from success. The commonest way to arrive here is a
+  // token copied from an earlier export: the salt is stable, --namespace is
+  // not, so the same person gets a different token per namespace.
+  ['F149', 'review --entity refuses by name for a token the last export never replaced', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+
+    // The export refuses for want of an entity list, which is the path that
+    // writes the candidates file. The document is still emitted on a refusal.
+    const refused = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--json'], CORPUS_USER_ENV);
+    assert.notEqual(refused.code, 0);
+    const doc = JSON.parse(refused.out);
+    const est = doc.candidates.tokenEstimate;
+    assert.ok(est, `no tokenEstimate on the candidates document: ${JSON.stringify(doc.candidates)}`);
+    assert.equal(typeof est.total, 'number');
+    assert.ok(est.total > 0, 'a written file costs more than nothing to read');
+    assert.equal(est.reasoningPercent, 20);
+    assert.equal(est.files[0].label, 'candidates');
+    assert.equal(
+      est.files[0].chars,
+      [...fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8')].length,
+      'the estimate is not measured over the file that was actually written',
+    );
+
+    const triaged = runCli(['triage', '--root', root, '--out', out, '--salt-dir', saltDir, '--json'], CORPUS_USER_ENV);
+    assert.equal(triaged.code, 0, triaged.out);
+    const tdoc = JSON.parse(triaged.out);
+    assert.ok(tdoc.triage.tokenEstimate, `no tokenEstimate on the triage document: ${JSON.stringify(tdoc.triage)}`);
+    assert.equal(tdoc.triage.tokenEstimate.files[0].label, 'triage');
+    assert.ok(tdoc.triage.tokenEstimate.total > 0);
+  }],
 
   // F150 - the estimate is read by an outsider, and there are three numbers it
   // must never carry. A percentage of a subscription is the worst of them:
@@ -6534,6 +6647,254 @@ const FIXTURES = [
     const named = front[1].match(/^name:[ \t]*(\S+)[ \t]*$/m);
     assert.ok(named, 'SKILL.md frontmatter has no name');
     assert.equal(named[1], plugin.name, 'SKILL.md frontmatter name and plugin.json name have drifted');
+  }],
+
+  ['F153', 'review --entity refuses a pseudonym the corpus never minted, rather than reporting none', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+
+    // Fabricated. SHAPE: a well-formed pseudonym of the namespace deident
+    // mints, so the refusal cannot be blamed on a malformed argument.
+    const ABSENT = 'PERSON_4820517';
+
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    assert.equal(
+      runCli(
+        ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', path.join(root, 'ents.json')],
+        CORPUS_USER_ENV,
+      ).code,
+      0,
+    );
+
+    const after = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', ABSENT],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(after.code, 1, `an unknown token must not exit 0: ${after.out}`);
+    assert.ok(after.out.includes(ABSENT), 'the refusal does not name the token that was asked for');
+
+    // And on the JSON path the exit code is inside the document, so an agent
+    // reading stdout sees the failure rather than an empty occurrence list.
+    const j = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', ABSENT, '--json'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(j.code, 1);
+    const jd = JSON.parse(j.out);
+    assert.equal(jd.ok, false, `--json reported success for a token that does not exist: ${j.out}`);
+    assert.ok(!Array.isArray(jd.occurrences), 'a refusal must not also carry an empty result');
+  }],
+
+  // F150 - the other half of §5. The transcript printed is the one that
+  // SHIPPED, read back out of the archive, rather than a second rendering of
+  // the corpus that could disagree with it. journey-and-pitfalls 2.1: three
+  // times on the delivery run a reviewer was handed something that was not what
+  // shipped, and each time the gap was where the leak lived.
+  ['F150', 'review --session prints the redacted transcript that is actually in the archive', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const sid = '11111111-1111-4111-8111-111111111111';
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    assert.equal(
+      runCli(
+        ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', path.join(root, 'ents.json')],
+        CORPUS_USER_ENV,
+      ).code,
+      0,
+    );
+
+    const q = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--session', sid],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(q.code, 0, q.out);
+    assert.ok(q.out.includes('KEEP-THIS-STRING-FORM-PROMPT'), `no transcript body: ${q.out.slice(0, 600)}`);
+    // Redacted, not raw: the cwd every one of those turns carries is replaced
+    // in the archive, and a transcript printed from anywhere else would show it.
+    assert.ok(!q.out.includes(corpus.cwd), 'the printed transcript is not the redacted one');
+    assert.ok(!q.out.includes(corpus.private), 'prose from the denied directory reached the transcript');
+
+    const unknown = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--session', 'no-such-session'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(unknown.code, 1, `an unknown session must not exit 0: ${unknown.out}`);
+    assert.ok(unknown.out.includes('no-such-session'), 'the refusal does not name the session asked for');
+  }],
+
+  // F151 - the index pairs a pseudonym with the real spelling it replaced, so
+  // it is the one artifact on the machine that re-identifies the archive. It
+  // gets F126's treatment exactly: salt directory only, never the output
+  // directory, never an archive entry, never the repository.
+  ['F151', 'the occurrence index is memory, and reaches no file the export produces', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const sid = '11111111-1111-4111-8111-111111111111';
+    // Fabricated. SHAPE: a two-word Latin personal name, distinct enough that a
+    // substring search over the archive cannot hit it by accident.
+    const NAME = 'Marisol Ferrand';
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    appendTurn(root, sid, corpus.cwd, `called ${NAME} about the invoice`);
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    const ents = path.join(root, 'drill.json');
+    fs.writeFileSync(ents, JSON.stringify({ entities: [{ kind: 'person', spellings: [NAME], confidence: 'high' }] }), 'utf8');
+    assert.equal(
+      runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', ents], CORPUS_USER_ENV).code,
+      0,
+    );
+
+    // Found by its content rather than by its name, so renaming the file cannot
+    // quietly retire this fixture.
+    const indexNames = fs.readdirSync(saltDir).filter((name) => {
+      try {
+        return Array.isArray(JSON.parse(fs.readFileSync(path.join(saltDir, name), 'utf8')).occurrences);
+      } catch {
+        return false;
+      }
+    });
+    assert.equal(indexNames.length, 1, `expected exactly one occurrence index in the salt directory: ${fs.readdirSync(saltDir)}`);
+    const index = JSON.parse(fs.readFileSync(path.join(saltDir, indexNames[0]), 'utf8'));
+    assert.ok(typeof index._note === 'string' && /never/i.test(index._note), 'a file this dangerous needs its own header');
+    assert.ok(
+      JSON.stringify(index).includes(NAME),
+      'the index does not carry the real spelling, so it answers nothing',
+    );
+
+    for (const name of fs.readdirSync(out)) {
+      assert.notEqual(name, indexNames[0], 'the occurrence index reached the output directory');
+      if (name.endsWith('.zip')) continue;
+      assert.ok(
+        !fs.readFileSync(path.join(out, name), 'utf8').includes(NAME),
+        `the real spelling reached ${name} in the output directory`,
+      );
+    }
+    const zips = fs.readdirSync(out).filter((f) => f.endsWith('.zip'));
+    assert.equal(zips.length, 1, 'exactly one archive');
+    const entries = readZipFile(path.join(out, zips[0]));
+    assert.ok(!entries.some((e) => e.name.includes(indexNames[0])), 'the occurrence index is an archive entry');
+    const bytes = entries.map((e) => `${e.name}${NL}${e.data}`).join(NL);
+    assert.ok(!bytes.includes(NAME), 'the real spelling the index maps reached the archive');
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    assert.ok(!fs.existsSync(path.join(repo, indexNames[0])), 'the occurrence index was written into the repository');
+  }],
+
+  // F152 - a fresh salt directory silently drops the person's OWN deny rules.
+  //
+  // The documented way to run "as if for the first time" is a new --salt-dir,
+  // and denied.json lives in the salt directory. So the fresh run loads zero
+  // per-person rules: the directory named after a real person HAS a git remote,
+  // so without its token the proposed tier flips from exclude to redact and the
+  // private workspace is offered for export. Every gate stays green, because no
+  // gate knows a rule was ever supposed to exist.
+  //
+  // A warning rather than a refusal: a genuinely first-ever run has no default
+  // denied.json either and must not be blocked. The warning fires only where the
+  // person is demonstrably protected somewhere else and not here.
+  ['F152', 'a salt directory with no denied.json is named when the default one has rules', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const home = path.join(root, 'home');
+    writeCorpus(root);
+    fs.mkdirSync(path.join(home, '.deident-private'), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, '.deident-private', 'denied.json'),
+      // Fabricated. SHAPE: one deny token naming a directory segment, which is
+      // the commonest thing in a real denied.json.
+      JSON.stringify({ tokens: ['auditor-notes'] }),
+      'utf8',
+    );
+    // DEIDENT_SALT_DIR blanked, because defaultSaltDir reads it before HOME and
+    // this machine may have it set.
+    const env = { ...CORPUS_USER_ENV, HOME: home, USERPROFILE: home, DEIDENT_SALT_DIR: '' };
+
+    const fresh = runCli(['scan', '--root', root, '--out', out, '--salt-dir', path.join(root, 'fresh')], env);
+    assert.equal(fresh.code, 0, fresh.out);
+    assert.match(fresh.out, /denied\.json/, `the fresh salt directory was not flagged: ${fresh.out}`);
+
+    // The default salt directory itself must never warn about itself.
+    const normal = runCli(['scan', '--root', root, '--out', out], env);
+    assert.equal(normal.code, 0, normal.out);
+    assert.ok(!/denied\.json/.test(normal.out), `the default salt directory warned about itself: ${normal.out}`);
+
+    // And a machine with no rules anywhere is a genuine first run, not a
+    // downgrade. Warning there is §F7's cry-wolf failure: the message would
+    // appear on every first run of every install and be trained away before it
+    // ever mattered.
+    const bare = path.join(root, 'bare-home');
+    fs.mkdirSync(bare, { recursive: true });
+    const virgin = runCli(
+      ['scan', '--root', root, '--out', out, '--salt-dir', path.join(root, 'fresh2')],
+      { ...env, HOME: bare, USERPROFILE: bare },
+    );
+    assert.equal(virgin.code, 0, virgin.out);
+    assert.ok(!/denied\.json/.test(virgin.out), `warned with no rules to lose: ${virgin.out}`);
+  }],
+
+  // F153 - the occurrence list is capped per pseudonym and the COUNT is not.
+  //
+  // The cap exists because the live corpus replaced file paths 26,505 times
+  // across a handful of spellings (cli-ux 6), so an uncapped index writes tens
+  // of megabytes of excerpts nobody reads, for the entity class whose identity
+  // was never in doubt. The number that must survive the cap is the total: a
+  // drill-down answering 2,000 for a spelling the export reported at 2,100
+  // makes the reader distrust the export, which is the exact opposite of what
+  // section 5 is for. And the short list has to SAY it is short, or a reader
+  // counting the rows re-derives the wrong number by hand.
+  ['F153', 'a spelling past the occurrence cap keeps its true count, and the short list says so', () => {
+    const CAP = 2000; // occurrences.mjs MAX_PER_PSEUDONYM
+    const OVER = 2100;
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const sid = '11111111-1111-4111-8111-111111111111';
+    // Fabricated. SHAPE: a two-word Latin personal name, repeated far past the
+    // cap in one record, which is how a workspace path reaches five figures.
+    const NAME = 'Marisol Ferrand';
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    appendTurn(root, sid, corpus.cwd, new Array(OVER).fill(NAME).join(' and then '));
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    const ents = path.join(root, 'drill.json');
+    fs.writeFileSync(ents, JSON.stringify({ entities: [{ kind: 'person', spellings: [NAME], confidence: 'high' }] }), 'utf8');
+    const exp = runCli(
+      ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', ents, '--json'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(exp.code, 0, exp.out);
+    const row = JSON.parse(exp.out).replacementCounts.hits.find((h) => h.spelling === NAME);
+    assert.equal(row.count, OVER, 'the export itself miscounted, so the rest of this fixture proves nothing');
+
+    const j = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', row.pseudonym, '--json'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(j.code, 0, j.out);
+    const jd = JSON.parse(j.out);
+    assert.equal(jd.total, OVER, 'the drill-down reported a smaller count than the export it drills into');
+    assert.equal(jd.occurrences.length, CAP, `the occurrence list is not capped: ${jd.occurrences.length}`);
+
+    const h = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', row.pseudonym],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(h.code, 0, h.out);
+    assert.match(h.out, new RegExp(`${OVER - CAP} more occurrences counted and not listed`), 'the short list does not say it is short');
+    assert.match(h.out, /2,100 occurrences/, 'the header must carry the true count, not the listed one');
   }],
 ];
 
