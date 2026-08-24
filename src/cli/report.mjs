@@ -196,6 +196,8 @@ export function renderUsage() {
 
   ${INVOCATION} scan      survey what is here and propose tiers. Writes review.md only.
   ${INVOCATION} review    render review.md as a readable HTML file.
+  ${INVOCATION} triage    offer each still-kept session's first prompt, and apply
+                     the verdicts. A verdict can only ever drop a session.
   ${INVOCATION} export    run every check, then produce the zip.
 
   Bare "${INVOCATION}" never exports.
@@ -207,6 +209,9 @@ Flags
   --html                   review: write one self-contained HTML file
   --entity <ID>            review: print occurrences of one entity
   --session <id>           review: print one full redacted transcript
+  --triage-chars <n>       triage: characters of the first prompt to show
+  --apply                  triage: merge a verdicts file into review.md
+  --verdicts <file>        triage: the verdicts file to apply
   --preview                export: write a diff file instead of a zip
   --entities <file>        export: supply the tier-1 entity list as JSON
   --namespace <TAG>        export: shift the pseudonym namespace, e.g. X
@@ -254,6 +259,41 @@ export function renderScan(census) {
   say(`  Nothing has been written except ${reviewPath}`);
   say(`  Next:  ${INVOCATION} review        (look at it)`);
   say(`         ${INVOCATION} export        (after you have)`);
+  say('');
+}
+
+// ---------------------------------------------------------------- triage
+
+export function renderTriageWritten(t) {
+  if (machine !== null) { machineAdd({ triage: t }); return; }
+  say('');
+  say(`  ${n(t.sessions)} session${t.sessions === 1 ? '' : 's'} still proposed keep, ${n(t.chars)} characters of first prompt each`);
+  if (t.withoutPrompt > 0) {
+    // Not a failure. Measured on the live corpus, 44 of 205 sessions carry no
+    // first user prompt at all, so an absent one is the ordinary case. Said out
+    // loud because a reader who sees the marker on a row should know it is a
+    // property of the corpus and not a truncated read.
+    say(`    ${n(t.withoutPrompt)} of them ${t.withoutPrompt === 1 ? 'carries' : 'carry'} no first user prompt and ${t.withoutPrompt === 1 ? 'says' : 'say'} so in the file`);
+  }
+  say('');
+  say(`  → ${t.path}    ${humanBytes(t.bytes)}`);
+  say('    Raw prose: tier-0 substitution has not run over it. Local only, like review.md');
+  say('    A verdict can only ever drop a session. There is no keep verdict');
+  say('');
+}
+
+export function renderTriageApplied(t) {
+  if (machine !== null) { machineAdd({ triage: t }); return; }
+  say('');
+  say(`  ${n(t.verdicts)} verdict${t.verdicts === 1 ? '' : 's'} read`);
+  say(`    ${n(t.applied)} applied`);
+  // Named, not merged into the applied count. A verdict that changed nothing
+  // because the session was already dropped is a different fact from one that
+  // held a session back, and a single total hides which happened.
+  say(`    ${n(t.unchanged)} changed nothing (already dropped, or "unsure")`);
+  if (t.unmatched > 0) say(`    ${n(t.unmatched)} matched no row in review.md (see the warnings above)`);
+  say('');
+  say(t.applied > 0 ? `  → ${t.path}` : `  Nothing was written. ${t.path} is unchanged`);
   say('');
 }
 
@@ -503,7 +543,7 @@ export function renderTranscript(lines) {
 // What deident is refusing to DO. cli-ux §1 makes a point of scan and review
 // writing nothing dangerous, so telling the user that `scan` is "refusing to
 // export" contradicts the model the interface is trying to teach.
-const REFUSAL_VERB = Object.freeze({ scan: 'scan', review: 'continue', export: 'export' });
+const REFUSAL_VERB = Object.freeze({ scan: 'scan', review: 'continue', triage: 'triage', export: 'export' });
 let refusalVerb = 'continue';
 
 /** Set by the entry point before dispatch, so every refusal names its command. */

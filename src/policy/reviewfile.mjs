@@ -182,6 +182,24 @@ export const SESSION_DECISIONS = Object.freeze(['keep', 'drop', 'drop:audience']
 export const AUDIENCES = Object.freeze(['teammate', 'company', 'public']);
 
 /**
+ * The session id on a `## sessions` row: column 4, not the last word.
+ *
+ * renderReview writes `decision  date  workspace  id` and nothing else, so
+ * "the last word on the line" was the same answer and was what the parser used.
+ * `deident triage --apply` appends the reason a session was dropped after the
+ * id, which makes those two answers different: the last word becomes the last
+ * word of the reason, the real id is never seen, and the export silently stops
+ * recognising a row triage itself wrote.
+ *
+ * One function so the writer and the reader cannot disagree about where the id
+ * is. The fallback covers a hand-made row with fewer columns, which is the only
+ * shape where the old rule was the better one.
+ */
+export function sessionRowId(parts) {
+  return parts.length >= 4 ? parts[3] : parts[parts.length - 1];
+}
+
+/**
  * Parse the per-session decisions back out of `## sessions`. Separate from
  * parseReview because the two answer different questions and every caller of
  * parseReview wants only the workspace map; widening that return value would
@@ -231,7 +249,7 @@ export function parseSessionDrops(text, opts = {}) {
 
     const parts = trimmed.split(/\s+/);
     const decision = parts[0];
-    const id = parts[parts.length - 1];
+    const id = sessionRowId(parts);
     if (!SESSION_DECISIONS.includes(decision)) {
       if (onProblem !== null) {
         onProblem(`${REVIEW_FILENAME}: "${decision}" is not a session decision, so that line was ignored`);
@@ -265,6 +283,40 @@ export function parseSessionDrops(text, opts = {}) {
     heldByFloor,
     heldByAudience: releasesAudience ? 0 : heldByAudience,
   });
+}
+
+/**
+ * Every `## sessions` row, whole.
+ *
+ * parseSessionDrops answers "which sessions are held back" and four callers
+ * want only that; widening its return value would make all four care about
+ * fields three of them do not. `deident triage` needs the date and the
+ * workspace as well, because those are two of the four things it puts in front
+ * of a reader, and reading them out of the file the person edited costs one
+ * read where re-deriving them costs the whole corpus.
+ *
+ * Malformed rows are skipped rather than refused: this is a report-building
+ * read, and parseSessionDrops is the one that gets to refuse over column 1.
+ *
+ * @returns {ReadonlyArray<{decision, date, workspace, id}>}
+ */
+export function parseSessionRows(text) {
+  const rows = [];
+  let inSessions = false;
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.replace(/\r$/, '');
+    if (line.startsWith('## ')) {
+      inSessions = line.trim() === '## sessions';
+      continue;
+    }
+    if (!inSessions) continue;
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) continue;
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 4 || !SESSION_DECISIONS.includes(parts[0])) continue;
+    rows.push(Object.freeze({ decision: parts[0], date: parts[1], workspace: parts[2], id: sessionRowId(parts) }));
+  }
+  return Object.freeze(rows);
 }
 
 /**

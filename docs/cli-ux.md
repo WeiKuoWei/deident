@@ -10,11 +10,13 @@ seven-person internal run.
 
 ---
 
-## 1. Three commands, and the first two write nothing dangerous
+## 1. Four commands, and the first three write nothing dangerous
 
 ```
 deident scan      survey what is here and propose tiers.  Writes review.md only.
 deident review    render review.md as a readable HTML file. Writes nothing else.
+deident triage    offer each still-kept session's first prompt; apply verdicts.
+                  Writes deident-triage.txt, and review.md with --apply.
 deident export    run every check, then produce the zip.
 ```
 
@@ -122,6 +124,95 @@ not pasted.
 
 Accordions from that library are usable for high-confidence classes only.
 Low-confidence entities are never collapsed (§3).
+
+## 4b. `triage`: the cheap stage, and the only one that may only ever remove
+
+Sits between `scan` and the entity list. It exists because of one measurement
+(2026-08-24, live corpus): 205 sessions, and each session's workspace plus its
+first user prompt truncated to 300 characters is a 23,302-character payload,
+about 7k tokens. The entity pass that follows reads 915 KB, about 250k tokens.
+A 35x difference for the stage that decides whether a session ships at all is
+worth a command.
+
+The same measurement decided the shape: **0 of those 205 sessions carry an
+`ai-title` record.** Titles are not available. The first user prompt is the
+surface; 161 of 205 have one, and a session that has none says so on its row
+rather than being hidden.
+
+```
+$ deident triage --out <workdir>
+
+  164 sessions still proposed keep, 300 characters of first prompt each
+    3 of them carry no first user prompt and say so in the file
+
+  → deident-triage.txt    23.4 KB
+    Raw prose: tier-0 substitution has not run over it. Local only, like review.md
+    A verdict can only ever drop a session. There is no keep verdict
+```
+
+`deident-triage.txt` holds one block per session the review still proposes to
+`keep`: id, date, workspace, and the truncated first prompt. Only the HEAD of
+each session file is read (256 KB), never the whole thing. A triage that reads
+the whole session is the expensive stage wearing a hat. `--triage-chars <n>`
+moves the limit, bounded at 2,000, because a limit high enough to carry whole
+sessions undoes the command quietly with every check still green.
+
+The reader writes `deident-triage.json` beside it:
+
+```json
+{"verdicts": [{"id": "<session id>", "verdict": "drop", "reason": "one line"}]}
+```
+
+### The constraint, which is the whole design
+
+**A triage verdict may only ever move a session toward `drop`.** It may never
+propose `keep` and it may never overturn an existing `drop`. Both halves are
+enforced in code: `keep` is a refusal naming the row, and a verdict against a
+row that already reads `drop` is a counted no-op.
+
+That is what makes a cheap model acceptable at this stage and nowhere else.
+`docs/model-tier.md` disqualifies the low tier for the entity pass because its
+failures are MISSES, and a miss there is a disclosure. Here the only power on
+offer is removal, so a wrong verdict costs coverage and never privacy. The
+moment a verdict can release a session, that argument is gone, which is why the
+rule lives in the parser rather than in the header.
+
+`unsure` is the second accepted value and changes nothing. It exists so a row
+somebody looked at and left alone does not read the same as a row nobody
+reached.
+
+```
+$ deident triage --apply --verdicts deident-triage.json --out <workdir>
+
+  ! verdict for "a3f9..." was not applied: no session with that id, and none in
+    the corpus either. It was probably deleted between runs
+
+  12 verdicts read
+    9 applied
+    2 changed nothing (already dropped, or "unsure")
+    1 matched no row in review.md (see the warnings above)
+
+  → review.md
+```
+
+`--apply` writes `drop` into column 1 of the `## sessions` section and appends
+the reason to that row, then remembers the drop in
+`~/.deident-private/workspaces.json` beside the tiers, so a later `scan` into a
+different directory does not lose it (§11).
+
+A verdict naming a session that is not in the corpus is a **warning, not a
+refusal.** Sessions get deleted between runs, and refusing would throw away
+every other verdict in the same file over somebody tidying a directory.
+
+Two properties of the file that a reader has to be told, and the file tells
+them itself:
+
+- It carries **raw prose**. Unlike `deident-candidates.txt`, tier-0 substitution
+  has not run over it, so handing it to a model sends untouched session text to
+  that model. That is the cost, and it is why the payload is one truncated line
+  per session rather than a transcript. Local only, like `review.md`.
+- It offers only sessions currently proposed `keep`. Paying a reader to look at
+  a session that is already out is the waste the command exists to remove.
 
 ## 5. Every number is traceable back to evidence
 

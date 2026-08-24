@@ -1,8 +1,9 @@
-# Which model can do step 3
+# Which model can do the entity step
 
-Step 3 of the skill is the one thing the tool cannot do: read the tier-0-cleaned
-prose and name the identities a machine cannot find. It is also the only step
-whose cost scales with the corpus. So: does it need the top tier?
+Step 4 of the skill, the entity pass, is the one thing the tool cannot do: read
+the tier-0-cleaned prose and name the identities a machine cannot find. It is
+also the only step whose cost scales with the corpus. So: does it need the top
+tier?
 
 Measured 2026-08-24. One corpus, one prompt, three tiers, two runs each.
 
@@ -10,7 +11,7 @@ Measured 2026-08-24. One corpus, one prompt, three tiers, two runs each.
 
 14 sessions (7 MB) copied to a throwaway root, scanned, every workspace set to
 `redact`, `export --preview` run. That produced a 46 KB `deident-candidates.txt`.
-Six agents each got the step-3 prompt from `skills/deident/SKILL.md` **verbatim**
+Six agents each got the step-4 prompt from `skills/deident/SKILL.md` **verbatim**
 and returned `deident-entities.json`. No agent saw another's answer.
 
 Scoring is deliberately not taste. Two things are counted:
@@ -81,9 +82,9 @@ with a note saying treasury is an ordinary word" is the whole review step.
 
 ## Recommendation
 
-Step 3 runs at the mid tier or above, and only ever produces a proposal.
+Step 4 runs at the mid tier or above, and only ever produces a proposal.
 
-- **Do not run step 3 at the low tier.** Not as an optimisation, not on a small
+- **Do not run step 4 at the low tier.** Not as an optimisation, not on a small
   corpus. It misses the values that are the secret and files ordinary words as
   identities, in the same run, with no low-confidence marks to catch either.
 - **Mid tier is sufficient when a person reads the low-confidence list**, which
@@ -95,11 +96,31 @@ Step 3 runs at the mid tier or above, and only ever produces a proposal.
   teammate hand-off that a person will still review.
 
 Nothing here changes the floor. Every tier missed something, every tier declared
-an ordinary word, and the export refuses without step 3 regardless of who ran
+an ordinary word, and the export refuses without step 4 regardless of who ran
 it. The probe exists because no model tier removes the need to read the counts.
+
+## The one step where the low tier IS the right answer
+
+Step 3, triage, inverts every sentence above, and it inverts them for exactly
+one reason: its only power is removal.
+
+The argument against the low tier here is that its failures are MISSES, and a
+miss in the entity pass is a disclosure. A miss in triage is a session that
+ships and gets read by step 4 anyway. So a wrong verdict costs coverage, never
+privacy, and the failure direction is the whole basis for the choice.
+
+That inversion is not a judgement call left to the operator. `deident triage`
+refuses a `keep` verdict and ignores a verdict that would overturn an existing
+`drop`, in code, because the moment a verdict can release a session the
+asymmetry is gone and so is the case for a cheap reader.
+
+The cost side is measured too: on a 205-session corpus the triage payload is
+23 KB, about 7k tokens, against 915 KB and about 250k tokens for step 4. Paying
+the top tier to decide which sessions are worth reading is spending the
+expensive resource on the cheap question.
 
 ## Reproducing
 
-`skills/deident/SKILL.md` step 3, unchanged, against a `deident-candidates.txt`.
+`skills/deident/SKILL.md` step 4, unchanged, against a `deident-candidates.txt`.
 Score with the probe: build a table from the union of all runs' spellings, run
 `probeCounts` over the raw corpus, and read the top of the distribution.

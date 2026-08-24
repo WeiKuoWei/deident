@@ -3,13 +3,14 @@
 
 import { parseArgs } from 'node:util';
 import { UsageError } from './errors.mjs';
+import { DEFAULT_TRIAGE_CHARS, MAX_TRIAGE_CHARS } from '../policy/triage.mjs';
 
-export const COMMANDS = Object.freeze(['scan', 'review', 'export']);
+export const COMMANDS = Object.freeze(['scan', 'review', 'triage', 'export']);
 
 // flag -> {type, multiple?, commands}. `commands: null` means every command.
 const FLAGS = Object.freeze({
   root: { type: 'string', commands: null },
-  out: { type: 'string', commands: ['scan', 'review', 'export'] },
+  out: { type: 'string', commands: ['scan', 'review', 'triage', 'export'] },
   'salt-dir': { type: 'string', commands: null },
   html: { type: 'boolean', commands: ['review'] },
   entity: { type: 'string', commands: ['review'] },
@@ -24,7 +25,13 @@ const FLAGS = Object.freeze({
   // An encoding of the values already in hand at each render call, not a
   // second code path. The settled operator is an agent, and the alternative is
   // parsing padded columns whose width is data-dependent.
-  json: { type: 'boolean', commands: ['scan', 'review', 'export'] },
+  json: { type: 'boolean', commands: ['scan', 'review', 'triage', 'export'] },
+  // triage writes a file for a reader, then reads that reader's answer back.
+  // Two directions, one command, because they are one contract: the file states
+  // the rubric the verdicts are judged against.
+  apply: { type: 'boolean', commands: ['triage'] },
+  verdicts: { type: 'string', commands: ['triage'] },
+  'triage-chars': { type: 'string', commands: ['triage'] },
   // Who the archive is for. A claim about what the reader already knows, which
   // is what makes it checkable; a number would not be.
   audience: { type: 'string', commands: ['export'] },
@@ -102,11 +109,30 @@ export function parseCliArgs(argv) {
     );
   }
 
-  for (const name of ['root', 'out', 'salt-dir', 'entities', 'entity', 'session']) {
+  for (const name of ['root', 'out', 'salt-dir', 'entities', 'entity', 'session', 'verdicts']) {
     if (values[name] !== undefined && values[name].trim() === '') {
       throw new UsageError(`--${name} needs a value`);
     }
   }
+
+  // The two halves of triage must be asked for together. `--apply` with nothing
+  // to apply would write over review.md with the verdicts of an empty list, and
+  // `--verdicts` without `--apply` reads a file and then throws the answer away
+  // - a flag that exits 0 without doing its job (cli-ux §5).
+  if (values.apply === true && values.verdicts === undefined) {
+    throw new UsageError('--apply needs --verdicts <file>', {
+      why: ['There is nothing to apply until you name the file the reader wrote.'],
+      remedies: [{ label: 'Name it', command: 'deident triage --apply --verdicts deident-triage.json' }],
+    });
+  }
+  if (values.verdicts !== undefined && values.apply !== true) {
+    throw new UsageError('--verdicts only means something with --apply', {
+      why: ['Without --apply the file would be read and the answer discarded.'],
+      remedies: [{ label: 'Apply it', command: 'deident triage --apply --verdicts <file>' }],
+    });
+  }
+
+  const triageChars = parseTriageChars(values['triage-chars']);
 
   if (values.html && (values.entity !== undefined || values.session !== undefined)) {
     throw new UsageError('--html cannot be combined with --entity or --session');
@@ -143,8 +169,38 @@ export function parseCliArgs(argv) {
       includeDenied: Object.freeze([...includeDenied]),
       json: values.json === true,
       audience: values.audience ?? null,
+      apply: values.apply === true,
+      verdicts: values.verdicts ?? null,
+      triageChars,
     },
   });
+}
+
+/**
+ * The truncation limit, as a whole number of characters.
+ *
+ * Validated here rather than where it is used, so a typo refuses at the flag and
+ * not after the corpus has been enumerated. `parseInt` is deliberately not used:
+ * it reads `300abc` as 300 and `3e5` as 3, so a value that means nothing would
+ * silently become one that means something.
+ */
+function parseTriageChars(raw) {
+  if (raw === undefined) return DEFAULT_TRIAGE_CHARS;
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new UsageError(`--triage-chars takes a whole number of characters, got "${raw}"`);
+  }
+  const value = Number(raw.trim());
+  if (value < 1 || value > MAX_TRIAGE_CHARS) {
+    throw new UsageError(`--triage-chars must be between 1 and ${MAX_TRIAGE_CHARS}, got ${value}`, {
+      why: [
+        `At ${MAX_TRIAGE_CHARS.toLocaleString('en-US')} characters over a 205-session corpus the payload is 410 KB,`,
+        'which is already within reach of what the entity pass reads. A limit high',
+        'enough to carry whole sessions turns triage back into the expensive stage.',
+      ],
+      remedies: [{ label: 'Use the default', command: 'deident triage --out <workdir>' }],
+    });
+  }
+  return value;
 }
 
 function frozen(o) {
