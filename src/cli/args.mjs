@@ -17,6 +17,11 @@ const FLAGS = Object.freeze({
   session: { type: 'string', commands: ['review'] },
   preview: { type: 'boolean', commands: ['export'] },
   entities: { type: 'string', commands: ['export'] },
+  // Ignore the record of what has already been read and put the whole corpus
+  // in front of a reader again. For a person who has changed their mind about
+  // what counts as an identity, whose only other route is deleting a file they
+  // would have to be told the path of.
+  full: { type: 'boolean', commands: ['export'] },
   namespace: { type: 'string', commands: ['export'] },
   'skip-unclassified': { type: 'boolean', commands: ['export'] },
   'skip-unreadable': { type: 'boolean', commands: ['scan', 'export'] },
@@ -134,6 +139,20 @@ export function parseCliArgs(argv) {
 
   const triageChars = parseTriageChars(values['triage-chars']);
 
+  // --full says "show me everything again" and --entities says "here is my
+  // answer". A run carrying both would read the answer and then refuse to use
+  // it, because --full marks every session unread. Refused at the flag rather
+  // than after a ten-minute run.
+  if (values.full === true && values.entities !== undefined) {
+    throw new UsageError('--full cannot be combined with --entities', {
+      why: ['--full re-reads the whole corpus, so the list you supplied could not be used yet.'],
+      remedies: [
+        { label: 'Re-read first', command: 'deident export --full' },
+        { label: 'Then supply the list', command: 'deident export --entities deident-entities.json' },
+      ],
+    });
+  }
+
   if (values.html && (values.entity !== undefined || values.session !== undefined)) {
     throw new UsageError('--html cannot be combined with --entity or --session');
   }
@@ -162,6 +181,7 @@ export function parseCliArgs(argv) {
       session: values.session ?? null,
       preview: values.preview === true,
       entities: values.entities ?? null,
+      full: values.full === true,
       namespace: values.namespace ?? null,
       skipUnclassified: values['skip-unclassified'] === true,
       skipUnreadable: values['skip-unreadable'] === true,

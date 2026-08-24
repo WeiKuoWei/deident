@@ -50,7 +50,7 @@ import {
   pseudonymGuardPattern,
   pseudonymScanPattern,
 } from './entities/pseudonym.mjs';
-import { writeCandidates, readEntities, CANDIDATES_FILENAME } from './entities/tier1.mjs';
+import { writeCandidates, readEntities, buildEntityList, CANDIDATES_FILENAME } from './entities/tier1.mjs';
 import { probeCounts, probeOutliers, uncoveredNameParts } from './entities/probe.mjs';
 import { buildTable, substituteString, leftIsWordChar } from './substitute/engine.mjs';
 import { substituteRecord, collectStrings } from './substitute/walker.mjs';
@@ -67,6 +67,7 @@ import {
   residueRefusal,
   checkSemanticPass,
   semanticRefusal,
+  coverageRefusal,
   runAllChecks,
   toReportRows,
 } from './verify/checks.mjs';
@@ -74,6 +75,14 @@ import { writeZip, readZipFile, safeUnlink } from './output/zip.mjs';
 import { writePreview } from './output/preview.mjs';
 import { EXAMPLES_PER_REPORT, MIN_REPLAY_MATCH_CHARS } from './retain/constants.mjs';
 import { loadUserDeny, setUserDeny } from './policy/userdeny.mjs';
+import {
+  loadDictionary,
+  saveDictionary,
+  mergeEntities,
+  proseHash,
+  uncoveredSessions,
+  DICTIONARY_FILENAME,
+} from './policy/dictionary.mjs';
 
 /**
  * The directory a command writes into. NEVER throws a raw ENOENT.
@@ -437,6 +446,10 @@ export async function runExport(flags, env) {
   // token loaded after classify would silently propose the wrong tier for
   // the very directory it exists to protect.
   setUserDeny(loadUserDeny(saltDir));
+  // Read here rather than at step 11, so a dictionary somebody broke while
+  // hand-editing refuses in the first second instead of after the corpus has
+  // been read, which is more than ten minutes on a few hundred sessions.
+  const dictionary = loadDictionary(saltDir);
 
   //  1  resolve the corpus
   const corpus = resolveCorpus(env, flags.root);
@@ -606,19 +619,73 @@ export async function runExport(flags, env) {
   //     un-de-identified names on disk. It is written only on the path that
   //     needs it: the refusal that asks the user to produce an entity list.
   const candidatesPath = path.join(outDir, CANDIDATES_FILENAME);
-  const tier1 = flags.entities === null ? null : readEntities(flags.entities);
-  const semantic = checkSemanticPass(tier1);
+  const tier1 = resolveTier1(flags, dictionary);
+
+  // 11a  per-session accounting for the semantic pass.
+  //
+  //      Hashed over the RETAINED prose, before tier-0 substitution: the
+  //      cleaned text carries pseudonyms and `--namespace` takes a fresh value
+  //      every run, so a hash of the cleaned text would report every session
+  //      as changed on every run while looking like it worked.
+  //
+  //      The two record sets are the same sessions in the same order
+  //      (substituteAll rebuilds the array as it walks it), and the candidates
+  //      file needs the CLEANED prose, so the pair is matched on session id
+  //      rather than on index.
+  const rawProse = new Map(
+    extractProseBySession(retained.records).map((s) => [s.id, s.chunks]),
+  );
+  const perSession = extractProseBySession(cleaned.records).map((s) => ({
+    id: s.id,
+    chunks: s.chunks,
+    hash: proseHash(rawProse.get(s.id) ?? s.chunks),
+  }));
+  const uncovered = uncoveredSessions(dictionary.sessions, perSession, { ignoreRecord: flags.full });
+  const coverage = Object.freeze({ total: perSession.length, uncovered });
+
+  const semantic = checkSemanticPass(tier1, coverage);
   if (!semantic.ok) {
+    // Which sessions go in front of the reader, decided by WHICH failure this
+    // is rather than by what is uncovered.
+    //
+    //   uncovered only   coverage is short and the list is fine: the ordinary
+    //                    repeat run, and the whole economic argument. 915 KB of
+    //                    prose becomes the handful of sessions that changed.
+    //                    `--full` arrives here with every session uncovered, so
+    //                    it needs no branch of its own.
+    //   everything       there is no usable entity list at all, so there is
+    //                    nothing remembered to read against. Showing only what
+    //                    changed here is the trap: with the entities deleted by
+    //                    hand and the session record kept, the reader would be
+    //                    handed one session, write a list from it, and the next
+    //                    run would export the whole corpus against it with
+    //                    every gate green, because every session IS recorded as
+    //                    read.
+    const shown = new Set(uncovered.map((s) => s.id));
+    const showAll = semantic.why !== 'uncovered';
+    const chunks = perSession
+      .filter((s) => showAll || shown.has(s.id))
+      .flatMap((s) => s.chunks);
+    const omitted = showAll ? 0 : perSession.length - shown.size;
     const candidates = writeCandidates(
-      extractProse(cleaned.records),
+      chunks,
       candidatesPath,
       // Everything the residual scan runs over the zip runs over this file too.
       // It is the one artifact intended to be read by an LLM, i.e. the one most
       // likely to leave the machine, and its own header states that the
       // username, paths, git identity and remotes have already been replaced.
-      { table: tier0Table },
+      { table: tier0Table, omitted },
     );
-    report.renderCandidates(candidates.path, candidates.chars);
+    // Written BEFORE the refusal, and it is memory rather than output: these
+    // sessions have now been put in front of a reader, and cli-ux §10's "no
+    // output file behind" is about the archive. Forgetting it means the next
+    // run shows the same prose again, which is the cost this whole file exists
+    // to remove.
+    rememberShown(saltDir, dictionary, perSession.filter((s) => showAll || shown.has(s.id)));
+    report.renderCandidates(candidates.path, candidates.chars, omitted);
+    if (semantic.why === 'uncovered') {
+      throw coverageRefusal(uncovered, perSession.length, candidates.path, { full: flags.full });
+    }
     throw semanticRefusal(candidates.path, semantic.why);
   }
 
@@ -730,7 +797,11 @@ export async function runExport(flags, env) {
   if (!substitution.ok) throw substitutionRefusal(substitution);
   if (!residue.ok) throw residueRefusal(residue);
   // I6 again, per PLAN §2: a refusal one skipped code path can bypass is not
-  // a refusal.
+  // a refusal. Both halves of it, because per-session coverage is the half a
+  // dictionary can silently satisfy.
+  if (semantic.why === 'uncovered' && !semantic.ok) {
+    throw coverageRefusal(coverage.uncovered, coverage.total, candidatesPath, { full: flags.full });
+  }
   if (!semantic.ok) throw semanticRefusal(candidatesPath, semantic.why);
 
   if (retained.records.length === 0) {
@@ -784,6 +855,7 @@ export async function runExport(flags, env) {
       },
       path.join(outDir, `deident-preview-${today()}.diff`),
     );
+    rememberEntities(saltDir, dictionary, minted.entities, rewriteUuid.minted);
     report.renderWrote(written.path, written.bytes, path.join(saltDir, 'salt'));
     return 0;
   }
@@ -818,6 +890,9 @@ export async function runExport(flags, env) {
     // pseudonyms to real names, so it is not a re-identification key for the
     // data that left.
     writeExportMap(serialized.entries, mapPath);
+    // After the archive is on disk, so a run that refused at the on-disk scan
+    // does not record identities against an export that never happened.
+    rememberEntities(saltDir, dictionary, minted.entities, rewriteUuid.minted);
     report.renderWrote(written.path, written.bytes, path.join(saltDir, 'salt'));
   } catch (err) {
     // Both artifacts, not just the zip. The map was written INSIDE this try
@@ -852,6 +927,91 @@ function writeExportMap(entries, outPath) {
   } catch (err) {
     // The zip is already on disk and valid; losing the map costs a re-run.
     report.renderWarning(`could not write ${outPath} (${err.code ?? 'error'}: ${err.message})`);
+  }
+}
+
+/**
+ * Where this run's tier-1 entities come from.
+ *
+ * No flag: the dictionary supplies them, which is what makes a repeat run one
+ * command. The flag: the file wins, and the dictionary supplies only the
+ * identities the file does not name.
+ *
+ * The union rather than the file alone, and the direction is deliberate. A
+ * reader answering a repeat run writes a list about the sessions they were
+ * just shown (a handful), and applying only that list would drop every
+ * identity the earlier runs established while every gate stayed green, because
+ * the residual scan can only look for what it was given (§F1). Dropping an
+ * identity on purpose is still possible and is a hand edit of the dictionary,
+ * which is the file's whole point.
+ */
+function resolveTier1(flags, dictionary) {
+  const remembered =
+    dictionary.entities.length === 0
+      ? null
+      : buildEntityList(dictionary.entities, {
+          at: dictionary.path,
+          source: `the dictionary at ${dictionary.path}`,
+        });
+  if (flags.entities === null) return remembered;
+
+  const declared = readEntities(flags.entities);
+  if (remembered === null) return declared;
+
+  // Merged as declared lists, so one validator sees the result and the
+  // identity rule is the same one the dictionary is written with.
+  const merged = mergeEntities(
+    dictionary.entities,
+    declared.entities.map((e) => ({ kind: e.kind, spellings: e.declared, confidence: e.confidence })),
+  );
+  return buildEntityList(merged.entities, {
+    at: flags.entities,
+    source: `--entities ${flags.entities} + ${dictionary.entities.length} remembered`,
+    generated: declared.generated,
+  });
+}
+
+/** Record that these sessions have been put in front of a reader. */
+function rememberShown(saltDir, dictionary, sessions) {
+  const stamp = nowStamp();
+  const record = { ...dictionary.sessions };
+  for (const s of sessions) record[s.id] = { hash: s.hash, read: stamp };
+  try {
+    saveDictionary(saltDir, { entities: dictionary.entities, sessions: record });
+  } catch (err) {
+    report.renderWarning(
+      `could not remember which sessions you have read (${err.code ?? 'error'}: ${err.message}). ` +
+        `${DICTIONARY_FILENAME} is memory, not output, so nothing is wrong with this run; ` +
+        'the next one will show you the same prose again',
+    );
+  }
+}
+
+/**
+ * Merge the entity list this export actually used into the dictionary.
+ *
+ * `stripMintedSpellings` again, on the declared forms this time. A uuid in the
+ * candidates file is deident's own output, and declaring one makes the residue
+ * gate refuse against the tool itself; remembering one turns that from a
+ * one-run mistake into a permanent one. Same function rather than a second
+ * copy of the rule, so the two cannot disagree.
+ */
+function rememberEntities(saltDir, dictionary, entities, minted) {
+  // A REJECTED entity is left out. It replaced nothing this run and would
+  // replace nothing next run either (rejectReason is deterministic), so
+  // remembering it is a row in a hand-edited file that does nothing.
+  const declared = entities
+    .filter((e) => !e.rejected && (e.declared?.length ?? 0) > 0)
+    .map((e) => ({ kind: e.kind, spellings: [...e.declared], confidence: e.confidence }));
+  const clean = stripMintedSpellings(declared, minted);
+  const merged = mergeEntities(dictionary.entities, clean.entities);
+  try {
+    saveDictionary(saltDir, { entities: merged.entities, sessions: dictionary.sessions });
+  } catch (err) {
+    report.renderWarning(
+      `could not remember the entity list (${err.code ?? 'error'}: ${err.message}). ` +
+        'The export is written and valid; the next run will ask you for the list again',
+    );
   }
 }
 
@@ -1324,13 +1484,20 @@ function substituteAll(sessions, table) {
 }
 
 /**
- * Step 11's input: prose only. BRIEF §4.10 measured `text` at 2.30% of bytes,
- * and feeding a semantic pass the other 97.7% is how it starts inventing
- * entities.
+ * Step 11's input: prose only, grouped by session. BRIEF §4.10 measured `text`
+ * at 2.30% of bytes, and feeding a semantic pass the other 97.7% is how it
+ * starts inventing entities.
+ *
+ * Per session rather than one flat list, because the two questions the
+ * candidates file now answers are per session: has this one's content changed
+ * since somebody read it, and does it therefore need to be shown again.
+ *
+ * @returns {Array<{id: string, chunks: string[]}>}
  */
-function extractProse(sessions) {
-  const chunks = [];
+function extractProseBySession(sessions) {
+  const out = [];
   for (const s of sessions) {
+    const chunks = [];
     for (const rec of s.records) {
       if (rec.type === 'last-prompt' || rec.type === 'queue-operation') {
         if (typeof rec.text === 'string') chunks.push(rec.text);
@@ -1345,8 +1512,9 @@ function extractProse(sessions) {
         else if (block?.type === 'thinking' && typeof block.thinking === 'string') chunks.push(block.thinking);
       }
     }
+    out.push({ id: s.file.sessionId, chunks });
   }
-  return chunks;
+  return out;
 }
 
 /**

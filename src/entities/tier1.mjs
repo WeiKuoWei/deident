@@ -81,7 +81,24 @@ const HEADER = `# deident tier-1 candidates
  */
 export function writeCandidates(proseChunks, outPath, opts = {}) {
   const seen = new Set();
-  const parts = [HEADER];
+  // Sessions deident remembers you having read, and therefore did not put in
+  // front of you again. Measured 2026-08-24 on the live corpus: the first read
+  // is 205 sessions and 915 KB, and a second read days later is the handful
+  // that changed. Stated in the file rather than only in the terminal, because
+  // the file is what gets handed to a reader and a short one has to say why it
+  // is short.
+  const omitted = opts.omitted ?? 0;
+  const note =
+    omitted > 0
+      ? [
+          `# ${omitted} more session${omitted === 1 ? ' is' : 's are'} not in this file. Their content has not changed`,
+          '# since you last read them, and deident remembers what you declared then.',
+          '# To read the whole corpus again:  deident export --full',
+          '#',
+          '',
+        ].join(String.fromCharCode(10))
+      : '';
+  const parts = [HEADER + note];
   for (const chunk of proseChunks) {
     if (typeof chunk !== 'string') continue;
     const text = chunk.trim();
@@ -93,7 +110,7 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
     parts.push('');
   }
   const prose = parts.slice(1).join(String.fromCharCode(10));
-  const body = HEADER + prose;
+  const body = HEADER + note + prose;
 
   // The same gate the zip gets. This file's header states that the username,
   // paths, git identity, git remotes and MCP server names have already been
@@ -176,6 +193,29 @@ export function readEntities(filePath) {
     });
   }
 
+  return buildEntityList(raw, {
+    at: filePath,
+    source: `--entities ${filePath}`,
+    generated: typeof parsed?.generated === 'string' ? parsed.generated : null,
+  });
+}
+
+/**
+ * Validate and normalise a declared entity list, whatever supplied it.
+ *
+ * Shared by `--entities` and by the remembered dictionary, so a list that a
+ * previous run accepted is held to the same rules when it comes back, and so
+ * there is one place that decides what a valid entity is. A second copy of
+ * these checks is how a dictionary entry that no reader would be allowed to
+ * type gets applied anyway.
+ *
+ * @param {ReadonlyArray<object>} raw
+ * @param {{at: string, source: string, generated?: string|null}} opts
+ *   `at` is what a refusal names, so it is a file path for a file and a
+ *   description for anything else.
+ */
+export function buildEntityList(raw, { at: source_at, source, generated = null }) {
+  const filePath = source_at;
   const entities = [];
   const counters = new Map();
   for (const [i, item] of raw.entries()) {
@@ -211,6 +251,12 @@ export function readEntities(filePath) {
         id: `T1_${kind.toUpperCase()}_${String(nextIndex).padStart(2, '0')}`,
         kind,
         canonical,
+        // The spellings as the person TYPED them, kept beside the expanded
+        // ones. The dictionary remembers this array, not the expansion:
+        // expandVariants is deterministic and re-derived on every read, so
+        // storing its output would bloat a file somebody edits by hand and
+        // show them backslash-doubled twins of strings they never wrote.
+        declared: Object.freeze([...spellings]),
         spellings: rejected
           ? Object.freeze([])
           : Object.freeze([...new Set(spellings.flatMap((s) => expandVariants(s)))].sort(
@@ -231,8 +277,8 @@ export function readEntities(filePath) {
 
   return Object.freeze({
     ran: true,
-    source: `--entities ${filePath}`,
-    generated: typeof parsed?.generated === 'string' ? parsed.generated : null,
+    source,
+    generated,
     entities: Object.freeze(entities),
   });
 }

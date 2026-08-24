@@ -213,7 +213,10 @@ Flags
   --apply                  triage: merge a verdicts file into review.md
   --verdicts <file>        triage: the verdicts file to apply
   --preview                export: write a diff file instead of a zip
-  --entities <file>        export: supply the tier-1 entity list as JSON
+  --entities <file>        export: supply the tier-1 entity list as JSON.
+                           Optional once ~/.deident-private/entities.json has one
+  --full                   export: ignore what deident remembers you having read
+                           and put the whole corpus in front of a reader again
   --namespace <TAG>        export: shift the pseudonym namespace, e.g. X
   --skip-unclassified      export: confirm unclassified workspaces stay out
   --skip-unreadable        scan/export: continue past an unparseable line
@@ -410,10 +413,16 @@ export function renderWrote(path, bytes, saltPath) {
   say('');
 }
 
-export function renderCandidates(path, chars) {
+export function renderCandidates(path, chars, omitted = 0) {
+  if (machine !== null) { machineAdd({ candidates: { path, chars, omitted } }); return; }
   say('');
   say('  Tier-1 candidates written');
   say(`    ${path}    ${humanBytes(chars)} of tier-0-cleaned prose`);
+  // The number that says a repeat run is cheap. Without it a short file looks
+  // like a corpus that shrank rather than like a memo that worked.
+  if (omitted > 0) {
+    say(`    ${n(omitted)} session${omitted === 1 ? '' : 's'} left out: unchanged since you last read them`);
+  }
   say('');
 }
 
