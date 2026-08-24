@@ -19,6 +19,41 @@ export const KINDS = Object.freeze([
 ]);
 
 /**
+ * The OS username, or null. NEVER throws.
+ *
+ * This was written `os.userInfo?.().username`, which guards nothing that
+ * matters: optional chaining protects against a null RESULT, and os.userInfo()
+ * THROWS. Node raises a SystemError (`uv_os_get_passwd returned ENOENT`, or
+ * "user has no username") in a container with no passwd entry, on a
+ * locked-down CI runner and on some managed Windows profiles, and the throw
+ * came straight back out of seedEntities as a traceback rather than deident's
+ * own refusal shape. BRIEF §2: a traceback is a failed delivery.
+ *
+ * The only caller is seedEntities, and the value is a tier-0 seed, so a
+ * failure here is REPORTED and never swallowed: §F3 measured 296 BARE
+ * occurrences of the username in the `ls -l` owner column, which longest-prefix
+ * path substitution never fires on. Losing it silently loses a leak vector
+ * while every gate stays green. The caller degrades the way it already degrades
+ * for a missing home directory: seed nothing, warn, carry on.
+ *
+ * The injected userInfo exists for the same reason probeCaseFolding takes an
+ * injected stat: a fixture has to state both answers on a machine that only
+ * has one of them.
+ */
+export function osUsername(env, userInfo = () => os.userInfo()) {
+  for (const name of ['USERNAME', 'USER']) {
+    const value = env?.[name];
+    if (typeof value === 'string' && value.trim() !== '') return value.trim();
+  }
+  try {
+    const name = userInfo()?.username;
+    return typeof name === 'string' && name.trim() !== '' ? name.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @returns {Readonly<{entities: object[], warnings: string[]}>}
  *   entity = {id, kind, canonical, spellings[], source, confidence}
  */
@@ -33,7 +68,7 @@ export function seedEntities(env, corpus, opts = {}) {
   };
 
   // --- OS username, bare. §F3.
-  const username = env.USERNAME || env.USER || os.userInfo?.().username || null;
+  const username = osUsername(env, opts.userInfo);
   if (username) {
     add('person', username, 'os username (bare)');
   } else {

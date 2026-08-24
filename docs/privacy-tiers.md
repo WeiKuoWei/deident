@@ -104,7 +104,7 @@ which means excluded, until confirmed.
 ## 4. Workspace granularity alone is not enough
 
 Measured on the largest real session file: 5,259 lines, **11 distinct `cwd`
-values**, including `C:\Users\devuser\projects\ops-handover\private` for 1,257
+values**, including `C:\Users\<you>\projects\ops-handover\private` for 1,257
 of them, inside a session whose directory slug looked unremarkable. The agent
 `cd`s mid-session, and the slug records only the launch directory.
 

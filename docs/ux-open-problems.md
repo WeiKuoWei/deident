@@ -2,7 +2,7 @@
 
 Status: a list of problems and the choices they force, not a redesign. Every
 number below came from a run against `docs/ui-prototype.html` or against the live
-corpus at `C:/Users/devuser/.claude/projects`, not from reading the source. Where a
+corpus at `C:/Users/<you>/.claude/projects`, not from reading the source. Where a
 fix is proposed it is proposed as two or three options with what each costs,
 because the choice is the owner's.
 
@@ -661,7 +661,7 @@ the budget a static single-file page should plan against.
 `docs/ui-prototype.html`, scratch files under the session temp directory only. Scale figures come from
 generated forks at 8, 161 and 1,600 sessions, built at both BRIEF's implied density (134,758 records
 over 224 sessions) and the density measured on this machine (p50 711 records, p90 5,229), with both
-quoted wherever the answer differs. Corpus figures come from `C:/Users/devuser/.claude/projects`: 4,041
+quoted wherever the answer differs. Corpus figures come from `C:/Users/<you>/.claude/projects`: 4,041
 `.jsonl` files, 1,811 MB, of which 187 are non-sidechain sessions with a human first message.
 Sensitive-material depth was measured with mechanically unambiguous markers only (E.164 phone shape,
 third-party email addresses excluding the user's own); an earlier pass using loose keyword markers

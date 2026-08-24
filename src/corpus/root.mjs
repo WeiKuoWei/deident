@@ -49,7 +49,17 @@ export function noHomeRefusal(what, flag) {
     ],
     remedies: [
       { label: 'Name the path', command: `deident scan ${flag} <path>` },
-      { label: 'Or set the variable', command: 'HOME=<path>' },
+      // Was `HOME=<path>`, which is a bash assignment and a PowerShell parse
+      // error ("the term 'HOME=/tmp/x' is not recognized as the name of a
+      // cmdlet"). PowerShell is the default shell on the machines this ships
+      // to, and cli-ux §8 makes the remedy the contract for getting unstuck,
+      // so a remedy that cannot be run is worse than none: the person believes
+      // they typed the fix and it did not work. Shell-neutral prose rather
+      // than a platform test, because the string has to be correct to READ
+      // everywhere, and the flag above is the answer that needs no shell at
+      // all. If a dual-form remedy is ever wanted here, F111 will flag the
+      // PowerShell half's `$env:` and the rule is what needs revisiting.
+      { label: 'Or set HOME first', command: 'set HOME to a real directory in your shell, then run deident again' },
     ],
   });
 }

@@ -25,6 +25,7 @@ import {
   sweepMcpNames,
   sweepIdNumbers,
   sweepPlatformIds,
+  osUsername,
   projectShaped,
   basenameOf,
   buildEntities,
@@ -70,7 +71,7 @@ import { parseReview, parseSessionDrops, renderReview, renderReviewHtml } from '
 import { readEntities } from './entities/tier1.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
-import { serializeSessions } from './pipeline.mjs';
+import { serializeSessions, resolveOutDir, sanitizeEntryName } from './pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
 
 const BS = String.fromCharCode(92); // a single backslash, written without escapes
@@ -112,11 +113,15 @@ const ENTRY = fileURLToPath(new URL('../deident.mjs', import.meta.url));
  * refusals go to stderr, so a harness that reads stdout alone cannot see the
  * difference between "warned and carried on" and "said nothing".
  */
-function runCli(args) {
+function runCli(args, env = null) {
   const r = spawnSync(process.execPath, [ENTRY, ...args], {
     encoding: 'utf8',
     timeout: 120_000,
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Merged, never replaced: a bare env on Windows loses SystemRoot and the
+    // child cannot start at all, which reads as a failing assertion rather
+    // than a broken harness.
+    env: env === null ? process.env : { ...process.env, ...env },
   });
   return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
@@ -4012,6 +4017,320 @@ const FIXTURES = [
     // One-character and two-character parts are not proposed: a two-letter
     // needle with no boundary rule is the bare-tilde bug in another costume.
     assert.equal(uncoveredNameParts([{ kind: 'person', spellings: ['Al Bo'] }], ['Al Bo, then Bo, then Al']).length, 0);
+  }],
+
+  // F110 - the username guard guarded nothing, and the seed that goes missing
+  // is the one §F3 exists for.
+  //
+  // seed.mjs read the username as `os.userInfo?.().username`. Optional chaining
+  // guards a null RESULT; os.userInfo() THROWS. Reproduced against the shipped
+  // code with the throw Node raises when there is no passwd entry:
+  //
+  //     Error: uv_os_get_passwd returned ENOENT
+  //         at seedEntities (src/entities/seed.mjs:36:61)
+  //
+  // That is BRIEF §2's failed delivery: a traceback instead of deident's own
+  // refusal shape, in a container with no passwd entry, on a locked-down CI
+  // runner, and on some managed Windows profiles.
+  //
+  // Degrading is not enough on its own. The username is a tier-0 seed and §F3
+  // measured 296 BARE occurrences in the `ls -l` owner column that no path
+  // substitution ever fires on, so an unreadable username is a live leak
+  // vector going unseeded. It is warned about, the way a missing home
+  // directory already is, and never swallowed.
+  ['F110', 'an environment with no passwd entry cannot read a username, and says so instead of throwing', () => {
+    const passwdless = () => {
+      throw Object.assign(new Error('uv_os_get_passwd returned ENOENT'), {
+        code: 'ENOENT',
+        syscall: 'uv_os_get_passwd',
+      });
+    };
+
+    // The seam: injected rather than monkey-patched onto node:os, for the
+    // reason probeCaseFolding takes an injected stat - the fixture has to
+    // state both answers on a machine that only has one of them.
+    assert.equal(osUsername({}, passwdless), null, 'a throw means "no username was readable"');
+    assert.equal(osUsername({ USERNAME: 'devuser' }, passwdless), 'devuser', 'the environment answers first');
+    assert.equal(osUsername({ USER: 'devuser' }, passwdless), 'devuser');
+
+    // Blank is not a name. Present-but-empty is exactly the state a stripped
+    // container image ships, and '' as an entity spelling matches everywhere.
+    assert.equal(osUsername({ USERNAME: '   ', USER: '' }, passwdless), null);
+    assert.equal(osUsername({}, () => ({ username: '' })), null);
+    assert.equal(osUsername({}, () => null), null, 'a null RESULT, which is what the old guard covered');
+    assert.equal(osUsername({}, () => ({ username: 'ci-runner' })), 'ci-runner');
+
+    // End to end: seedEntities does not throw, seeds no username, and the
+    // warning naming the gap reaches the caller.
+    const seeded = seedEntities({ HOME: '/home/nobody' }, { workspaceDirs: [] }, { userInfo: passwdless });
+    assert.ok(
+      seeded.warnings.some((w) => w.includes('OS username')),
+      `expected a warning naming the OS username, got ${JSON.stringify(seeded.warnings)}`,
+    );
+    assert.equal(
+      seeded.entities.filter((e) => e.source === 'os username (bare)').length,
+      0,
+      'nothing is invented to stand in for the username',
+    );
+
+    // ...and it has somewhere to arrive. `export` rendered seeded.warnings;
+    // scan and review threw them away, which is the shape that makes a lost
+    // seed invisible: what a person sees is an entity list with one fewer row.
+    // Driven here with the settings-file warning because it is the one seed
+    // warning an env alone can provoke - os.userInfo cannot be broken from
+    // outside the process - and it travels the same array.
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    writeCorpus(root);
+    const scan = runCli(
+      ['scan', '--root', root, '--out', out, '--salt-dir', path.join(root, 'salt')],
+      { HOME: root, USERPROFILE: root, CLAUDE_CONFIG_DIR: path.join(root, 'nothing-here') },
+    );
+    assert.equal(scan.code, 0);
+    assert.ok(
+      scan.out.includes('MCP server names were not seeded'),
+      `scan swallowed its seed warnings:\n${scan.out}`,
+    );
+  }],
+
+  // F111 - F95's invariant, one layer down: the PROGRAM was portable and the
+  // SHELL SYNTAX around it was not.
+  //
+  // `HOME=<path>` is the remedy for "no home directory, so deident cannot find
+  // your session storage". In bash it sets a variable. In PowerShell, which is
+  // the default shell for the team this ships to, it is a parse error:
+  //
+  //     HOME=/tmp/x : The term 'HOME=/tmp/x' is not recognized as the name of
+  //     a cmdlet, function, script file, or operable program.
+  //
+  // cli-ux §8 makes the remedy the contract for getting unstuck, and a remedy
+  // that cannot be run is worse than no remedy: the person now believes they
+  // typed the fix and it did not work. The settled operator is an agent, which
+  // runs the string verbatim rather than reading around it.
+  //
+  // No platform detection: the string has to be correct to READ on any
+  // platform, so it is either shell-neutral prose or both forms, labelled.
+  ['F111', 'no refusal hands out shell syntax that only parses in one shell', () => {
+    // Anchored at the start of the command, which is the only position where
+    // these mean what they mean. An unanchored /export\s/ matches `deident
+    // export --preview` in 19 places, and a check that cries wolf on the
+    // tool's own subcommand is the one that gets switched off (§F7).
+    const POSIX_ONLY = [
+      [/^[A-Za-z_][A-Za-z0-9_]*=/, 'a VAR=value prefix parses only in a POSIX shell'],
+      [/^export\s+[A-Za-z_][A-Za-z0-9_]*=/, 'export VAR= is not a builtin in PowerShell or cmd'],
+      [/\$[A-Za-z_{(]/, 'a $VAR or $(...) expansion'],
+      [/[0-9]?>[&\s]*\/dev\/null/, '/dev/null does not exist on Windows'],
+      [/`/, 'backtick command substitution'],
+      [/'/, 'a single-quoted token is not a quote in cmd.exe'],
+    ];
+    // The same seam F95 uses, for the same reason: cli-ux §8 makes the remedy
+    // the runnable half of a refusal, so it is the half a person or an agent
+    // pastes into a shell. The `why` prose alongside it is swept by hand
+    // rather than by regex - matching a JS array literal across comments and
+    // nested brackets needs a parser, and the approximation flagged whole
+    // functions.
+    const root = fileURLToPath(new URL('.', import.meta.url));
+    const offenders = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!e.name.endsWith('.mjs') || e.name === 'selftest.mjs') continue;
+        const text = fs.readFileSync(p, 'utf8');
+        for (const m of text.matchAll(/command:\s*(`[^`]*`|'[^']*')/g)) {
+          const raw = m[1].slice(1, -1);
+          // `${flag}` is JavaScript interpolation, not shell expansion, and a
+          // check that cannot tell them apart fires on every templated remedy
+          // in the file.
+          const cmd = raw.replace(/\$\{[^}]*\}/g, '').trim();
+          for (const [re, why] of POSIX_ONLY) {
+            if (re.test(cmd)) offenders.push(`${e.name}: ${why} in "${raw}"`);
+          }
+        }
+      }
+    };
+    walk(root);
+    assert.deepEqual(offenders, [], `POSIX-only shell syntax: ${offenders.join(' | ')}`);
+  }],
+
+  // F112 - the docs handed to the team carried the author's real username.
+  //
+  // `C:\Users\devuser\projects\ops-handover\private` and
+  // `C:/Users/devuser/.claude/projects` are provenance ("these figures come from
+  // this corpus"), so the sentences stay and only the name goes. cli-ux §9
+  // already settled the spelling: `C:\Users\<you>\.claude\projects`.
+  //
+  // Two costs, and the second is the one that matters. A reader on macOS
+  // cannot follow a path that exists on one machine. And a de-identification
+  // tool shipping its author's home directory in its own documentation is the
+  // demonstration that the discipline is not applied here.
+  //
+  // Scoped to the files the team reads as documentation: docs/, README.md and
+  // the skill. BRIEF.md and PLAN.md carry the same shape 21 times inside §4
+  // measurement tables where the path form IS the datum being reported; those
+  // are the owner's spec to edit, not a portability fix, and they are named in
+  // the handover rather than changed here.
+  ['F112', 'no shipped document carries a real home directory from one machine', () => {
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    // Every absolute home-path shape the corpus actually spells (BRIEF §4.6),
+    // plus the two POSIX ones a teammate's machine produces. The captured
+    // group is the user segment, and the only accepted value is a placeholder.
+    const SHAPES = [
+      new RegExp('[A-Za-z]:[' + BS + BS + '/]Users[' + BS + BS + '/]([^\\s' + BS + BS + '/`"|)]+)', 'g'),
+      /\/c\/Users\/([^\s\\/`"|)]+)/g,
+      /(?:^|[\s`"(])\/(?:Users|home)\/([^\s\\/`"|)]+)/g,
+    ];
+    const files = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith('.md')) files.push(p);
+      }
+    };
+    walk(path.join(repo, 'docs'));
+    walk(path.join(repo, 'skills'));
+    files.push(path.join(repo, 'README.md'));
+
+    const offenders = [];
+    for (const file of files) {
+      const lines = fs.readFileSync(file, 'utf8').split(NL);
+      lines.forEach((line, i) => {
+        for (const re of SHAPES) {
+          re.lastIndex = 0;
+          for (const m of line.matchAll(re)) {
+            if (m[1].startsWith('<')) continue;
+            offenders.push(`${path.basename(file)}:${i + 1} ${m[0]}`);
+          }
+        }
+      });
+    }
+    assert.deepEqual(offenders, [], `real home paths in shipped docs: ${offenders.join(' | ')}`);
+  }],
+
+  // F113 - process.cwd() is the same shape as os.userInfo(): a platform call
+  // that throws where the code reads a value.
+  //
+  // All three commands opened with `path.resolve(flags.out ?? process.cwd())`.
+  // On POSIX a directory can be removed while a process sits in it, and
+  // process.cwd() then raises `ENOENT: no such file or directory, uv_cwd`.
+  // Windows holds a handle on the working directory so it cannot be removed,
+  // which is why this never showed up here. `cd /tmp/x && rm -rf /tmp/x` in
+  // another terminal is all it takes on a teammate's machine.
+  //
+  // The throw did not reach the terminal as a traceback - main() catches
+  // everything - but wrapUnexpected turned it into "internal error ... This is
+  // a bug in deident, not a problem with your data ... Report it with this
+  // line". That is the same wrong answer homeDir() was written to stop giving:
+  // it is an environment, it has a remedy, and the remedy is a flag.
+  //
+  // path.resolve is inside the try because it reads process.cwd() itself when
+  // the argument is relative, so `--out ./here` throws on the same corner.
+  ['F113', 'a working directory that has been deleted is an environment, not an internal error', () => {
+    const real = process.cwd;
+    const gone = () => {
+      throw Object.assign(new Error('ENOENT: no such file or directory, uv_cwd'), {
+        code: 'ENOENT',
+        syscall: 'uv_cwd',
+      });
+    };
+    try {
+      process.cwd = gone;
+
+      let refusal = null;
+      try {
+        resolveOutDir({});
+      } catch (err) {
+        refusal = err;
+      }
+      assert.ok(refusal instanceof RefusalError, 'a refusal, not a raw ENOENT');
+      assert.ok(
+        !/internal error|bug in deident/i.test(`${refusal.reason} ${refusal.why.join(' ')}`),
+        `the user is blamed for their own environment: ${refusal.reason}`,
+      );
+      assert.ok(refusal.remedies.length > 0, 'cli-ux §8: a refusal names its remedy');
+      assert.ok(
+        refusal.remedies.some((r) => r.command.includes('--out')),
+        `the remedy is the flag that does not need a cwd, got ${JSON.stringify(refusal.remedies)}`,
+      );
+
+      // A relative --out still needs the cwd, so it refuses the same way
+      // rather than throwing out of path.resolve.
+      assert.throws(() => resolveOutDir({ out: 'here' }), RefusalError);
+
+      // An absolute --out needs no cwd at all and must still work: this is the
+      // remedy the refusal hands out, so it has to be true.
+      const abs = os.tmpdir();
+      assert.equal(resolveOutDir({ out: abs }), path.resolve(abs));
+    } finally {
+      process.cwd = real;
+    }
+
+    // And the ordinary case is untouched.
+    assert.equal(resolveOutDir({}), path.resolve(process.cwd()));
+  }],
+
+  // F114 - sanitizeEntryName promised portability across Windows extractors
+  // and did not deliver it. The names it did not handle are the ones only a
+  // NON-Windows uploader can produce, which is why this survived.
+  //
+  // `~/projects/aux` is an ordinary directory on macOS and Linux and
+  // impossible to create on Windows, so the workspace name reaches the archive
+  // only from a teammate's machine and breaks only at the recipient's.
+  // Measured with the extractor the recipient actually has:
+  //
+  //   PS> Expand-Archive probe.zip -DestinationPath out
+  //   WARNING: The archive entry 'sessions/aux/s0.jsonl' contains a Windows
+  //   reserved device name as one of its segments which is not supported.
+  //   The entry was renamed to 'sessions\_aux\s0.jsonl'.
+  //
+  // Renamed for con, prn, aux, nul, com1-9 and lpt1-9, in either case. And
+  // silently, with no warning at all, for a trailing dot or space: `notes.`
+  // and `trail ` landed as `notes` and `trail`.
+  //
+  // Both break export-map.txt, which records the archive entry verbatim and
+  // exists so that privacy-tiers level 3 can attribute an entry back to a
+  // session (cli-ux §10). A path that no longer resolves is the one thing that
+  // file may not contain. Writing the escaped name into the archive means the
+  // recipient extracts what the map already says.
+  //
+  // Measured, not folklore: `aux.jsonl`, `auxiliary`, `console`, `com0`,
+  // `lpt0` and `com10` all extracted intact, and `aux.txt` created fine
+  // through Win32 on this build, so the rule stops at the bare name.
+  ['F114', 'an archive entry named after a Windows device extracts under the name deident recorded', () => {
+    for (const name of ['con', 'PRN', 'aux', 'Nul', 'com1', 'COM9', 'lpt1', 'lpt9']) {
+      assert.equal(sanitizeEntryName(name), `_${name}`, `${name} is a reserved device name`);
+    }
+
+    // Trailing dot and trailing space are dropped by Windows itself, silently,
+    // and dropping them here is what keeps the archive and the map agreeing.
+    assert.equal(sanitizeEntryName('notes.'), 'notes');
+    assert.equal(sanitizeEntryName('trail '), 'trail');
+    assert.equal(sanitizeEntryName('dots...'), 'dots');
+    // ...and a name that is nothing else still has to be a name.
+    assert.equal(sanitizeEntryName('...'), 'unnamed');
+    assert.equal(sanitizeEntryName('   '), 'unnamed');
+
+    // Not reserved, and mangling them would rename real workspaces for
+    // nothing (§F7: a scan that cries wolf is the first thing switched off).
+    for (const name of ['auxiliary', 'console', 'com0', 'lpt0', 'com10', 'aux.jsonl', 'nulls', 'a-normal-name']) {
+      assert.equal(sanitizeEntryName(name), name, `${name} is not a device name`);
+    }
+
+    // The length cap runs before the trailing strip, because truncating at
+    // 120 can put a dot back on the end. Written the other way round first,
+    // which shipped exactly the name Windows was going to rewrite.
+    assert.equal(sanitizeEntryName(`${'a'.repeat(119)}. tail`), 'a'.repeat(119));
+    assert.equal(sanitizeEntryName(`aux${'.'.repeat(200)}`), '_aux');
+
+    // The characters it already handled still go.
+    assert.equal(sanitizeEntryName('a:b/c'), 'a_b_c');
+    assert.equal(sanitizeEntryName(''), 'unnamed');
+    // A session id passes through untouched: it is the other caller.
+    assert.equal(
+      sanitizeEntryName('11111111-1111-4111-8111-111111111111'),
+      '11111111-1111-4111-8111-111111111111',
+    );
   }],
 ];
 
