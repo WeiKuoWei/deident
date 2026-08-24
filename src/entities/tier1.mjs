@@ -22,6 +22,7 @@ import { RefusalError } from '../cli/errors.mjs';
 import { expandVariants, looseVariants } from './variants.mjs';
 import { rejectReason } from './seed.mjs';
 import { residualScan, entityExamples } from '../verify/residual.mjs';
+import { CANDIDATE_CHUNK_CHARS } from '../retain/constants.mjs';
 
 export const CANDIDATES_FILENAME = 'deident-candidates.txt';
 export const ENTITIES_FILENAME = 'deident-entities.json';
@@ -81,48 +82,74 @@ const HEADER = `# deident tier-1 candidates
 export function writeCandidates(proseChunks, outPath, opts = {}) {
   const seen = new Set();
   // Sessions deident remembers you having read, and therefore did not put in
-  // front of you again. Measured 2026-08-24 on the live corpus: the first read
-  // is 205 sessions and 915 KB, and a second read days later is the handful
-  // that changed. Stated in the file rather than only in the terminal, because
-  // the file is what gets handed to a reader and a short one has to say why it
-  // is short.
+  // front of you again.
   const omitted = opts.omitted ?? 0;
+  // Characters the cap below took off the end of a chunk. Counted, because the
+  // old cap was not: the reader could not tell a short file from a short
+  // corpus, and the pipeline recorded the session as read either way.
+  let omittedChars = 0;
+  const parts = [];
+  for (const chunk of proseChunks) {
+    if (typeof chunk !== 'string') continue;
+    const text = chunk.trim();
+    if (text.length === 0) continue;
+    // Dedupe on the EXACT text, not on a prefix of it.
+    //
+    // The key used to be a chunk's first 80 characters and `seen` is global
+    // across sessions, so a chunk that merely OPENED like an earlier one was
+    // discarded in full. Measured over a copy of the real corpus (216 depth-0
+    // files, 87,797 prose chunks, pre-filter): 1,590 chunks, 10,443,749
+    // characters, dropped by that key while not being byte-identical to the
+    // chunk that claimed it. Session prose opens the same way constantly — a
+    // pasted error, a repeated instruction, the same command re-run — and the
+    // names are in what comes after.
+    //
+    // An exact duplicate is still dropped, and that one is safe: the reader
+    // has been shown those bytes, so the session recorded as read really was.
+    if (seen.has(text)) continue;
+    seen.add(text);
+    // The cap, and the thing the old cap did not do: count what it took.
+    // The old value was 400 characters and it dropped 76.2% of the prose,
+    // 5,904 chunks (6.7%) exceeding it, longest chunk 938,529 characters —
+    // none of it counted, printed or knowable to the reader who was then asked
+    // to declare the names in it. CANDIDATE_CHUNK_CHARS states what the
+    // current value is measured against.
+    if (text.length > CANDIDATE_CHUNK_CHARS) {
+      omittedChars += text.length - CANDIDATE_CHUNK_CHARS;
+      parts.push(`${text.slice(0, CANDIDATE_CHUNK_CHARS)}…`);
+    } else {
+      parts.push(text);
+    }
+    parts.push('');
+  }
+  const prose = parts.join(String.fromCharCode(10));
+
+  // Both notes are in the FILE and not only in the terminal, because the file
+  // is what gets handed to a reader and a short one has to say why it is
+  // short. The sessions figure is measured 2026-08-24 on the live corpus: the
+  // first read is 205 sessions and 915 KB, and a second read days later is the
+  // handful that changed.
+  const NEWLINE = String.fromCharCode(10);
   const note =
-    omitted > 0
+    (omitted > 0
       ? [
           `# ${omitted} more session${omitted === 1 ? ' is' : 's are'} not in this file. Their content has not changed`,
           '# since you last read them, and deident remembers what you declared then.',
           '# To read the whole corpus again:  deident export --full',
           '#',
           '',
-        ].join(String.fromCharCode(10))
-      : '';
-  const parts = [HEADER + note];
-  for (const chunk of proseChunks) {
-    if (typeof chunk !== 'string') continue;
-    const text = chunk.trim();
-    if (text.length === 0) continue;
-    // Dedupe on the WHOLE chunk, and write the WHOLE chunk.
-    //
-    // Both halves used to drop prose and neither was counted, while
-    // rememberShown recorded the session as read either way. Measured over a
-    // copy of the real corpus (216 depth-0 files, 87,797 prose chunks,
-    // pre-filter): 27,186 KB of prose extracted, 6,468 KB surviving a
-    // 400-character cap, so 76.2% of it never reached the only reader that
-    // can find a third-party name. 5,904 chunks exceeded the cap; the longest
-    // chunk was 938,529 characters. Separately, the key was a chunk's first 80
-    // characters and `seen` is global across sessions, so 1,590 chunks
-    // (10,443,749 characters) were discarded in full for merely OPENING like
-    // an earlier chunk they were not identical to.
-    //
-    // An exact duplicate is still dropped, and that one is safe: the reader
-    // has been shown those bytes, so the session recorded as read really was.
-    if (seen.has(text)) continue;
-    seen.add(text);
-    parts.push(text);
-    parts.push('');
-  }
-  const prose = parts.slice(1).join(String.fromCharCode(10));
+        ].join(NEWLINE)
+      : '') +
+    (omittedChars > 0
+      ? [
+          `# ${omittedChars.toLocaleString('en-US')} characters of prose were not shown: ${CANDIDATE_CHUNK_CHARS.toLocaleString('en-US')} characters`,
+          '# is the most of any one chunk that goes in this file, and some chunk ran',
+          '# past it. What was cut is the END of a long chunk, so a name only in the',
+          '# tail of one cannot be declared from this file.',
+          '#',
+          '',
+        ].join(NEWLINE)
+      : '');
   const body = HEADER + note + prose;
 
   // The same gate the zip gets. This file's header states that the username,
@@ -164,7 +191,7 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
       remedies: [{ label: 'Choose a writable directory', command: 'deident export --out <path>' }],
     });
   }
-  return { path: outPath, chars: Buffer.byteLength(body, 'utf8'), chunks: seen.size };
+  return { path: outPath, chars: Buffer.byteLength(body, 'utf8'), chunks: seen.size, omittedChars };
 }
 
 /**

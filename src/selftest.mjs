@@ -69,6 +69,7 @@ import { buildZip, readZip, readZipFile, MAX_ENTRIES } from './output/zip.mjs';
 import { renderPreview } from './output/preview.mjs';
 import { parseReview, parseSessionDrops, readSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
 import { readEntities, writeCandidates } from './entities/tier1.mjs';
+import { CANDIDATE_CHUNK_CHARS } from './retain/constants.mjs';
 import { DICTIONARY_FILENAME, mergeEntities } from './policy/dictionary.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
@@ -5587,6 +5588,53 @@ const FIXTURES = [
     assert.ok(body.includes('Ottoline Marsh'), 'a chunk was dropped for opening like another one');
   }],
 
+  // F134b — the cap that remains, and the reason it is not the one that was
+  // removed. Measured on a copy of the real corpus with the cap off: the
+  // candidates file goes from 2,957,659 to 13,026,553 bytes, so removing the
+  // cap outright lands far above the 915 KB docs/cli-ux.md §11b budgets. The
+  // cap therefore stays, at a value taken from the measured post-retention
+  // distribution rather than from the old 400, and the loss it causes is
+  // COUNTED and printed. A reader handed a short file has to be told it is
+  // short; that is the whole difference from what was there before.
+  ['F134b', 'a chunk past the cap is truncated, and the omitted characters are counted and stated', () => {
+    const file = path.join(tmpdir(), 'candidates.txt');
+    const over = 5_000;
+    const chunk = 'a'.repeat(CANDIDATE_CHUNK_CHARS + over);
+
+    const written = writeCandidates([chunk], file);
+    assert.equal(written.omittedChars, over, 'the omitted characters must be counted, not dropped silently');
+
+    const body = fs.readFileSync(file, 'utf8');
+    assert.ok(!body.includes('a'.repeat(CANDIDATE_CHUNK_CHARS + 1)), 'the cap did not apply');
+    // Stated in the file as well as in the terminal, for the same reason the
+    // omitted-sessions note is: the file is what gets handed to a reader.
+    assert.match(body, /characters of prose were not shown/, 'the file must say it is short');
+
+    // A chunk at the cap is not truncated and reports nothing omitted.
+    const exact = writeCandidates(['b'.repeat(CANDIDATE_CHUNK_CHARS)], file);
+    assert.equal(exact.omittedChars, 0);
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /characters of prose were not shown/);
+
+    // ...and the count reaches the terminal and --json, not just the file. A
+    // number that only exists inside the artifact it describes is not a
+    // disclosure to whoever is running the tool.
+    const root = tmpdir();
+    const outDir = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    writeLongPromptSession(root, corpus.cwd, 'PAST-THE-CAP '.repeat(2_000));
+    assert.equal(runCli(['scan', '--root', root, '--out', outDir, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(outDir, 'review.md'), 'alpha', 'redact');
+
+    const refused = runCli(['export', '--root', root, '--out', outDir, '--salt-dir', saltDir, '--json'], CORPUS_USER_ENV);
+    assert.equal(refused.code, 1, refused.out);
+    const doc = JSON.parse(refused.out);
+    assert.ok(doc.candidates.omittedChars > 0, `--json must carry the loss: ${JSON.stringify(doc.candidates)}`);
+
+    const spoken = runCli(['export', '--root', root, '--out', outDir, '--salt-dir', saltDir, '--full'], CORPUS_USER_ENV);
+    assert.match(spoken.out, /characters of prose were not shown/, `the terminal must say it too: ${spoken.out}`);
+  }],
+
   // F135 — the sweep was anchored on English label words only, so a document
   // number named in Chinese was never seeded, never substituted, and invisible
   // to the residual scan, which can only look for what it was given. The
@@ -5659,6 +5707,7 @@ const FIXTURES = [
     // what the substituter was handed and left alone.
     assert.equal(residualScan(text, table, new Set()).entityCount, 1, 'the residue scan agreed with the bug');
   }],
+
 ];
 
 export function selftest() {
