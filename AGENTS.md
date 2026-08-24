@@ -262,6 +262,15 @@ Also carry back:
   contiguous run of two or more words is, which is what admits the street out
   of an address without ever proposing `Road`. Add the ones that really are that entity and re-run.
   Leave out any that are ordinary words.
+- `gluedResidue`: occurrences of the person's own username or git identity that
+  are still in the archive, joined to letters or digits (`yourname-prod`,
+  `kv-yourname01234`). The substituter refused these on purpose: the word
+  boundary rule cannot tell them from a name sitting inside an ordinary word,
+  and BRIEF §4.5 requires that non-match. **Not a bug and not a failed check.**
+  It is a decision to hand back. Each row carries a count and an excerpt. Say so
+  plainly: renaming the resource before exporting is one fix, declaring the
+  glued spelling itself in the entity list is another, and accepting it is a
+  third. `manifest.gluedOccurrences` is the same finding as a single count.
 
 If the export refuses, the JSON has `ok: false` and an `error` with `reason`,
 `why` and runnable `remedies`. Act on the remedy; do not retry the same command.

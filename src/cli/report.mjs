@@ -499,6 +499,41 @@ export function renderNameParts(rows) {
 }
 
 /**
+ * Spellings of the uploader that are still in the output, glued to letters or
+ * digits so the boundary rule could never match them.
+ *
+ * Measured 2026-08-24 over a shipped archive: the OS username survived inside
+ * cloud resource names, glued on both sides, while the export printed
+ * `known-entity residue 0`. The boundary rule is correct and does not change.
+ * BRIEF §4.5 row 4 makes `ray` inside `array` a required non-match, so the
+ * only honest handling is to say which spellings it refused and let the reader
+ * decide.
+ *
+ * A finding, not a gate, and stderr like every other finding. The wording has
+ * to say that the substituter DECIDED not to replace these, or a reader reads
+ * the block as a bug report against deident and files it instead of acting.
+ */
+export function renderGluedResidue(rows) {
+  if (machine !== null) { machineAdd({ gluedResidue: rows }); return; }
+  if (rows.length === 0) return;
+  const total = rows.reduce((a, r) => a + r.count, 0);
+  warn('');
+  warn(`  ! ${n(total)} occurrence${total === 1 ? '' : 's'} of your own username or git identity are still in the`);
+  warn('    output, joined to letters or digits (yourname-prod, kv-yourname01234).');
+  warn('    The substituter did not replace them and that is deliberate: the word');
+  warn('    boundary rule cannot tell them from your name inside an ordinary word.');
+  for (const r of rows.slice(0, 12)) {
+    warn(`      ${String(r.count).padStart(6)}  ${pad(r.spelling, 24)} ${r.entityId}`);
+    if (r.excerpt) warn(`              ${r.excerpt.slice(0, 96)}`);
+  }
+  if (rows.length > 12) warn(`      ... and ${n(rows.length - 12)} more`);
+  warn('');
+  warn('    Decide per row. A resource name you can rename before exporting is one');
+  warn('    fix; declaring the glued spelling itself in the entity list is another.');
+  warn('');
+}
+
+/**
  * The gate that opened the file, named so a reader can tell it apart.
  *
  * Every other residue line covers a string assembled in memory. A reader who

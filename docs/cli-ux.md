@@ -266,15 +266,17 @@ $ deident export
   NOT protected against    (README § Limits)
     device fingerprint: localhost ports, model mix, CLI version sequence
     verbatim documents you pasted into your own messages
+    14 occurrences of your own username or git identity are joined to
+      letters or digits (yourname-prod) and were left alone by the same rule
 
   → deident-export-2026-08-22.zip    14.2 MB
     salt stays at ~/.deident-private/salt — do not share it, do not commit it
 ```
 
-### 6b. A finding that prints beside the gate and is not a gate
+### 6b. Two findings that print beside the gate and are not gates
 
-It exists because a check that only reports what it was given cannot report
-what it was not, and it was found by grepping a zip that had passed all six
+Both exist because a check that only reports what it was given cannot report
+what it was not, and both were found by grepping a zip that had passed all six
 checks.
 
 **Parts of a declared spelling that still stand alone.** `Grace Hopper`
@@ -300,8 +302,44 @@ Wei` proposed `and Wei` at 7 occurrences, every one of them the declared name
 `Wei`: the longer run outranks the declared spelling in the probe table and
 claims spans that are already covered.
 
-It prints to stderr as a finding, carries `uncoveredNameParts` in `--json`,
-and cannot fail an export.
+**Seed spellings that are glued to alphanumerics.** The word-boundary rule is
+correct and does not change (§4.5 row 4 makes `ray` inside `array` a required
+non-match), but it means a seed joined to letters or digits can never match.
+Measured 2026-08-24: the OS username survived in a shipped archive 14 times
+inside cloud resource names, and the export printed `known-entity residue 0`.
+
+```
+  ! 14 occurrences of your own username or git identity are still in the
+    output, joined to letters or digits (yourname-prod, kv-yourname01234).
+    The substituter did not replace them and that is deliberate: the word
+    boundary rule cannot tell them from your name inside an ordinary word.
+        14  yourname                 PERSON_01
+            …storageAccounts styourname3756557093578778…
+
+    Decide per row. A resource name you can rename before exporting is one
+    fix; declaring the glued spelling itself in the entity list is another.
+```
+
+Scoped so it does not cry wolf, and the scope is the whole design. Tier-0
+`person` spellings only (the OS username, the git identity and the handles
+derived from it), because those are the spellings a reader can act on. A
+workspace path is already substituted as a path and matches its own longer
+form; an org name glued to a digit is a repo or a bucket the org already puts
+its name on; a tier-1 name belongs to a third party the reader cannot rename.
+Measured over the same archive, four seeds together produced 25
+boundary-refused occurrences and the scope reports 14 of them.
+
+Five characters minimum, measured rather than guessed. Over 18.8 MB of
+exported bytes, ten plausible seeds at each length: three characters gave a
+median of 643 boundary-refused occurrences and a worst case of 1,996; four
+gave 13 and 270; five gave 0 and 14, and the 14 were the leak. §7 and §F7 both
+say what happens to a check that fires constantly.
+
+Both print to stderr as findings, carry `uncoveredNameParts` and
+`gluedResidue` in `--json`, and neither can fail an export. A gate on the
+second would refuse every export forever over behaviour §4.5 demands. The
+manifest carries the second as a count, `gluedOccurrences`, and prints it in
+the "NOT protected against" block.
 
 Three blocks do the work:
 

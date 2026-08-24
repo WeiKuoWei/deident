@@ -48,6 +48,15 @@ export function limitLines(m = {}) {
     lines.push(`${n(m.embedded)} known-entity spellings abut an ordinary letter or digit`);
     lines.push('  (<name>son, <org>123) and were left alone under the §4.5 boundary rule');
   }
+  if (m.gluedOccurrences > 0) {
+    // Named separately from the `embedded` total above, because this is the
+    // slice a reader can do something about: it is their OWN username or git
+    // identity, and the terminal prints the rows and the excerpts. Measured
+    // 2026-08-24: 14 such occurrences shipped in cloud resource names beside a
+    // printed `known-entity residue 0`.
+    lines.push(`${n(m.gluedOccurrences)} occurrences of your own username or git identity are joined to`);
+    lines.push('  letters or digits (yourname-prod) and were left alone by the same rule');
+  }
   if (m.escapeArtifacts > 0) {
     // A match that begins immediately after an odd run of backslashes is inside
     // a JSON escape, so in the DECODED string those bytes are not the entity.

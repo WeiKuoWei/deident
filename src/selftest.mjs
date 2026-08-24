@@ -4993,6 +4993,67 @@ const FIXTURES = [
     assert.ok(!connector.includes('and Wei'), `a lowercase connector joined a run: ${JSON.stringify(connector)}`);
   }],
 
+  ['F125', 'a tier-0 spelling of the uploader glued to alphanumerics is reported, with the boundary rule off', () => {
+    // Measured 2026-08-24 over a shipped archive (18.8 MB of exported bytes):
+    // the OS username survived inside cloud resource names, glued to letters
+    // and digits on both sides. The boundary rule refuses every one of them,
+    // correctly by its own terms, because §4.5 row 4 makes `ray` inside `array`
+    // a CORRECT non-match, so the export printed `known-entity residue 0` while
+    // the username sat in the archive.
+    //
+    // A REPORT, never a gate. A gate here would fail every export forever over
+    // behaviour BRIEF §4.5 demands.
+    //
+    // Fabricated values. The SHAPE:
+    //   devuser                    the OS username, this repo's standing
+    //                              placeholder for it
+    //   stdevuser-prod etc.        cloud resource names that glue a username
+    //                              to a prefix, a suffix or a digit run, which
+    //                              is how the real ones were shaped
+    //   /home/devuser/notes        a bounded occurrence, which belongs to the
+    //                              residue GATE and must not appear here twice
+    const bytes = [
+      '["stdevuser-prod","ai-devuser01","kv-devuser37557093578778"]',
+      'storageAccounts stdevuser3756557093578778',
+      'the file /home/devuser/notes was read',
+    ].join(' ');
+    const table = buildTable([
+      { id: 'PERSON_01', kind: 'person', tier: 0, pseudonym: 'PERSON_01', spellings: ['devuser'] },
+    ]);
+
+    const scan = residualScan(bytes, table, new Set());
+    assert.equal(scan.gluedHits.length, 1, 'one spelling, one row');
+    const hit = scan.gluedHits[0];
+    assert.equal(hit.spelling, 'devuser');
+    // Four glued occurrences. The fifth, inside the path, is bounded on the
+    // left by `/` and on the right by `/`, so the substituter replaced it and
+    // the residue gate owns it. Counting it here would report a handled
+    // occurrence as an unhandled one.
+    assert.equal(hit.count, 4, `expected the four glued occurrences, got ${hit.count}`);
+    assert.ok(hit.excerpt.includes('devuser'), 'the row carries an excerpt to judge it by');
+
+    // Scope, and the two halves of it that keep this from crying wolf.
+    //
+    // A workspace path is out: it is substituted as a path and matches its own
+    // longer form, so every deeper path under it would be a row.
+    const workspace = buildTable([
+      { id: 'WORKSPACE_01', kind: 'workspace', tier: 0, pseudonym: 'WORKSPACE_01', spellings: ['projects'] },
+    ]);
+    assert.equal(residualScan('myprojectsdir', workspace, new Set()).gluedHits.length, 0);
+
+    // A short spelling is out. Measured over the same 18.8 MB: at three
+    // characters the median seed produced 643 glued occurrences and the worst
+    // 1,996; at four, 13 and 270; at five, 0 and 14, and the 14 were the real
+    // leak. Five is where the report becomes something a person finishes.
+    const short = buildTable([
+      { id: 'PERSON_02', kind: 'person', tier: 0, pseudonym: 'PERSON_02', spellings: ['ray'] },
+    ]);
+    assert.equal(residualScan('an array index', short, new Set()).gluedHits.length, 0);
+
+    // Still counted in the aggregate the manifest already prints, so the two
+    // numbers cannot disagree about the same occurrence.
+    assert.ok(scan.embedded >= 4, 'the glued rows are the same occurrences the embedded counter sees');
+  }],
 ];
 
 export function selftest() {
