@@ -339,6 +339,18 @@ reading a summary will not see it:
 
 - Names the reader did not find. The residue scan can only look for what it was
   given.
+- Names the reader was never shown. The candidates file is prose, measured at
+  2.30% of bytes, so a name that appears only inside a tool result, a directory
+  listing or a code block never reaches it: it cannot be declared, and the
+  residue scan cannot look for what was never declared.
+- Identity-document numbers labelled in a language other than English or
+  Chinese, or written with no label beside them. The sweep is label-anchored on
+  purpose, for precision.
+- Spellings whose case change alters their length (Turkish dotted capital I,
+  German sharp s) match only in the exact casing given. The matcher takes its
+  span from the spelling's length, so folding them would consume the wrong span
+  and reversal would restore the wrong text. A deliberate miss, not a
+  corruption.
 - Facts that are not names: a shareholding, a rate, a balance.
 - Re-identification by role. Substitution replaces the name; "the person who
   runs finance and payroll" still resolves to one human at a small company.

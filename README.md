@@ -288,6 +288,15 @@ there were 230 distinct email addresses, 228 of them not the user's. Emails have
 regex and are swept automatically. **Names do not have a regex.** That is what the
 semantic pass is for, and it is why it is mandatory rather than optional.
 
+**The semantic pass only ever sees prose, which is 2.30% of the bytes.** The
+candidates file is built from `text` blocks and nothing else, because feeding a
+discovery pass the other 97.7% is how it starts inventing entities. So a
+third-party name that appears only inside a tool result, a directory listing or
+a code block never reaches the reader at all: they cannot declare it, and the
+residue scan cannot look for what was never declared. Whole prose chunks now go
+into that file rather than the first 400 characters of each, which closes a
+loss inside the prose. It does not widen what counts as prose.
+
 **A name touching a letter or a digit is left alone.** The boundary rule is
 `(?<![A-Za-z0-9])X(?![A-Za-z0-9])`, with two exceptions: an underscore is a
 token boundary for spellings of five characters or more, and a camel-case hump
@@ -301,6 +310,16 @@ What is still left alone is a spelling abutting an ordinary letter or digit:
 your sessions discuss files or handles built out of people's names, read the
 preview before you send the zip.
 
+**Case-insensitive matching is withheld from a few spellings, on purpose.**
+Spellings of four characters or more match in any casing, which is what catches
+`GitRoll` when the seeded spelling is `gitroll`. The exception is a spelling
+whose case change alters its **length**: Turkish dotted capital I lowercases to
+two code units, German sharp s uppercases to two. The matcher computes its span
+from the spelling's length, so folding those would consume the wrong span and
+reversal would restore the wrong text. They stay on the literal path instead:
+the exact casing still matches, the other casing simply does not. That is a
+miss rather than a corruption, and it is the right way round.
+
 **Credentials and phone numbers are matched by shape, and only by shape.**
 Anything with an unambiguous vendor prefix (`github_pat_`, `ghp_`, `sk-ant-`,
 `xoxb-`, `AKIA`, `ntn_`, `AIza`) is force-replaced, and so is any `+<country
@@ -309,6 +328,16 @@ heuristic would fire on every hash and uuid in your logs, and a scan that cries
 wolf is the first thing switched off. **A credential in a shape not on that list
 is not detected.** A password typed in prose, a bearer token with no prefix, a
 private key body: those are text, and only the semantic pass can catch them.
+
+**Identity-document numbers are found by their label, in English and Chinese
+only.** A number is seeded when a label word sits beside it: `passport`,
+`national id`, `identity card`, `id card`, `driver's licence`, `social
+security`, `ssn`, `tax id`, `fein`, and 護照, 护照, 身分證, 身份證, 台胞證,
+居留證. Anchoring on the label is the same precision decision as the credential
+prefixes, and for the same measured reason: a passport-shaped regex on its own
+matched a thermal-paste part number. **A document number labelled in any other
+language, or written with no label near it, is not detected.** Only the semantic
+pass can catch that one.
 
 **`review.md` is full of raw identity, on purpose.** It lists real absolute
 paths, real workspace names, real git remotes including other people's GitHub
@@ -357,7 +386,7 @@ turns. Orchestration is still visible through the parent session's `Agent` and
 node deident.js --selftest
 ```
 
-106 fixtures, plain `node:assert`, no framework and no network. Each one exists
+138 fixtures, plain `node:assert`, no framework and no network. Each one exists
 because it catches a specific bug, named in the fixture. Several carry a negative
 control, because a check that cannot fail proves nothing.
 
