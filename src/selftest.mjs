@@ -5587,6 +5587,45 @@ const FIXTURES = [
     assert.ok(body.includes('Ottoline Marsh'), 'a chunk was dropped for opening like another one');
   }],
 
+  // F135 — the sweep was anchored on English label words only, so a document
+  // number named in Chinese was never seeded, never substituted, and invisible
+  // to the residual scan, which can only look for what it was given. The
+  // manifest printed nothing. F81's Taiwan passport number was caught only
+  // because that one document happened to be written in English.
+  //
+  // All three numbers are fabricated. The shape is what the sweep keys off: a
+  // leading letter and nine digits, which is the ROC passport / national id
+  // form, sitting after a Chinese label with no space, since CJK does not
+  // space its words.
+  ['F135', 'a document number labelled in Chinese is swept, and a label with no number is not', () => {
+    assert.deepEqual(sweepIdNumbers(['護照號碼：A123456789']), ['A123456789']);
+    assert.deepEqual(sweepIdNumbers(['身分證字號: A123456789']), ['A123456789']);
+    assert.deepEqual(sweepIdNumbers(['台胞證 A123456789 過期了']), ['A123456789']);
+    // §F7 in the language the labels are in: the words appear constantly in
+    // ordinary sentences, and a sweep that fires without a number beside them
+    // is the scan that gets switched off.
+    assert.deepEqual(sweepIdNumbers(['身分證字號忘記了']), []);
+    assert.deepEqual(sweepIdNumbers(['護照過期，要去辦新的']), []);
+
+    // A date is never a document number, and an expiry date is the thing most
+    // likely to be written right after the label. Measured over the whole
+    // depth-0 corpus (216 files, 934 MB): the Chinese labels added exactly two
+    // numbers to the swept set, and one of them was an ISO date sitting in
+    // `舊護照 <date> 到期`. Seeding it would substitute every occurrence of
+    // that date everywhere in the export, which is §F7 exactly.
+    //
+    // The English half has the same hole and nobody had hit it, because
+    // English puts a word between the label and the date and the pattern does
+    // not allow one. Punctuate it the way a form does and it is reachable
+    // there too, so the guard is on the captured VALUE rather than on one
+    // language's labels.
+    assert.deepEqual(sweepIdNumbers(['他的舊護照 2026-08-24 到期']), []);
+    assert.deepEqual(sweepIdNumbers(['passport: 2026-08-24']), []);
+    // ...and the guard is date-shaped only, so a hyphenated document number
+    // of the same length still counts. Fabricated; the shape is a grouped
+    // alphanumeric document number.
+    assert.deepEqual(sweepIdNumbers(['護照號碼：AB-1234567']), ['AB-1234567']);
+  }],
 ];
 
 export function selftest() {

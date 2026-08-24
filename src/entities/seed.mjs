@@ -363,11 +363,35 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]*/g;
 // An identity-document number, taken only where the words beside it say what
 // it is. The digit floor is what keeps `U.S. TIN: none` out.
 const ID_NUMBER_RE = new RegExp(
-  '(?:passport|national id|identity card|id card|driver.?s licen[sc]e|social security|ssn|u[.]?s[.]? tin|tax id|fein|employer identification(?: number)?)' +
+  '(?:passport|national id|identity card|id card|driver.?s licen[sc]e|social security|ssn|u[.]?s[.]? tin|tax id|fein|employer identification(?: number)?' +
+    // The same labels in Chinese. The sweep knew English label words only, so
+    // a number named in Chinese was never seeded, never substituted, and
+    // invisible to the residual scan, which only looks for what it was given.
+    // The Taiwan passport number §F6b records as having shipped 13 times
+    // across 5 files was found only because that document was in English.
+    //
+    // The label-anchored posture is unchanged, which is what keeps §F7's
+    // precision: measured over every depth-0 session file on this machine
+    // (216 files, 934 MB), these six labels add 2 numbers to the swept set.
+    // One is a real national-id number. The other was an ISO date in
+    // `舊護照 <date> 到期`, which DATE_SHAPED_RE below now rejects.
+    //
+    // CJK does not space its words, and every segment between label and number
+    // is already optional, so nothing else in the pattern has to change. The
+    // fullwidth colon is already in the character class.
+    '|護照(?:號碼)?|护照|身分證(?:字號)?|身份證|台胞證|居留證(?:號碼)?)' +
     '[ ]*(?:no[.]?|number|#|card)?[ ]*[:：]?[ ]*([A-Za-z0-9-]{6,14})(?![A-Za-z0-9])',
   'gi',
 );
 const ID_NUMBER_MIN_DIGITS = 5;
+
+// A date is never a document number, and an expiry date is the thing most
+// likely to sit right after the label. English puts a word in between and the
+// pattern refuses that, so nobody hit this; Chinese does not space its words,
+// and `舊護照 2026-08-24 到期` matched the moment the Chinese labels were
+// added. Seeding it would substitute every occurrence of that date across the
+// whole export, which is §F7's cry-wolf failure with a very wide blast radius.
+const DATE_SHAPED_RE = /^(?:19|20)[0-9]{2}-[0-9]{2}-[0-9]{2}$/;
 
 // Slack object ids (user, bot, channel, DM, group, team) and Notion page ids.
 //
@@ -437,6 +461,7 @@ export function sweepIdNumbers(texts) {
     while ((m = ID_NUMBER_RE.exec(text)) !== null) {
       // "U.S. TIN: none" and "passport number pending" carry no number.
       if ((m[1].match(/[0-9]/g) ?? []).length < ID_NUMBER_MIN_DIGITS) continue;
+      if (DATE_SHAPED_RE.test(m[1])) continue;
       found.add(m[1]);
       if (found.size > 200) return [...found];
     }
