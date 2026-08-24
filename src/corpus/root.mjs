@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { RefusalError } from '../cli/errors.mjs';
+import { probeCaseFolding, setCaseFolding } from './cwdtrack.mjs';
 
 /**
  * Resolve `<root>/projects`. Order: explicit --root, then CLAUDE_CONFIG_DIR
@@ -110,6 +111,14 @@ export function resolveCorpus(env, override = null) {
       ],
     });
   }
+
+  // Ask the filesystem whether it folds case, once, before any cwd is
+  // normalised. Guessing from process.platform is wrong on Linux and on a
+  // case-sensitive macOS volume, and guessing WRONG merges two real
+  // directories into one workspace row carrying one tier. A probe that cannot
+  // answer leaves the per-platform default in place rather than inventing one.
+  const folds = probeCaseFolding(root.projectsDir);
+  if (folds !== null) setCaseFolding(folds);
 
   const workspaceDirs = [];
   const files = [];

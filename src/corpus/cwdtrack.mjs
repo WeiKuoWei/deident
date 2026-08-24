@@ -10,6 +10,8 @@
 // effective directory moved. Drop them first and every line after the move is
 // filtered against the wrong directory.
 
+import fs from 'node:fs';
+
 /**
  * @param {ReadonlyArray<{index:number, value:object}>} records
  * @returns {ReadonlyArray<string|null>} effective cwd, parallel to `records`
@@ -70,13 +72,86 @@ function nonEmpty(v) {
 }
 
 /**
+ * Whether two paths differing only in case name the same directory.
+ *
+ * This was unconditionally true, which is right on Windows and on a default
+ * macOS volume and WRONG on Linux and on a case-sensitive APFS volume, where
+ * `~/Projects/client-a` and `~/projects/client-a` are two different
+ * directories. Folding them merges two workspaces into one row carrying one
+ * tier and one displayed path, so a person who sets `redact` on the row they
+ * can see sets it on a directory they were never shown. Measured before the
+ * fix: two sessions in two real directories produced one group.
+ *
+ * Not folding when it should have been folded is the other error, and it is
+ * cheap: two rows for one directory, both decided by the same person.
+ *
+ * A per-platform default, replaced at startup by an actual probe of the root.
+ */
+let foldCase = process.platform === 'win32' || process.platform === 'darwin';
+
+/** @returns {boolean} */
+export function caseFolding() {
+  return foldCase;
+}
+
+/** Set explicitly. Called once at startup, and by fixtures. */
+export function setCaseFolding(on) {
+  foldCase = on === true;
+}
+
+/**
+ * Ask the filesystem instead of guessing: stat the same directory with one
+ * letter's case flipped. If that resolves, the filesystem folds case.
+ *
+ * Read-only, two syscalls, and correct on a case-sensitive macOS volume, which
+ * `process.platform === 'darwin'` is not.
+ *
+ * Ceiling: one probe of the session-storage root stands for every volume the
+ * corpus mentions. A cwd on a differently-configured mount is normalised by
+ * the root's rule. Sessions are stored on the OS volume and overwhelmingly ran
+ * there too, and the alternative is a stat per distinct directory on a path
+ * that runs for every line.
+ *
+ * @param {string} dir an existing directory
+ * @param {Function} stat injectable for fixtures
+ * @returns {boolean|null} null when it could not be answered
+ */
+export function probeCaseFolding(dir, stat = fs.statSync) {
+  if (typeof dir !== 'string' || dir === '') return null;
+  let flipped = null;
+  for (let i = dir.length - 1; i >= 0; i -= 1) {
+    const c = dir[i];
+    const lower = c.toLowerCase();
+    const upper = c.toUpperCase();
+    if (lower === upper) continue; // not a letter, or has no other case
+    const other = c === lower ? upper : lower;
+    if (other.length !== 1) continue; // German ss uppercases to two characters
+    flipped = dir.slice(0, i) + other + dir.slice(i + 1);
+    break;
+  }
+  if (flipped === null) return null; // no letter anywhere: nothing to ask
+  try {
+    stat(dir);
+  } catch {
+    return null; // the reference is not there, so the answer would be noise
+  }
+  try {
+    stat(flipped);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Normalise a cwd for comparison only. Windows paths appear with both
  * separators and with case variants (§4.8 measured `projects` and `Projects`
  * as two spellings of one directory). Never used for output.
  */
 export function normalizeCwd(cwd) {
   if (typeof cwd !== 'string') return '';
-  return cwd.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const clean = cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+  return foldCase ? clean.toLowerCase() : clean;
 }
 
 /**

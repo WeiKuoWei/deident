@@ -50,6 +50,7 @@ import {
 import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
 import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from './policy/signals.mjs';
 import { readSession } from './corpus/reader.mjs';
+import { probeCaseFolding, setCaseFolding, caseFolding, normalizeCwd } from './corpus/cwdtrack.mjs';
 import { resolveRoot } from './corpus/root.mjs';
 import { setCommand, renderRefusal, renderReadError, renderManifest, captureOutput } from './cli/report.mjs';
 import {
@@ -73,6 +74,7 @@ import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
 
 const BS = String.fromCharCode(92); // a single backslash, written without escapes
 const NL = String.fromCharCode(10);
+const SEP = String.fromCharCode(92); // a backslash, written this way so no escape layer can eat it
 
 // ---------------------------------------------------------------- helpers
 
@@ -3901,6 +3903,62 @@ const FIXTURES = [
     // broke, so the fixture fails if anything reintroduces the assumption.
     assert.doesNotThrow(() => namespaceRefusal([], null, 1));
     assert.doesNotThrow(() => namespaceRefusal([], 'AB', null));
+  }],
+
+  ['F108', 'two directories that differ only in case are not merged on a case-sensitive filesystem', () => {
+    const was = caseFolding();
+    try {
+      const sessions = [
+        { file: { path: 'a.jsonl', bytes: 1 }, cwds: ['/home/u/Projects/client-a'] },
+        { file: { path: 'b.jsonl', bytes: 1 }, cwds: ['/home/u/projects/client-a'] },
+      ];
+
+      // Folding was unconditional. On Linux, and on a case-sensitive APFS
+      // volume, these are two real directories: merging them gives one row
+      // carrying one tier and ONE displayed path, so a person who sets
+      // `redact` on the row they can see sets it on a directory they were
+      // never shown. Measured before the fix: two sessions, one group.
+      setCaseFolding(false);
+      const apart = groupSessions(sessions, { homedir: '/home/u' });
+      assert.equal(apart.length, 2, 'two real directories must stay two rows');
+
+      // On Windows and a default macOS volume they ARE one directory, and
+      // splitting them puts the same directory in front of the person twice.
+      setCaseFolding(true);
+      assert.equal(groupSessions(sessions, { homedir: '/home/u' }).length, 1);
+
+      // Separator normalisation is not case folding and never turns off.
+      setCaseFolding(false);
+      assert.equal(normalizeCwd('C:' + SEP + 'w' + SEP + 'x' + SEP), 'C:/w/x');
+      assert.equal(normalizeCwd('C:' + SEP + 'W' + SEP + 'x'), 'C:/W/x');
+      setCaseFolding(true);
+      assert.equal(normalizeCwd('C:' + SEP + 'W' + SEP + 'x'), 'c:/w/x');
+    } finally {
+      setCaseFolding(was);
+    }
+
+    // The probe asks the filesystem rather than process.platform, which is
+    // wrong on a case-sensitive macOS volume. Injected stat, so the fixture
+    // states both answers on every platform.
+    const insensitive = () => undefined;
+    const sensitive = (p) => {
+      if (p === '/x/Abc') return undefined;
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    };
+    assert.equal(probeCaseFolding('/x/Abc', insensitive), true);
+    assert.equal(probeCaseFolding('/x/Abc', sensitive), false);
+
+    // Unanswerable is null, not a guess: the caller keeps its default rather
+    // than being handed a fabricated false, which is the answer that splits.
+    assert.equal(probeCaseFolding('/1/2/3', insensitive), null, 'no letter to flip');
+    assert.equal(probeCaseFolding('', insensitive), null);
+    assert.equal(
+      probeCaseFolding('/x/Abc', () => {
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      }),
+      null,
+      'the reference directory is not there, so the answer would be noise',
+    );
   }],
 ];
 
