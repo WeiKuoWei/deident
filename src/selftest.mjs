@@ -4511,6 +4511,28 @@ const FIXTURES = [
     const r = runCli(['triage', '--apply', '--verdicts', verdicts, '--root', root, '--out', out, '--salt-dir', saltDir]);
     assert.equal(r.code, 0, r.out);
     assert.ok(readSessionDrops(reviewPath).drops.has(id), 'an unsure verdict must not release a dropped session');
+
+    // A `drop` verdict against a row that already reads drop is the other half:
+    // a counted no-op, not a rewrite. Rewriting it would replace whatever the
+    // person had written on that row with the triage reason, which is a verdict
+    // overwriting a decision it did not make.
+    const held = fs.readFileSync(reviewPath, 'utf8').replace(
+      new RegExp(`^drop(\\s+.*${id})$`, 'm'),
+      'drop$1   # held by hand, before any triage ran',
+    );
+    fs.writeFileSync(reviewPath, held, 'utf8');
+    fs.writeFileSync(
+      verdicts,
+      JSON.stringify({ verdicts: [{ id, verdict: 'drop', reason: 'triage would have said this instead' }] }),
+      'utf8',
+    );
+    const again = runCli(['triage', '--apply', '--verdicts', verdicts, '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(again.code, 0, again.out);
+    assert.match(again.out, /1 changed nothing/, 'the no-op must be counted and reported');
+    const after = fs.readFileSync(reviewPath, 'utf8');
+    assert.ok(after.includes('held by hand, before any triage ran'), 'the row the person wrote must survive');
+    assert.ok(!after.includes('triage would have said this instead'), 'and must not be overwritten');
+    assert.ok(readSessionDrops(reviewPath).drops.has(id), 'and it is still dropped');
   }],
 
   // F118 - the apply path writes into column 1 of review.md, which is the one
