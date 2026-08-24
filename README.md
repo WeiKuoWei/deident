@@ -33,7 +33,7 @@ that was never going to be exported.
        verdict cannot overturn a drop, which is why a cheap model is the right
        one here (docs/model-tier.md).
 
-3.  node deident.js export --preview                  ~250k tokens of reading
+3.  node deident.js export --preview                  ~1M tokens of reading
        Runs every check, writes deident-candidates.txt (tier-0-cleaned prose)
        and a before/after .diff. No zip.
        Then fill in the entity list: hand this step to an agent, or write
@@ -51,6 +51,20 @@ Measured 2026-08-24 on a 205-session corpus: stage 2 reads 23 KB and stage 3
 reads 915 KB, a 35x difference for the stage that decides whether a session
 ships at all. Stage 2 is optional; skipping it just means stage 3 reads
 sessions a person would have thrown out.
+
+That 915 KB was measured while the candidates file truncated every prose chunk
+at 400 characters and deduplicated on the first 80 of each. It no longer does
+either, because both losses were silent and neither was counted. Measured over
+the whole depth-0 corpus with the same workspace decisions before and after,
+the change multiplies stage 3 by **3.95** (2,957,659 bytes to 11,684,461), so
+budget stage 3 near 3.5 MB and about 900k tokens on a 205-session corpus.
+Stage 2 got cheaper relative to it by the same factor, so the argument for
+running it is now much stronger than 35x.
+
+A per-chunk limit of 20,000 characters remains, which on that corpus cut
+1,336,271 characters, 10.3% of the prose. **That number is printed** beside the
+file path, written into the file itself and carried as `candidates.omittedChars`
+in `--json`, because a reader handed a short file has to be told it is short.
 
 ### The funnel has a memory
 
@@ -133,6 +147,7 @@ diff and keep, and a prompt sequence cannot be reviewed by a second person.
 | `--skip-unreadable` | `scan`, `export` | Continue past a line that is not valid JSON instead of exiting 3. Each skipped line is reported. |
 | `--skip-unknown-types` | `scan`, `export` | Drop records whose type deident has never seen instead of refusing. The dropped types and their counts are printed in the "NOT protected against" block. Refusal stays the default; this exists because Claude Code ships a new record type every few weeks and one such line in one session should not block a whole export. |
 | `--include-denied <name>` | `export` | Typed confirmation for one deny-listed workspace. Exact name, no globs. Repeatable. |
+| `--batch-chars <n>` | `export` | How much prose one run puts in `deident-candidates.txt` before deferring the rest. Default 120,000 characters, roughly 30k tokens. Only the sessions actually in the file are recorded as read, so a smaller number means more rounds, never a weaker claim. |
 | `--selftest` | global | Run the fixture suite and exit. |
 | `--help` | global | Print usage and exit 0. |
 | `--version` | global | Print the version and exit 0. |
@@ -206,8 +221,18 @@ empty list would satisfy "the pass ran" while delivering nothing.
 
 A workspace deident has not seen before is `unclassified`, which means excluded.
 It is never swept in. Beyond that, a workspace whose name (or whose per-line
-`cwd`) contains `private`, `identity`, `payroll` or a token you add yourself is excluded and needs
+`cwd`) contains `private`, `identity`, `payroll` or a token you add to
+`~/.deident-private/denied.json` (`{"tokens": ["私人"]}`, any script) is excluded and needs
 `--include-denied <exact-name>` typed out to include.
+
+The three shipped tokens are English words and match nothing else, and the
+"reads like personal data" check beside them is English words too. So a
+workspace whose name contains any non-ASCII character is proposed
+`unclassified`, which means excluded until you decide it, however ordinary the
+name is: neither list can read it, and silence from an instrument that could
+not look is not a clearance. Decide it once in `review.md`, or put your own
+token in `denied.json` and it is excluded for good. One token there feeds the
+workspace check and the per-line `cwd` check alike.
 
 The per-line `cwd` filter matters more than it sounds. The largest session file
 on the development machine spans **11 distinct working directories**, two of them
@@ -298,7 +323,10 @@ into that file rather than the first 400 characters of each, which closes a
 loss inside the prose. It does not widen what counts as prose.
 
 **A name touching a letter or a digit is left alone.** The boundary rule is
-`(?<![A-Za-z0-9])X(?![A-Za-z0-9])`, with two exceptions: an underscore is a
+`(?<!\w)X(?!\w)` where `\w` is every letter and digit in any script except the
+ones written without spaces between words (Chinese, Japanese, Korean, Thai and
+the rest, which have no boundary to test and are flagged in the manifest
+instead), with two exceptions: an underscore is a
 token boundary for spellings of five characters or more, and a camel-case hump
 always is. That is what makes `mcp__<server>__tool`, `project_<org>_notes.md`
 and `<Org>AI` real matches while keeping `ray` inside `array` a correct
@@ -322,12 +350,25 @@ miss rather than a corruption, and it is the right way round.
 
 **Credentials and phone numbers are matched by shape, and only by shape.**
 Anything with an unambiguous vendor prefix (`github_pat_`, `ghp_`, `sk-ant-`,
-`xoxb-`, `AKIA`, `ntn_`, `AIza`) is force-replaced, and so is any `+<country
-code><8-15 digits>` phone number. Both are tuned for precision: an entropy
+`xoxb-`, `AKIA`, `ntn_`, `AIza`, `sk-proj-`, `sk_live_`, `npm_`, `glpat-`,
+`hf_`, `xapp-`, and the rest of one greppable list in `src/entities/seed.mjs`)
+is force-replaced, and so is any `+<country code><8-15 digits>` phone number.
+So is a value whose **label** says what it is, which is the rule the prefix
+list cannot be: `api_key`, `secret_key`, `access_token`, `auth_token`,
+`client_secret`, `password`, a `Bearer ` header, an `X-Amz-` parameter in a
+signed URL, a password written inline in a database URL. A
+`-----BEGIN … PRIVATE KEY-----` block is dropped whole rather than replaced,
+because half a key is still a key. All of it is tuned for precision: an entropy
 heuristic would fire on every hash and uuid in your logs, and a scan that cries
-wolf is the first thing switched off. **A credential in a shape not on that list
-is not detected.** A password typed in prose, a bearer token with no prefix, a
-private key body: those are text, and only the semantic pass can catch them.
+wolf is the first thing switched off.
+
+**A credential with neither a listed prefix nor a label beside it is not
+detected, and nothing downstream recovers it.** The residue scan only searches
+for entities it already knows. The semantic pass reads your prose and the
+model's, never tool output, so a key printed by a command you ran is caught by
+shape or it is not caught at all. The `0 secrets` row in the manifest means
+"none of the shapes deident knows", not "no secrets", and the export block says
+so at the moment you run it.
 
 **Identity-document numbers are found by their label, in English and Chinese
 only.** A number is seeded when a label word sits beside it: `passport`,
@@ -357,6 +398,17 @@ pasted a contract, a résumé, a bank statement or someone else's email into a
 prompt, that text is prose. Only the semantic pass can catch what is inside it,
 and it will only catch the identities it recognises. Quoted third-party writing
 survives as writing.
+
+**The agent-memory deny-list matches filenames, and it knows one naming
+convention.** `MEMORY.md`, and files named `reference_*.md`, `feedback_*.md`,
+`project_*.md`, `user_*.md`. That is one person's memory-index layout, not a
+Claude Code universal. Harness injections inside `<system-reminder>` spans are
+stripped whatever they are called, so the gap is narrower than it sounds: it is
+a memory file a tool **read** for you, under any other name, which ships as
+ordinary prose. Put your own memory filenames in `~/.deident-private/denied.json`
+beside the salt: a JSON array of regex strings, or
+`{"patterns": [...], "tokens": [...]}`. It is never committed, and a malformed
+one refuses the export rather than running with none of your rules.
 
 **Fragments of an entity survive.** Tool results are capped head-and-tail, and a
 cap can land in the middle of an email address or a name. The remaining fragment

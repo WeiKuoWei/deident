@@ -23,6 +23,26 @@ export const ALWAYS = Object.freeze([
   'the bare NAME of a file or directory you discussed, where prose quotes it without a path',
   'your own account inventory: vault item names, login ids, which tokens are live',
   'ids from a service deident does not sweep: a board, document or channel id',
+  // The manifest prints `0 secrets  0 replaced` six lines above this block, as
+  // a zeros row whose whole purpose is to be believed. Enumerating vendor
+  // prefixes stays reactive forever, so the affirmative zero has to say what
+  // it is a zero OF. Only the shapes that really are unswept are named here:
+  // a labelled value, a Bearer header, a signed URL, an inline database
+  // password and a private key body all have a sweep or a deny rule now, and
+  // cli-ux §6 says a disclosure hiding an implemented control is worse than
+  // either honest option.
+  // The deny-list that catches agent memory matches FILENAMES, and it knows one
+  // naming convention. Harness injections are stripped whatever they are
+  // called, so the residual exposure is narrower than it sounds and the line
+  // says which case it is: a memory file a TOOL read, under a name this list
+  // has never heard of.
+  'agent memory a tool READ for you, under a filename deident does not know: only',
+  '  MEMORY.md and reference_/feedback_/project_/user_*.md are recognised, which is',
+  '  one person\'s naming convention. Put your own in denied.json beside the salt',
+  'a credential with no listed vendor prefix and no label beside it. The 0 secrets',
+  '  row above means "none of the shapes it knows", not "no secrets", and the',
+  '  semantic pass never reads tool output, so a key a command printed for you is',
+  '  caught by shape or it is not caught at all',
 ]);
 
 /**
@@ -56,6 +76,19 @@ export function limitLines(m = {}) {
     // printed `known-entity residue 0`.
     lines.push(`${n(m.gluedOccurrences)} occurrences of your own username or git identity are joined to`);
     lines.push('  letters or digits (yourname-prod) and were left alone by the same rule');
+  }
+  if (m.gluedNotListed && m.gluedNotListed.length > 0) {
+    // The rows above stop at the letter test, and renderGluedResidue prints
+    // nothing at all when there are no rows. So for a three- or
+    // four-character username whose occurrences are all letter-blocked the
+    // reader sees a green `known-entity residue 0` and an absent list, and an
+    // absent list reads as a clean result. It is not: it is not examined.
+    const total = m.gluedNotListed.reduce((a, r) => a + Number(r.count ?? 0), 0);
+    const named = m.gluedNotListed.map((r) => `"${r.spelling}"`).join(', ');
+    lines.push(`${n(total)} more occurrences of ${named} sit against a LETTER and are not`);
+    lines.push('  among those rows: under five characters that list is mostly ordinary');
+    lines.push('  words (ray inside array), so it is withheld rather than shown. No row');
+    lines.push('  here means not examined, not clean. grep the archive before you send it.');
   }
   if (m.escapeArtifacts > 0) {
     // A match that begins immediately after an odd run of backslashes is inside

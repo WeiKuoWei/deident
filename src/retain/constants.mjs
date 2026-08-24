@@ -77,23 +77,47 @@ export const EXAMPLES_PER_REPORT = 5;
  * bytes, against the 915 KB docs/cli-ux.md §11b budgets for the stage. So a cap
  * stays.
  *
- * The value is taken from the measured post-retention distribution rather than
- * guessed. Over the twelve largest sessions, 17,466 prose chunks: p50 62
- * characters, p90 236, p95 404, p99 1,562, longest 10,045. At 20,000 the cap
- * fires on nothing that corpus contains, which is the point: it bounds the
- * pathological single chunk BRIEF measured at 938,529 characters (a pasted
- * document, a dumped log) without touching prose anybody wrote.
+ * The value is above ordinary prose by a wide margin, measured rather than
+ * guessed. Over the twelve largest sessions, 17,466 post-retention prose
+ * chunks: p50 62 characters, p90 236, p95 404, p99 1,562, longest 10,045. So
+ * what 20,000 reaches is the tail, not a turn anybody typed: the pathological
+ * chunk BRIEF measured at 938,529 characters is a pasted document or a dumped
+ * log, and its first 20,000 characters are as much of it as a reader needs to
+ * name what is in it.
+ *
+ * It is NOT true that it fires on nothing. That was inferred from the slice
+ * above and the whole corpus disagrees: shipped, the same run writes
+ * 11,684,461 bytes and reports 1,336,271 characters omitted, 10.3% of the
+ * uncapped prose. Every one of those characters is counted and stated, in the
+ * file, in the report and in --json. A silent cap is what made the old one a
+ * disclosure; a stated one is a trade the reader can see.
  *
  * Most of the growth is the dedupe change, not the cap, and that half is not
  * restorable: the old key was a chunk's first 80 characters and it discarded
  * 1,590 chunks (10,443,749 characters) that were not identical to the chunk
  * that claimed the key. No cap value brings this file near 915 KB without
  * reinstating exactly that silent loss.
- *
- * Whatever this cap does drop is counted and printed, in the file and in the
- * report. A silent cap is what made the old one a disclosure.
  */
 export const CANDIDATE_CHUNK_CHARS = 20_000;
+
+/**
+ * How much prose one run puts in front of a reader before deferring the rest.
+ *
+ * The cap above bounds one CHUNK. This one bounds the FILE, and it exists
+ * because the whole safety gate is a human or an agent reading that file in one
+ * pass, and nothing was checking that the pass was possible. rememberShown runs
+ * on every session in the batch before the refusal is thrown, keyed on having
+ * been SHOWN, so a reader who got through 200 KB of the measured 915 KB had all
+ * 205 sessions recorded as read and the next export printed
+ * `205/205 sessions read ok`. That is not a silent failure, it is a positive
+ * false claim.
+ *
+ * A calibration knob, not a constant to guess once and freeze: the right value
+ * is the reader's context window, which this tool cannot see. 120,000
+ * characters is roughly 30k tokens, which against the measured 915 KB and 250k
+ * tokens leaves the reader room to work. `--batch-chars` overrides it.
+ */
+export const CANDIDATE_BATCH_CHARS = 120_000;
 
 /**
  * Content that must not leave even when the session around it may.
@@ -116,13 +140,26 @@ export const CANDIDATE_CHUNK_CHARS = 20_000;
 // machine-specific belongs in DENIED_USER_FILENAME beside the salt, where it
 // is per-person by construction and is never committed.
 export const DENIED_CONTENT = Object.freeze([
-  // The agent's own memory store, whatever a given user keeps in it.
+  // The index file the harness writes. This one really is the agent's.
   /(^|[^a-z])MEMORY[.]md/i,
+  // The second pattern is NOT a Claude Code universal, and the line above it
+  // used to say it was. It is one user's memory-index taxonomy. Kept because
+  // it is a filename test rather than a person's name, so it discloses nothing
+  // and costs nothing when it does not match, but a second user whose memory
+  // files are named otherwise gets none of this and has to say so in
+  // DENIED_USER_FILENAME. The limits block prints that at the moment of
+  // export, because a limit stated in a source comment is not a disclosure.
   /(reference|feedback|project|user)_[a-z0-9_]+[.]md/i,
   // A dotted directory whose own name says it is private.
   /[.][a-z0-9-]{2,24}-private[/\\]/i,
   // Filenames that are a credential or an identity record by convention.
   /(credentials|profile)[.]json/i,
+  // A private key body. Not a value to substitute: half a key is still a key,
+  // and the whole block goes as a count. It belongs here rather than in the
+  // entity sweep because a PEM almost always arrives as tool output, which
+  // routes through deniedReason, and the semantic pass never reads tool output
+  // at all. The header is what the reason line ships, and it names no secret.
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
 ]);
 
 /** Per-person additions, read from beside the salt. Never in the repository. */

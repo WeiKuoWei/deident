@@ -4,6 +4,7 @@
 import { parseArgs } from 'node:util';
 import { UsageError } from './errors.mjs';
 import { DEFAULT_TRIAGE_CHARS, MAX_TRIAGE_CHARS } from '../policy/triage.mjs';
+import { CANDIDATE_BATCH_CHARS } from '../retain/constants.mjs';
 
 export const COMMANDS = Object.freeze(['scan', 'review', 'triage', 'export']);
 
@@ -37,6 +38,10 @@ const FLAGS = Object.freeze({
   apply: { type: 'boolean', commands: ['triage'] },
   verdicts: { type: 'string', commands: ['triage'] },
   'triage-chars': { type: 'string', commands: ['triage'] },
+  // How much prose one run puts in the candidates file before deferring the
+  // rest. A knob rather than a constant because the right value is the
+  // reader's context window, which the tool cannot see.
+  'batch-chars': { type: 'string', commands: ['export'] },
   // Who the archive is for. A claim about what the reader already knows, which
   // is what makes it checkable; a number would not be.
   audience: { type: 'string', commands: ['export'] },
@@ -138,6 +143,7 @@ export function parseCliArgs(argv) {
   }
 
   const triageChars = parseTriageChars(values['triage-chars']);
+  const batchChars = parseBatchChars(values['batch-chars']);
 
   // --full says "show me everything again" and --entities says "here is my
   // answer". A run carrying both would read the answer and then refuse to use
@@ -192,8 +198,32 @@ export function parseCliArgs(argv) {
       apply: values.apply === true,
       verdicts: values.verdicts ?? null,
       triageChars,
+      batchChars,
     },
   });
+}
+
+/**
+ * The candidates-file budget, as a whole number of characters.
+ *
+ * Same posture as parseTriageChars, and deliberately not `parseInt` for the
+ * same reason: it reads `300abc` as 300. No upper bound, because a reader with
+ * a large context window asking for the whole corpus in one file is the
+ * behaviour this tool had before the cap, and it is theirs to ask for.
+ */
+function parseBatchChars(raw) {
+  if (raw === undefined) return CANDIDATE_BATCH_CHARS;
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new UsageError(`--batch-chars takes a whole number of characters, got "${raw}"`);
+  }
+  const value = Number(raw.trim());
+  if (value < 1) {
+    throw new UsageError(`--batch-chars must be at least 1, got ${value}`, {
+      why: ['A budget of zero would offer nothing and record nothing, so the export could never proceed.'],
+      remedies: [{ label: 'Use the default', command: 'deident export' }],
+    });
+  }
+  return value;
 }
 
 /**

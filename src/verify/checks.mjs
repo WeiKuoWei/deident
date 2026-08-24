@@ -222,6 +222,28 @@ export function checkSemanticPass(tier1, coverage = null) {
  * @param {ReadonlyArray<{id, reason}>} uncovered
  * @param {number} total sessions in this export
  */
+// A session file written within this long is one somebody is probably still
+// using. Five minutes is generous enough to cover a reader who started the
+// export, went to read the candidates file, and came back.
+const FRESH_MS = 5 * 60 * 1000;
+
+/**
+ * `   (written 2 minutes ago)`, or an empty string.
+ *
+ * The row already says a session changed. What it could not say is that the
+ * change is still happening, which is the one case where reading it again can
+ * never clear it: the hash is over the whole retained prose, so every turn
+ * added to the session the reader has open changes it back and the same
+ * refusal returns. Without this the loop reads as a bug in the tool.
+ */
+function freshMark(s, now) {
+  if (typeof s?.mtimeMs !== 'number' || s.mtimeMs <= 0) return '';
+  const age = now - s.mtimeMs;
+  if (age < 0 || age >= FRESH_MS) return '';
+  const minutes = Math.max(1, Math.round(age / 60_000));
+  return `   (written ${minutes} minute${minutes === 1 ? '' : 's'} ago)`;
+}
+
 export function coverageRefusal(uncovered, total, candidatesPath, opts = {}) {
   const n = uncovered.length;
   // Under --full nothing is wrong and the person asked for this, so saying
@@ -230,13 +252,27 @@ export function coverageRefusal(uncovered, total, candidatesPath, opts = {}) {
   const reason = opts.full === true
     ? `--full: ${n} session${n === 1 ? '' : 's'} to read again before the next export`
     : `${n} session${n === 1 ? ' has' : 's have'} not been through a semantic pass`;
+  const now = opts.now ?? Date.now();
+  const anyFresh = uncovered.slice(0, EXAMPLES_PER_REPORT).some((s) => freshMark(s, now) !== '');
   return new RefusalError(
     reason,
     {
       why: [
-        ...uncovered.slice(0, EXAMPLES_PER_REPORT).map((s) => `  ${s.id}   ${s.reason}`),
+        ...uncovered.slice(0, EXAMPLES_PER_REPORT).map((s) => `  ${s.id}   ${s.reason}${freshMark(s, now)}`),
         ...(n > EXAMPLES_PER_REPORT ? [`  ... and ${n - EXAMPLES_PER_REPORT} more`] : []),
         '',
+        // Only when one of them really is fresh. The whole point of this
+        // paragraph is that it names the session the reader has open, and
+        // printing it when they have none is §F7's cry-wolf failure in prose.
+        ...(anyFresh
+          ? [
+              'One of these was written minutes ago, so it is probably a session you still',
+              'have open, possibly this one. Reading it again will not clear it: the hash is',
+              'over the whole session, so every turn you add changes it back. Close that',
+              'session, or leave its workspace out at the review step, then export again.',
+              '',
+            ]
+          : []),
         ...(opts.full === true
           ? ['--full ignores what deident remembers you having read, so every session', 'is offered again and the export waits for your answer.']
           : [

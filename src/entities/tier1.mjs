@@ -84,6 +84,11 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
   // Sessions deident remembers you having read, and therefore did not put in
   // front of you again.
   const omitted = opts.omitted ?? 0;
+  // Sessions deferred to a later run because this file hit its budget. A
+  // different fact from `omitted` above and it needs its own sentence: those
+  // were left out because they are already read, these because the reader
+  // cannot read everything at once, and only these come back.
+  const deferred = opts.deferred ?? 0;
   // Characters the cap below took off the end of a chunk. Counted, because the
   // old cap was not: the reader could not tell a short file from a short
   // corpus, and the pipeline recorded the session as read either way.
@@ -100,8 +105,8 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
     // discarded in full. Measured over a copy of the real corpus (216 depth-0
     // files, 87,797 prose chunks, pre-filter): 1,590 chunks, 10,443,749
     // characters, dropped by that key while not being byte-identical to the
-    // chunk that claimed it. Session prose opens the same way constantly — a
-    // pasted error, a repeated instruction, the same command re-run — and the
+    // chunk that claimed it. Session prose opens the same way constantly (a
+    // pasted error, a repeated instruction, the same command re-run), and the
     // names are in what comes after.
     //
     // An exact duplicate is still dropped, and that one is safe: the reader
@@ -110,8 +115,8 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
     seen.add(text);
     // The cap, and the thing the old cap did not do: count what it took.
     // The old value was 400 characters and it dropped 76.2% of the prose,
-    // 5,904 chunks (6.7%) exceeding it, longest chunk 938,529 characters —
-    // none of it counted, printed or knowable to the reader who was then asked
+    // 5,904 chunks (6.7%) exceeding it, longest chunk 938,529 characters. None
+    // of it was counted, printed, or knowable to the reader who was then asked
     // to declare the names in it. CANDIDATE_CHUNK_CHARS states what the
     // current value is measured against.
     if (text.length > CANDIDATE_CHUNK_CHARS) {
@@ -131,6 +136,16 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
   // handful that changed.
   const NEWLINE = String.fromCharCode(10);
   const note =
+    (deferred > 0
+      ? [
+          `# This is one batch. ${deferred} more session${deferred === 1 ? ' is' : 's are'} not in this file and are NOT`,
+          '# recorded as read. Only what is in THIS file is remembered, so read all of',
+          '# it: supply your list and run the export again, and the next batch arrives.',
+          '# To change how much arrives at once:  deident export --batch-chars <n>',
+          '#',
+          '',
+        ].join(NEWLINE)
+      : '') +
     (omitted > 0
       ? [
           `# ${omitted} more session${omitted === 1 ? ' is' : 's are'} not in this file. Their content has not changed`,

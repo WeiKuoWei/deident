@@ -183,6 +183,18 @@ their content changed since they were read, so they are the ones now in the
 candidates file. Read them, add anything they turned up to the entity list, and
 run the export again.
 
+If a row is marked `(written N minutes ago)`, that is a session somebody still
+has open, possibly the one you are in. Reading it again will not clear it: the
+hash is over the whole session, so every turn added to it changes its prose
+back and the same refusal returns. Close that session, or leave its workspace
+out at the review step, then run the export again.
+
+**The candidates file is one BATCH, not necessarily the whole backlog.** It is
+capped at 120,000 characters per run (`--batch-chars <n>` to change it), and
+only the sessions actually written into it are recorded as read. When the file
+says sessions were deferred, supply your list, run the export again, and the
+next batch arrives. Do not treat one pass over this file as covering the corpus.
+
 It is a PROSE extract, and the export substitutes over everything it keeps, so
 the file shows you less than what ships. Measured 2026-08-24: a name-part check
 over the candidates file found 8 uncovered surnames and the same check over the
@@ -301,6 +313,12 @@ Also carry back:
   plainly: renaming the resource before exporting is one fix, declaring the
   glued spelling itself in the entity list is another, and accepting it is a
   third. `manifest.gluedOccurrences` is the same finding as a single count.
+  A spelling shorter than five characters is a row only where nothing
+  alphabetic is glued to it (`kv-lok01`, an identity-document filename); where
+  a letter is, the occurrences are withheld, because at that length the list is
+  mostly ordinary words (`ray` inside `array`). `manifest.gluedNotListed`
+  names those spellings with their counts. An empty `gluedResidue` beside a
+  non-empty `gluedNotListed` means not examined, not clean.
 
 If the export refuses, the JSON has `ok: false` and an `error` with `reason`,
 `why` and runnable `remedies`. Act on the remedy; do not retry the same command.

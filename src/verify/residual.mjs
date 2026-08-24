@@ -20,14 +20,15 @@ import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
 // other, which is how a leak was reported as `known-entity residue: 0`.
 import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold, foldLower } from '../substitute/engine.mjs';
 
-const WORD_RE = /[A-Za-z0-9_]/;
-function isWordChar(ch) {
-  return ch !== undefined && WORD_RE.test(ch);
-}
+// This file used to keep its own copy of WORD_RE and isWordChar. They were
+// dead, and they were dead wrong in the same way the substituter's were, which
+// is the shape the header above records: two copies of the boundary rule agreed
+// with each other and a leak was reported as `known-entity residue: 0`. The
+// rule is imported, never re-implemented, so there is nothing here to drift.
 
 const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
 
-// A glued spelling shorter than this is noise, measured rather than guessed.
+// At or above this length a glued spelling earns a row whatever is beside it.
 //
 // Over one shipped archive (18.8 MB of exported bytes, 2026-08-24), counting
 // occurrences the boundary rule refused, for ten plausible seeds at each
@@ -38,11 +39,36 @@ const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-
 //   5 characters   median   0 occurrences, worst    14
 //
 // The 14 at five characters were the finding this report exists for. Below
-// five the report is a wall of `array`, and docs/cli-ux.md §7 and §F7 both say
-// what happens to a check that fires constantly. Five is also where the
-// substituter draws SEPARATOR_BOUNDARY_MIN, for the same reason: shorter than
-// that and an accidental match is the likelier reading.
+// five the report was a wall of `array`, and docs/cli-ux.md §7 and §F7 both say
+// what happens to a check that fires constantly.
 const GLUED_MIN = 5;
+
+// Below GLUED_MIN a row still has to be earned, and what earns it is the
+// neighbour rather than the length.
+//
+// The measurement above averaged two populations. Re-measured over ~20 MB of
+// session logs, per seed, splitting the refused occurrences by whether the
+// neighbour that actually BLOCKS is a letter:
+//
+//   3 chars   letter-blocked median 412, worst 8,371 | sep/digit median 20, worst 52
+//   4 chars   letter-blocked median  46, worst   113 | sep/digit median  4, worst 26
+//
+// The flood is the letter class entirely. The separator/digit class is one to
+// two orders of magnitude smaller and is where the real leaks sit:
+// `project_<name>_notes.md`, `kv-<name>0123`, `HKID_<Name>Yan.jpg`. Gating on
+// length denied a disclosure to every user with a three- or four-character
+// given name, which is the common case for Chinese, Korean and Japanese
+// romanisations, and that population is not random.
+//
+// The floor stays because a one- or two-character needle has no useful
+// boundary rule at all, which is the same argument seed.mjs makes at
+// rejectReason.
+const GLUED_SEP_MIN = 3;
+
+// Deliberately `\p{L}` and not `[A-Za-z]`: the boundary rule itself is
+// Unicode-aware, so the test for "a letter blocked this" has to be too or a
+// Cyrillic neighbour would read as a separator.
+const ALPHA_RE = /\p{L}/u;
 
 /**
  * Is this a spelling whose glued occurrences are worth putting in front of a
@@ -69,8 +95,14 @@ const GLUED_MIN = 5;
  *              A reader cannot act on a glued occurrence of someone else's
  *              surname the way they can act on their own username.
  */
-function gluedWorthy(entry) {
-  return entry.tier === 0 && entry.kind === 'person' && entry.spelling.length >= GLUED_MIN;
+function gluedWorthy(entry, bytes, at, end, lb, rb) {
+  if (entry.tier !== 0 || entry.kind !== 'person') return false;
+  if (entry.spelling.length >= GLUED_MIN) return true;
+  if (entry.spelling.length < GLUED_SEP_MIN) return false;
+  // Only the side that BLOCKS is tested. In `HKID_<Name>Yan` the right-hand
+  // uppercase is a camel hump, so rightBoundaryBlocks already said no, and
+  // testing that character anyway would throw away the leak this exists for.
+  return !(lb && ALPHA_RE.test(bytes[at - 1])) && !(rb && ALPHA_RE.test(bytes[end]));
 }
 
 /**
@@ -155,6 +187,16 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
   // boundary rule: both copies had the same bug, agreed with each other, and a
   // leak was reported as `known-entity residue: 0`.
   const glued = new Map();
+  // The occurrences gluedWorthy refused for the letter beside them, kept per
+  // spelling so the limits block can name them.
+  //
+  // renderGluedResidue returns without printing when there are no rows, so
+  // without this a three- or four-character username whose occurrences are all
+  // letter-blocked produces an empty list, and an empty list beside a green
+  // `known-entity residue 0` reads as a clean result. It is not: it is not
+  // examined. Counted here rather than re-derived later, because the only
+  // place that knows which side blocked is this sweep.
+  const notListed = new Map();
 
   for (let i = 0; i < bytes.length && entityHits.length <= 10_000; i += 1) {
     const bucket = byFirst.get(bytes[i]);
@@ -186,9 +228,14 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       // Same boundary rule as the substituter, for the same reason.
       const end = i + form.length;
       if (end > bytes.length) continue;
-      if (leftBoundaryBlocks(bytes, i, entry) || rightBoundaryBlocks(bytes, end, entry)) {
+      // Named, because gluedWorthy needs to know WHICH side blocked: a short
+      // spelling earns a row only where nothing alphabetic is doing the
+      // blocking.
+      const lb = leftBoundaryBlocks(bytes, i, entry);
+      const rb = rightBoundaryBlocks(bytes, end, entry);
+      if (lb || rb) {
         embedded += 1;
-        if (gluedWorthy(entry)) {
+        if (gluedWorthy(entry, bytes, i, end, lb, rb)) {
           let rec = glued.get(entry.spelling);
           if (rec === undefined) {
             rec = {
@@ -200,6 +247,8 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
             glued.set(entry.spelling, rec);
           }
           rec.count += 1;
+        } else if (entry.tier === 0 && entry.kind === 'person') {
+          notListed.set(entry.spelling, (notListed.get(entry.spelling) ?? 0) + 1);
         }
         break;
       }
@@ -242,6 +291,11 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
     escapeArtifacts,
     gluedHits,
     gluedCount: gluedHits.reduce((a, r) => a + r.count, 0),
+    gluedNotListed: Object.freeze(
+      [...notListed]
+        .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+        .map(([spelling, count]) => Object.freeze({ spelling, count })),
+    ),
     uuidCount: uuidHits.length,
     entitiesScanned: table.entries.length,
   });

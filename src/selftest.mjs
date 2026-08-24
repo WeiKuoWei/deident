@@ -33,7 +33,7 @@ import {
 import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar } from './substitute/engine.mjs';
 import { probeCounts, probeOutliers } from './entities/probe.mjs';
 import { substituteRecord } from './substitute/walker.mjs';
-import { checkSubstitution, checkSemanticPass, semanticRefusal } from './verify/checks.mjs';
+import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal } from './verify/checks.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from './verify/residual.mjs';
 import { distillToolResult, retainToolUseResult, checkAddedLines } from './retain/toolresult.mjs';
 import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason } from './retain/records.mjs';
@@ -50,6 +50,8 @@ import {
 } from './policy/workspaces.mjs';
 import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
 import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from './policy/signals.mjs';
+import { setUserDeny } from './policy/userdeny.mjs';
+import { limitLines } from './cli/limits.mjs';
 import { readSession } from './corpus/reader.mjs';
 import { probeCaseFolding, setCaseFolding, caseFolding, normalizeCwd } from './corpus/cwdtrack.mjs';
 import { uncoveredNameParts } from './entities/probe.mjs';
@@ -3382,7 +3384,11 @@ const FIXTURES = [
       absorbedSpans: 2, cjkSpans: 5, embedded: 0, unknownTypes: [], countOnly: { sessions: 0, workspaces: 0 },
     }));
     assert.match(printed, /2 replacements merged two overlapping entities/);
-    assert.match(printed, /5 CJK entity occurrences replaced/);
+    // The label said "CJK" while the flag was set for every non-Latin script,
+    // so a Cyrillic or Hebrew replacement was reported under the wrong writing
+    // system and the wrong reason. F145 is the fixture for that; this one
+    // pins that the count still reaches the manifest.
+    assert.match(printed, /5 entity occurrences in a script written without spaces/);
   }],
 
   // F91 — the second half of F83: a deny-listed path quoted in PROSE.
@@ -5537,7 +5543,7 @@ const FIXTURES = [
     assert.doesNotMatch(candidates, /not in this file/, 'nothing is omitted when there is no list to build on');
   }],
 
-  // F133 — the candidates file is the ONLY surface the semantic reader ever
+  // F133 - the candidates file is the ONLY surface the semantic reader ever
   // sees, and it used to truncate every chunk at 400 characters. Measured over
   // a copy of the real corpus (216 depth-0 files, 87,797 prose chunks,
   // pre-filter): 27,186 KB of prose extracted, 6,468 KB reaching the reader,
@@ -5563,14 +5569,14 @@ const FIXTURES = [
     assert.equal(written.chars, Buffer.byteLength(body, 'utf8'), 'the reported size must be the file');
   }],
 
-  // F134 — the second loss, and the silent one. The dedupe key was a chunk's
+  // F134 - the second loss, and the silent one. The dedupe key was a chunk's
   // first 80 characters and the `seen` set is global across sessions, so a
   // chunk that merely OPENED like an earlier one was discarded whole.
   // Measured on the same corpus copy: 1,590 chunks (10,443,749 characters)
   // were dropped by that key while not being byte-identical to the chunk that
-  // claimed it. Session prose opens the same way constantly — a pasted error,
-  // a repeated instruction, the same command re-run — and the names are in
-  // what comes after.
+  // claimed it. Session prose opens the same way constantly (a pasted error, a
+  // repeated instruction, the same command re-run), and the names are in what
+  // comes after.
   //
   // Both names are fabricated; the shape is two different third parties named
   // in two turns that begin identically.
@@ -5588,7 +5594,7 @@ const FIXTURES = [
     assert.ok(body.includes('Ottoline Marsh'), 'a chunk was dropped for opening like another one');
   }],
 
-  // F134b — the cap that remains, and the reason it is not the one that was
+  // F134b - the cap that remains, and the reason it is not the one that was
   // removed. Measured on a copy of the real corpus with the cap off: the
   // candidates file goes from 2,957,659 to 13,026,553 bytes, so removing the
   // cap outright lands far above the 915 KB docs/cli-ux.md §11b budgets. The
@@ -5635,7 +5641,7 @@ const FIXTURES = [
     assert.match(spoken.out, /characters of prose were not shown/, `the terminal must say it too: ${spoken.out}`);
   }],
 
-  // F135 — the sweep was anchored on English label words only, so a document
+  // F135 - the sweep was anchored on English label words only, so a document
   // number named in Chinese was never seeded, never substituted, and invisible
   // to the residual scan, which can only look for what it was given. The
   // manifest printed nothing. F81's Taiwan passport number was caught only
@@ -5675,7 +5681,7 @@ const FIXTURES = [
     assert.deepEqual(sweepIdNumbers(['護照號碼：AB-1234567']), ['AB-1234567']);
   }],
 
-  // F136 — F51 grants case-insensitive matching to every bicameral script, and
+  // F136 - F51 grants case-insensitive matching to every bicameral script, and
   // Greek has the one context-sensitive lowercase mapping in Unicode's default
   // algorithm: a trailing sigma lowercases to ς, not σ. buildTable lowered the
   // whole spelling at once, so it got the contextual form; equalsFold lowers
@@ -5708,7 +5714,7 @@ const FIXTURES = [
     assert.equal(residualScan(text, table, new Set()).entityCount, 1, 'the residue scan agreed with the bug');
   }],
 
-  // F137 — root.mjs diagnoses this exact failure for this exact variable, in a
+  // F137 - root.mjs diagnoses this exact failure for this exact variable, in a
   // comment, and fixes it with nonBlank. The MCP seeder was never told: it read
   // `env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude')`, and `??` treats only
   // null and undefined as absent, so a shell profile that exports the variable
@@ -5745,6 +5751,546 @@ const FIXTURES = [
       !seeded.warnings.some((w) => w.includes('no Claude settings file found')),
       `the settings file was read, so nothing should say it was not: ${seeded.warnings.join(' | ')}`,
     );
+  }],
+
+  // F138 - the glued-residue rows are the disclosure a person can act on: the
+  // count, the spelling, an excerpt, and "Decide per row". gluedWorthy gated
+  // them on `spelling.length >= GLUED_MIN`, so two users with identical corpora
+  // and identical leaks got different exports, and the ones who got only an
+  // aggregate count beside a green check were the ones with three- and
+  // four-character given names.
+  //
+  // The flood that justified the length gate is a class of NEIGHBOUR, not a
+  // class of length. Re-measured over ~20 MB of session logs, per seed,
+  // counting only the occurrences the boundary rule refused, split by whether
+  // the neighbour that actually blocks is a letter:
+  //
+  //   3 chars  letter-blocked median 412, worst 8,371 | sep/digit median 20, worst 52
+  //   4 chars  letter-blocked median  46, worst   113 | sep/digit median  4, worst 26
+  //
+  // One to two orders of magnitude, and the small class is where the real leaks
+  // are: this run surfaced a person's name on an identity-document filename,
+  // refused because an underscore preceded a four-character spelling. `ray`
+  // inside `array` stays out on the letter test, which is BRIEF §4.5 row 4 and
+  // is still pinned in F125.
+  ['F138', 'a short username glued to a separator or a digit gets a row, and a short name inside a word does not', () => {
+    // Fabricated. The SHAPE each value exists to preserve:
+    //   lok               a three-character romanised given name, the length
+    //                     class the old gate excluded outright
+    //   Miho              a four-character romanised given name
+    //   wei, anna         the same two lengths again, chosen because each sits
+    //                     inside an ordinary English word the way `ray` sits
+    //                     inside `array`
+    //   st_lok_prod       an underscore-joined cloud resource name
+    //   kv-Miho0123       a hyphen-and-digit resource name
+    //   HKID_MihoYan.jpg  an identity-document filename, which is the shape the
+    //                     refused real leak had
+    const short = buildTable([
+      { id: 'PERSON_01', kind: 'person', tier: 0, pseudonym: 'PERSON_01', spellings: ['lok'] },
+    ]);
+    const lok = residualScan('deploy st_lok_prod now', short, new Set());
+    assert.equal(lok.gluedHits.length, 1, 'a three-character username glued to underscores got no row');
+    assert.equal(lok.gluedHits[0].count, 1);
+    assert.ok(lok.gluedHits[0].excerpt.includes('lok'), 'the row carries an excerpt to judge it by');
+    // A report, never a gate: §4.5 row 4 makes these correct non-matches.
+    assert.equal(lok.entityCount, 0, 'a glued occurrence must not fail the export');
+
+    const four = buildTable([
+      { id: 'PERSON_02', kind: 'person', tier: 0, pseudonym: 'PERSON_02', spellings: ['Miho'] },
+    ]);
+    const digits = residualScan('kv-Miho0123 and HKID_MihoYan.jpg', four, new Set());
+    assert.equal(digits.gluedHits.length, 1, 'a four-character username on a filename got no row');
+    assert.equal(digits.gluedHits[0].count, 2, 'the digit run and the camel-hump filename are both occurrences');
+
+    // The other direction, which is what the length gate was really protecting
+    // against. Both of these abut a LETTER, so both stay out and the report
+    // stays something a person finishes reading.
+    const inWord = buildTable([
+      { id: 'PERSON_03', kind: 'person', tier: 0, pseudonym: 'PERSON_03', spellings: ['wei'] },
+    ]);
+    assert.equal(residualScan('the weight of it', inWord, new Set()).gluedHits.length, 0);
+    const anna = buildTable([
+      { id: 'PERSON_04', kind: 'person', tier: 0, pseudonym: 'PERSON_04', spellings: ['anna'] },
+    ]);
+    assert.equal(residualScan('the annals of the sample', anna, new Set()).gluedHits.length, 0);
+  }],
+
+  // F139 - what F138 still refuses has to be said out loud. renderGluedResidue
+  // returns without printing when there are no rows, so for a short spelling
+  // whose occurrences are all letter-blocked the reader sees the green
+  // `known-entity residue 0` line and nothing else. An absent list reads as a
+  // clean result, and the reason it is absent is the letter beside the
+  // spelling, not an absence of occurrences.
+  ['F139', 'a short spelling refused for the letter beside it is named in the limits block, not silently dropped', () => {
+    // Fabricated. SHAPE: `wei` is a three-character tier-0 person spelling (an
+    // email local part, lowercased) that sits inside ordinary English words,
+    // which is the exact population the row list refuses.
+    const table = buildTable([
+      { id: 'PERSON_01', kind: 'person', tier: 0, pseudonym: 'PERSON_01', spellings: ['wei'] },
+    ]);
+    const scan = residualScan('the weight and the weightings', table, new Set());
+    assert.equal(scan.gluedHits.length, 0, 'a letter-blocked short spelling must not become a row');
+    assert.deepEqual(
+      scan.gluedNotListed.map((r) => [r.spelling, r.count]),
+      [['wei', 2]],
+      'the occurrences the row list refused were not counted anywhere',
+    );
+
+    // And it reaches all three surfaces, because limits.mjs is the single
+    // source the terminal, the preview and review.html all render. F76 is the
+    // fixture that exists because this block once lived in three files.
+    const m = {
+      sessions: 1, workspaces: 1, userMessages: 1, zeros: [],
+      droppedByCwd: 0, emptiedSessions: 0, embedded: 2, escapeArtifacts: 0,
+      residueLine: '0 occurrences of 1 entity spellings', unknownTypes: [],
+      countOnly: { sessions: 0, workspaces: 0 },
+      gluedNotListed: [{ spelling: 'wei', count: 2 }],
+    };
+    const terminal = captureOutput(() => renderManifest(m));
+    const preview = renderPreview({
+      generated: 'now', strings: [], table: null, entities: [], manifest: m, checks: [],
+    });
+    const html = renderReviewHtml({
+      generated: 'now', workspaces: [], entities: [], sessions: [], flaggedSessions: [], manifest: m,
+    });
+    for (const [name, whole] of [['terminal', terminal], ['preview', preview], ['review.html', html]]) {
+      const at = whole.indexOf('NOT protected against');
+      assert.ok(at >= 0, `${name} has no NOT-protected block`);
+      const text = whole.slice(at);
+      assert.match(text, /wei/, `${name} does not name the spelling that was left out`);
+      assert.match(text, /not examined, not clean/, `${name} lets an empty row list read as a clean result`);
+    }
+  }],
+
+  // F140 - both name-based guards in this file are English words matched over
+  // /[^a-z0-9]+/ segments, so neither of them reads a directory named in
+  // another script at all. Measured by running the real code: for a directory
+  // named in Han or Cyrillic, denyToken came back null, personalDataShape came
+  // back null, and proposeTier answered `redact`. So a second user's private
+  // archive, named in their own language and carrying a git remote, is offered
+  // for export with no typed confirmation and the green residue check prints
+  // afterwards.
+  //
+  // personalDataShape exists BECAUSE of the incident at signals.mjs: a personal
+  // message archive shipped a third party's real name 10 times on the strength
+  // of its remote alone. Silence from an instrument that could not look is not
+  // a clearance, so this fails closed the same way GIT_UNAVAILABLE does.
+  ['F140', 'a workspace named in a script the deny-list cannot read is not cleared by its remote', () => {
+    const remote = (raw) => ({ raw, owner: raw.split('/')[0], repo: raw.split('/')[1], host: null });
+    const group = (name) => ({ name, cwd: `C:${BS}x${BS}${name}`, denyToken: null, unresolved: false });
+
+    // Fabricated. SHAPE: an ordinary directory name written in a non-Latin
+    // script, one Han and one Cyrillic. The words themselves carry nothing;
+    // what they preserve is that DENY_TOKENS and PERSONAL_TOKENS cannot read
+    // either of them, whatever they say.
+    for (const name of ['私人紀錄', 'личное']) {
+      const p = proposeTier(group(name), () => remote(`me/${name}`));
+      assert.equal(p.tier, 'unclassified', `${name} was cleared by an instrument that could not read it`);
+      assert.match(p.reason, /denied\.json/, `${name} refused without naming a remedy the person can run`);
+    }
+
+    // Latin work names are untouched, or the review row becomes 29 questions.
+    assert.equal(proposeTier(group('ledger'), () => remote('northwind-co/ledger')).tier, 'redact');
+    // And the per-person file is what actually closes it, in both directions:
+    // one token added there feeds matchDenyToken and deniedPathToken alike.
+    setUserDeny({ tokens: ['私人'] });
+    try {
+      assert.equal(matchDenyToken(`C:${BS}x${BS}私人紀錄`), '私人');
+      assert.equal(proposeTier({ ...group('私人紀錄'), denyToken: '私人' }, () => remote('me/x')).tier, 'exclude');
+    } finally {
+      setUserDeny({});
+    }
+  }],
+
+  // F141 - SECRET_RE is a list of the vendor prefixes the author personally
+  // uses, so a live key from any other vendor ships verbatim while the manifest
+  // prints `0 secrets  0 replaced` two lines above the limits block. Nothing
+  // downstream recovers it: residual.mjs scans only for KNOWN entity spellings
+  // plus unknown UUIDs, so a token the sweep never saw is invisible to it by
+  // construction, and the semantic pass never reads tool output at all
+  // (tier1.mjs excludes it), which is where all three of the measured leaks
+  // were.
+  //
+  // Reproduced against the shipped sweepSecrets before this fixture: eleven
+  // live-credential shapes, eleven empty arrays.
+  //
+  // The fix is the class rather than the vendor. The words beside the value
+  // are the evidence, exactly as in ID_NUMBER_RE and BEARER_RE, so a vendor
+  // nobody has invented yet is covered the moment its key is written down
+  // beside the word `api_key`.
+  ['F141', 'a credential is swept by the words beside it, not only by a vendor prefix the list happens to carry', () => {
+    // Fabricated. Every value is synthetic; what each one preserves is its
+    // SHAPE, which is the only thing the pattern reads.
+    const cases = [
+      // a vendor prefix the list did not have, reached through its label
+      ['OPENAI_API_KEY=sk-proj-REDACTED_Qv7mL2', 'sk-proj-REDACTED_Qv7mL2'],
+      // a payment-provider live key, reached by the prefix alone
+      ['STRIPE=sk_live_REDACTED_9dHm2Q', 'sk_live_REDACTED_9dHm2Q'],
+      // a package-registry automation token
+      ['npm_REDACTED_7bKq3Z', 'npm_REDACTED_7bKq3Z'],
+      // a source-forge personal access token
+      ['glpat-REDACTED_4Nq8Wz', 'glpat-REDACTED_4Nq8Wz'],
+      // a model-hub token
+      ['hf_Zb4Kq9Wm2Tv7Rn5Ly8Hs3Jc6Xp1Fd0Gg', 'hf_Zb4Kq9Wm2Tv7Rn5Ly8Hs3Jc6Xp1Fd0Gg'],
+      // a chat-platform app-level token
+      ['xapp-1-A01BCDEF-Qv7mL2xTb9RnKd4WpZs6Hy', 'xapp-1-A01BCDEF-Qv7mL2xTb9RnKd4WpZs6Hy'],
+      // the class rule with no vendor prefix at all: a label naming a
+      // credential, then a 16+ character value with no space in it
+      ['  api_key: "x7Kq2mZp9RvT4nWb8dLc"', 'x7Kq2mZp9RvT4nWb8dLc'],
+      ['client_secret=Hq3Vt8Nm2Rb6Yw9Ls4Zx', 'Hq3Vt8Nm2Rb6Yw9Ls4Zx'],
+      // a database URL carrying its password inline, which README named as a
+      // gap by hand
+      ['postgres://app:Tr0ub4dor3xtra@db.internal:5432/prod', 'Tr0ub4dor3xtra'],
+    ];
+    for (const [text, want] of cases) {
+      assert.ok(
+        sweepSecrets([text]).includes(want),
+        `shipped verbatim with the manifest printing 0 secrets: ${text}`,
+      );
+    }
+
+    // §F7 precision, in the direction that matters for a pattern this wide: a
+    // labelled value that NAMES a credential is not one, and substituting it
+    // would replace an ordinary identifier everywhere it occurs.
+    for (const text of [
+      'api_key: process.env.OPENAI_API_KEY',
+      'const secret_key = OPENAI_ADMIN_TOKEN',
+      'password: <redacted>',
+    ]) {
+      assert.deepEqual(sweepSecrets([text]), [], `over-swept an identifier: ${text}`);
+    }
+
+    // A private key body is not a value to substitute, it is a block to drop.
+    // It almost always arrives as tool output, which routes through
+    // deniedReason, so it belongs on the content deny-list rather than in the
+    // entity sweep. Fabricated: the header and footer are the shape; the
+    // middle is not key material.
+    const pem = [
+      '-----BEGIN OPENSSH PRIVATE KEY-----',
+      'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAAB',
+      '-----END OPENSSH PRIVATE KEY-----',
+    ].join(NL);
+    assert.equal(deniedReason(pem), '-----BEGIN OPENSSH PRIVATE KEY-----');
+    assert.equal(deniedReason('we discussed rotating the deploy key'), null);
+  }],
+
+  // F142 - the other half of F141, and the half that cannot be closed by code:
+  // enumerating prefixes stays reactive forever, so whatever the sweep knows
+  // today there is a vendor tomorrow it does not. The manifest prints
+  // `0 secrets  0 replaced` as a zeros row whose whole purpose is to be
+  // believed, and the limits block six lines below said nothing about
+  // unrecognised credential shapes. An affirmative zero from a detector reads
+  // louder and closer than a pointer to README.
+  //
+  // The block must also not list a shape the tool DOES handle. cli-ux §6: a
+  // disclosure hiding an implemented-but-inert control is worse than either
+  // honest option, which is what F76 exists for.
+  ['F142', 'the limits block says what the 0 secrets row does not cover, without claiming a handled shape is unhandled', () => {
+    const block = limitLines({}).join(NL);
+    assert.match(block, /none of the shapes it knows/, 'the zeros row is left to speak for itself');
+    assert.match(block, /never reads tool output/, 'the block does not say why nothing downstream recovers it');
+    // Handled now, so naming them here would be the disclosure hiding a real
+    // control: a labelled value, a signed URL, an inline database password and
+    // a private key body all have a sweep or a deny rule.
+    for (const handled of [/private key/i, /database URL/i, /Bearer/i]) {
+      assert.ok(!handled.test(block), `the block claims an implemented control is missing: ${handled}`);
+    }
+
+    // README said "only the semantic pass can catch them" of exactly these
+    // shapes, and that is false in the direction that matters: the semantic
+    // pass reads prose only, and every measured credential leak was tool
+    // output.
+    const readme = fs.readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8');
+    assert.ok(
+      !readme.includes('only the semantic pass can catch them'),
+      'README still points at a pass that never sees tool output',
+    );
+  }],
+
+  // F143 - the candidates file is the whole safety gate, and it had no size
+  // cap. rememberShown runs on every session in the batch immediately after
+  // writeCandidates and before the refusal is thrown, keyed on having been
+  // SHOWN, so a reader who read 200 KB of a 915 KB file gets every session in
+  // it recorded as read and the next export prints `205/205 sessions read ok`.
+  // That is worse than silent: it is a positive false claim, and the size is
+  // documented in three places as an argument for why triage exists, never as
+  // a consequence.
+  //
+  // So budget the batch and remember only what was in it. The existing
+  // coverageRefusal already drives the next batch, because a session that was
+  // never recorded is still uncovered.
+  ['F143', 'the candidates file is capped per run, and only the sessions actually in it are recorded as read', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const dir = path.join(root, 'projects', 'ws');
+    fs.mkdirSync(dir, { recursive: true });
+    // Fabricated. SHAPE: three separate sessions in one included workspace,
+    // each carrying a few hundred characters of DISTINCT prose. Distinct
+    // matters: writeCandidates dedupes on exact text, so three identical turns
+    // would collapse into one and no budget would ever fire.
+    const cwd = ['C:', 'Users', 'devuser', 'projects', 'batch'].join(BS);
+    const ids = [
+      '55555555-5555-4555-8555-555555555551',
+      '55555555-5555-4555-8555-555555555552',
+      '55555555-5555-4555-8555-555555555553',
+    ];
+    ids.forEach((sid, i) => {
+      fs.writeFileSync(
+        path.join(dir, `${sid}.jsonl`),
+        JSON.stringify({
+          type: 'user',
+          uuid: `00000000-0000-4000-8000-00000000000${i + 1}`,
+          sessionId: sid,
+          timestamp: '2026-08-20T10:11:12.345Z',
+          cwd,
+          message: { role: 'user', content: [{ type: 'text', text: `session ${i} prose. ` + `filler ${i} `.repeat(40)}] },
+        }) + NL,
+        'utf8',
+      );
+    });
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+    setTier(path.join(out, 'review.md'), 'batch', 'redact');
+
+    // One session's prose is a little under 400 characters, so a 500-character
+    // budget takes exactly one and defers the other two.
+    const args = ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--batch-chars', '500'];
+    const first = runCli(args);
+    assert.equal(first.code, 1, first.out);
+    const dictFile = path.join(saltDir, DICTIONARY_FILENAME);
+    assert.equal(
+      Object.keys(JSON.parse(fs.readFileSync(dictFile, 'utf8')).sessions).length,
+      1,
+      'sessions the reader was never shown were recorded as read',
+    );
+    const body = fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8');
+    assert.match(body, /This is one batch. 2 more sessions are not in this file/, 'the file does not say it is one batch of several');
+
+    // And the loop advances: supply a list, and the next run offers the next
+    // batch rather than the same one.
+    fs.writeFileSync(
+      path.join(root, 'ents.json'),
+      JSON.stringify({ entities: [{ kind: 'person', spellings: ['Nora Lund'], confidence: 'high' }] }),
+      'utf8',
+    );
+    const second = runCli([...args, '--entities', path.join(root, 'ents.json')]);
+    assert.equal(second.code, 1, 'the two deferred sessions still have to be read');
+    assert.equal(
+      Object.keys(JSON.parse(fs.readFileSync(dictFile, 'utf8')).sessions).length,
+      2,
+      'the next run did not advance to the next batch',
+    );
+
+    // A budget below the size of any single session still offers one, or one
+    // oversized session stalls the loop forever.
+    const tiny = runCli(['export', '--root', root, '--out', out, '--salt-dir', path.join(root, 'salt2'), '--batch-chars', '1']);
+    assert.equal(tiny.code, 1, tiny.out);
+    assert.match(
+      fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8'),
+      /session 0 prose/,
+      'a budget below one session size offered nothing at all',
+    );
+  }],
+
+  // F144 - uncoveredNameParts exists to catch the half-replacement: the full
+  // name is substituted, the prose names him again two sentences later, and no
+  // other check can see it because the residue scan only looks for what it was
+  // given. The single-word guard tested for whitespace, so the whole detector
+  // was switched off for any name written without spaces.
+  //
+  // Verified against the shipped modules before this fixture: the Latin pair
+  // returned a row, the Han pair returned [], and substituteString on the same
+  // Han prose replaced the declared name once and shipped the bare half twice,
+  // verbatim, with every gate green.
+  ['F144', 'a bare half of a CJK name left in the prose is reported the same way a bare surname is', () => {
+    // Fabricated. SHAPE: a three-codepoint Han personal name, surname then
+    // two-codepoint given name, declared in full; then the given name standing
+    // alone twice in the prose. That is the same half-replacement as
+    // `Grace Hopper` declared and a bare `Hopper` left behind.
+    const rows = uncoveredNameParts(
+      [{ kind: 'person', spellings: ['王大明'] }],
+      ['王大明送出了報告。大明後來回覆說大明週五會再確認。'],
+    );
+    assert.equal(rows.length, 1, `expected one row, got ${JSON.stringify(rows)}`);
+    assert.equal(rows[0].part, '大明');
+    assert.equal(rows[0].from, '王大明');
+    // The BARE uses, not every occurrence: the probe table carries the declared
+    // spelling alongside the candidate and the longer one claims its own span.
+    assert.equal(rows[0].count, 2, 'the count is not the bare uses');
+
+    // The other half is proposed too and disappears on its own, because a row
+    // with count 0 is dropped. That is what bounds the cost to at most two
+    // extra probe rows per CJK person, and it is why this stays a finding
+    // rather than a gate: May, Wise and Ray are ordinary words in Latin and
+    // the same is true of a two-character Han fragment.
+    assert.deepEqual(
+      uncoveredNameParts([{ kind: 'person', spellings: ['王大明'] }], ['王大明送出了報告，沒有別的名字。']),
+      [],
+      'a half that never stands alone must not become a row',
+    );
+
+    // A one-codepoint Han spelling still has no parts, and BRIEF §4.5 row 3 is
+    // why: it has no boundary rule and over-matches inside a longer word.
+    assert.deepEqual(uncoveredNameParts([{ kind: 'person', spellings: ['林'] }], ['林先生來了']), []);
+  }],
+
+  // F145 - `isWordChar` was /[A-Za-z0-9_]/ and `isCjkOnly` was "no ASCII letter
+  // or digit", so every alphabetic script except Latin got needsLeft false,
+  // needsRight false, and the treatment reserved for scripts that genuinely
+  // have no word boundaries. Verified by running the engine before this
+  // fixture:
+  //
+  //   Роман  in "Он читал романы весь день"  became "…PERSON_01ы весь день"
+  //   דוד    in "דודה שלי" (my aunt)          became "PERSON_03ה שלי"
+  //   Νίκος  in "Νίκοςαβγ"                    became "PERSON_02αβγ"
+  //
+  // and every one of those spans came back cjk: true, so the terminal reported
+  // them as CJK as well.
+  //
+  // That is BRIEF §4.5's `小明` inside `小明天` failure, "corrupted a sentence
+  // naming nobody with every gate green", reproduced in scripts where the
+  // writing system does not force it. For Han and Kana there is no boundary to
+  // test and running unguarded while flagging is the only honest option. Greek,
+  // Cyrillic, Hebrew and Arabic put spaces between words: the rule works
+  // perfectly for them the moment the character class stops being ASCII.
+  ['F145', 'a space-delimited non-Latin script gets the ordinary boundary rule, and is not reported as CJK', () => {
+    // Fabricated. SHAPE: one entity per script, each sitting inside a longer
+    // ordinary word of that script, which is what makes the missing boundary
+    // rule a corruption rather than a miss.
+    //   Роман  a Cyrillic given name inside the common noun `романы` (novels)
+    //   Νίκος  a Greek given name with more Greek letters glued after it
+    //   דוד    a Hebrew given name inside `דודה` (aunt)
+    const table = buildTable([
+      { id: 'P1', kind: 'person', tier: 0, pseudonym: 'PERSON_01', spellings: ['Роман'] },
+      { id: 'P2', kind: 'person', tier: 0, pseudonym: 'PERSON_02', spellings: ['Νίκος'] },
+      { id: 'P3', kind: 'person', tier: 0, pseudonym: 'PERSON_03', spellings: ['דוד'] },
+    ]);
+    for (const [inside, why] of [
+      ['Он читал романы весь день', 'Cyrillic'],
+      ['Νίκοςαβγ', 'Greek'],
+      ['דודה שלי', 'Hebrew'],
+    ]) {
+      assert.equal(substituteString(inside, table).out, inside, `${why}: a sentence naming nobody was corrupted`);
+    }
+
+    // And the rule still MATCHES when the neighbour really is a boundary, or
+    // this would be a fix that turns a corruption into a leak.
+    for (const [bounded, want] of [
+      ['Роман прислал отчёт', 'PERSON_01 прислал отчёт'],
+      ['ο Νίκος ήρθε', 'ο PERSON_02 ήρθε'],
+      ['דוד שלח', 'PERSON_03 שלח'],
+    ]) {
+      assert.equal(substituteString(bounded, table).out, want, `a bounded occurrence stopped matching: ${bounded}`);
+    }
+
+    // The flag, which is the report label. A space-delimited script now has a
+    // boundary rule, so calling its replacements unproven CJK was false twice
+    // over.
+    assert.equal(substituteString('Роман прислал отчёт', table).spans[0].cjk, false);
+    assert.equal(isCjkOnly('Роман'), false);
+    assert.equal(isCjkOnly('Νίκος'), false);
+    assert.equal(isCjkOnly('דוד'), false);
+
+    // Scripts that really are written without spaces are untouched: no
+    // boundary to test, so they run unguarded and are flagged, which is what
+    // BRIEF §4.5 asks for and what F01 to F03 pin.
+    for (const spaceless of ['王大明', 'ひらがな', 'カタカナ', '한국말', 'ภาษาไทย']) {
+      assert.equal(isCjkOnly(spaceless), true, `${spaceless} lost its flag`);
+    }
+    const han = buildTable([{ id: 'P4', kind: 'person', tier: 0, pseudonym: 'PERSON_04', spellings: ['小明'] }]);
+    const overmatch = substituteString('小明天要下雨', han);
+    assert.equal(overmatch.out, 'PERSON_04天要下雨', 'the CJK over-match is a known limit, not something to silently fix here');
+    assert.equal(overmatch.spans[0].cjk, true, 'and it must still be flagged');
+  }],
+
+  // F146 - the agent-memory deny-list matches FILENAMES, and it knows one
+  // naming convention: MEMORY.md plus reference_/feedback_/project_/user_*.md,
+  // which is the author's own memory-index layout rather than a Claude Code
+  // universal. Two source comments asserted the opposite, and nothing in
+  // README, docs, SKILL.md or the terminal said it at all, so a second user
+  // whose memory files are named otherwise got an archive, a manifest and a
+  // green residue line with their harness-injected private notes riding along
+  // as ordinary prose.
+  //
+  // Words rather than code, because the machinery is already complete: the
+  // primary channel is a <system-reminder> span and INJECTED_SPANS drops every
+  // one of those whatever it is called. What is left is a memory file a tool
+  // READ for you, and the fix for that is one token in denied.json.
+  ['F146', 'the agent-memory deny-list says which filenames it knows, at the moment of export', () => {
+    const block = limitLines({}).join(NL);
+    assert.match(block, /agent memory a tool READ for you/, 'the limit is stated nowhere the person hits it');
+    assert.match(block, /denied\.json/, 'the disclosure names no remedy the person can run');
+
+    // Pinned here so the disclosure and the list cannot drift. Fabricated
+    // names. The SHAPE: one file using a recognised prefix, the index file
+    // itself, and one ordinary name a different user would plausibly choose.
+    assert.equal(deniedReason('reference_local_setup.md'), 'reference_local_setup.md');
+    assert.equal(deniedReason('MEMORY.md'), 'MEMORY.md');
+    assert.equal(
+      deniedReason('brain/what-i-know-about-people.md'),
+      null,
+      'a memory file under any other name ships as ordinary prose, which is the thing to disclose',
+    );
+
+    // And the same sentence is in README, because the terminal block is one
+    // line and a person deciding what to put in denied.json needs the list.
+    const readme = fs.readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8');
+    assert.match(readme, /Claude Code universal/, 'README still implies the list is universal');
+  }],
+
+  // F147 - a session is hashed over its whole retained prose, so appending one
+  // turn makes the whole session uncovered again. Re-showing a changed session
+  // in full is deliberate and right (appended turns read without the
+  // conversation around them are worse for entity discovery, and over-showing
+  // is the safe direction). What is not right is the case where that never
+  // terminates: a session still being written, very often the one the reader is
+  // sitting in. Every turn they add to it while working through the refusal
+  // changes its prose back, so the refusal returns and the loop reads as a bug
+  // in the tool.
+  //
+  // No behaviour change: the gate keeps refusing, which is correct. What was
+  // missing is the sentence that turns an apparent bug into an instruction.
+  ['F147', 'a session still being written is named as such in the refusal, with what to do about it', () => {
+    const now = Date.now();
+    // Fabricated session ids. SHAPE: one whose file was touched two minutes ago
+    // (the session the reader still has open) and one that was not.
+    const err = coverageRefusal(
+      [
+        { id: 'a3f9', reason: 'changed since it was last read', mtimeMs: now - 2 * 60 * 1000 },
+        { id: '7c02', reason: 'new since the last read', mtimeMs: now - 40 * 60 * 60 * 1000 },
+      ],
+      2,
+      'deident-candidates.txt',
+    );
+    const why = err.why.join(NL);
+    assert.match(why, /a3f9 {3}changed since it was last read {3}\(written 2 minutes ago\)/);
+    assert.ok(!/7c02.*written \d/.test(why), 'a session nobody is writing must not be marked fresh');
+    assert.match(why, /every turn you add changes it back/, 'the refusal does not say why reading it again will not clear it');
+
+    // With nothing fresh, the paragraph must not appear: a sentence about a
+    // session you have open, printed when you have none, is the cry-wolf
+    // failure in prose.
+    const stale = coverageRefusal([{ id: '1de4', reason: 'new since the last read', mtimeMs: now - 86_400_000 }], 1, 'x');
+    assert.ok(!stale.why.join(NL).includes('every turn you add changes it back'));
+
+    // And the mtime really reaches the refusal on a real run, which is the half
+    // a unit test on coverageRefusal cannot prove. The turn below is appended a
+    // moment before the export, exactly as an open session appends one.
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    appendTurn(root, '11111111-1111-4111-8111-111111111111', corpus.cwd, 'one more turn, typed just now');
+    const run = runCli(
+      ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', path.join(root, 'ents.json')],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(run.code, 1, run.out);
+    assert.match(run.out, /written 1 minute ago/, 'the file mtime never reached the refusal');
   }],
 ];
 

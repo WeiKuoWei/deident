@@ -389,8 +389,14 @@ export function renderManifest(m) {
   }
   if (m.cjkSpans > 0) {
     // BRIEF §4.5 asks for length >= 2 AND a flag. This is the flag.
-    say(`    ${n(m.cjkSpans)} CJK entity occurrences replaced: the boundary rule cannot`);
-    say('      prove they were not inside a longer CJK word');
+    //
+    // It said "CJK" while the flag was set for every non-Latin script, so a
+    // Cyrillic or Hebrew replacement was reported under a label that named the
+    // wrong writing system and the wrong reason. The count is now genuinely
+    // spaceless-script only, so it says which scripts and why.
+    say(`    ${n(m.cjkSpans)} entity occurrences in a script written without spaces (Chinese,`);
+    say('      Japanese, Korean, Thai and the rest): there is no word boundary to test,');
+    say('      so the rule cannot prove they were not inside a longer word');
   }
   if (m.emptiedSessions > 0) {
     // A session that retained nothing used to vanish with no counter at all, so
@@ -413,8 +419,8 @@ export function renderWrote(path, bytes, saltPath) {
   say('');
 }
 
-export function renderCandidates(path, chars, omitted = 0, omittedChars = 0) {
-  if (machine !== null) { machineAdd({ candidates: { path, chars, omitted, omittedChars } }); return; }
+export function renderCandidates(path, chars, omitted = 0, omittedChars = 0, deferred = 0) {
+  if (machine !== null) { machineAdd({ candidates: { path, chars, omitted, omittedChars, deferred } }); return; }
   say('');
   say('  Tier-1 candidates written');
   say(`    ${path}    ${humanBytes(chars)} of tier-0-cleaned prose`);
@@ -428,6 +434,13 @@ export function renderCandidates(path, chars, omitted = 0, omittedChars = 0) {
   // had no way to know how much of it they were not being given.
   if (omittedChars > 0) {
     say(`    ${n(omittedChars)} characters of prose were not shown: one chunk ran past the per-chunk limit`);
+  }
+  // The batch budget. Said here as well as in the file because this is the
+  // number that stops "I read the file" meaning "I read the corpus": what is
+  // not in this file is not recorded as read, and comes back next run.
+  if (deferred > 0) {
+    say(`    ${n(deferred)} session${deferred === 1 ? ' is' : 's are'} not in this file and not yet recorded as read:`);
+    say('      run the export again after you supply the list, and the next batch arrives');
   }
   say('');
 }

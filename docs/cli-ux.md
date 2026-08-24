@@ -134,6 +134,12 @@ about 7k tokens. The entity pass that follows reads 915 KB, about 250k tokens.
 A 35x difference for the stage that decides whether a session ships at all is
 worth a command.
 
+That 915 KB predates the candidates file carrying whole prose chunks, which was
+measured over the whole depth-0 corpus at **3.95x** the old size (2,957,659
+bytes to 11,684,461, with 1,336,271 characters cut by the per-chunk limit and
+reported). The 35x argument only gets stronger; the number to budget against is
+the larger one.
+
 The same measurement decided the shape: **0 of those 205 sessions carry an
 `ai-title` record.** Titles are not available. The first user prompt is the
 surface; 161 of 205 have one, and a session that has none says so on its row
@@ -329,11 +335,30 @@ its name on; a tier-1 name belongs to a third party the reader cannot rename.
 Measured over the same archive, four seeds together produced 25
 boundary-refused occurrences and the scope reports 14 of them.
 
-Five characters minimum, measured rather than guessed. Over 18.8 MB of
-exported bytes, ten plausible seeds at each length: three characters gave a
-median of 643 boundary-refused occurrences and a worst case of 1,996; four
-gave 13 and 270; five gave 0 and 14, and the 14 were the leak. §7 and §F7 both
-say what happens to a check that fires constantly.
+Five characters and up is a row whatever is beside it, measured rather than
+guessed. Over 18.8 MB of exported bytes, ten plausible seeds at each length:
+three characters gave a median of 643 boundary-refused occurrences and a worst
+case of 1,996; four gave 13 and 270; five gave 0 and 14, and the 14 were the
+leak. §7 and §F7 both say what happens to a check that fires constantly.
+
+Below five, the row is earned on the NEIGHBOUR instead, because that average
+was over two populations. Re-measured over ~20 MB of session logs, splitting
+the refused occurrences by whether the character that blocks is a letter:
+three characters gave a letter-blocked median of 412 and a worst case of 8,371
+against a separator/digit median of 20 and worst of 52; four gave 46 and 113
+against 4 and 26. The flood is the letter class entirely, and the small class
+is where the leaks are (`project_<name>_notes.md`, `kv-<name>0123`,
+`HKID_<Name>Yan.jpg`). A length gate here denied the disclosure to every user
+with a three- or four-character given name, which is the common case for
+Chinese, Korean and Japanese romanisations.
+
+What the neighbour test still withholds is disclosed rather than dropped. The
+spellings and their counts go in the manifest as `gluedNotListed` and one line
+of the "NOT protected against" block names them, because
+`renderGluedResidue` prints nothing when there are no rows and an absent list
+beside a green residue figure reads as a clean result. Do not delete that line
+as redundant with this paragraph: a limit stated in a doc is not a disclosure
+at the moment of export.
 
 Both print to stderr as findings, carry `uncoveredNameParts` and
 `gluedResidue` in `--json`, and neither can fail an export. A gate on the
@@ -523,7 +548,7 @@ it:
 
       a3f9…   new since the last read
       7c02…   new since the last read
-      1de4…   changed since it was last read
+      1de4…   changed since it was last read   (written 2 minutes ago)
 
     A session is covered once its prose has been put in front of a reader and
     the answer is remembered. Exporting one that never was would mean claiming
@@ -538,9 +563,28 @@ nothing to do with the dictionary: `export --entities an-old-list.json` over a
 corpus that has grown used to ship the new sessions on the strength of a list
 written before they existed.
 
+A session that is still being written cannot be covered, and the row says so
+with `(written N minutes ago)`. The hash is over the whole retained prose, so
+every turn added to a session somebody has open changes it back and the same
+refusal returns. Reading it again is not the fix. Close that session, or leave
+its workspace out at the review step, then export again. The refusal prints
+that paragraph only when a row really is fresh, because a sentence about a
+session you have open, printed when you have none, is §F7 in prose.
+
 What it checks is that deident put the prose in front of a reader, not that the
 reader read it. That is the same limit the old gate had, one session at a time
 instead of one corpus at a time.
+
+So the file is capped, at `--batch-chars` characters (120,000 by default,
+roughly 30k tokens against a corpus measured at 915 KB and 250k). The cap is
+not about the file being awkward to open. It is that "shown" is the only thing
+this gate can observe, and a 915 KB file nobody could read in one pass turned
+that into a false claim: every session in it was recorded as read and the next
+export printed `205/205 sessions read ok`. Only the sessions actually written
+into the batch are remembered, so the rest stay uncovered and the same refusal
+offers them next run. At least one session always goes in, so a single
+oversized session cannot stall the loop. The file and the terminal both say how
+many were deferred and that they are not recorded as read.
 
 `deident-candidates.txt` then carries only the uncovered sessions, and says so
 in its own header, because the file is what a reader is handed and a short one

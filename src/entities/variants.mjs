@@ -252,7 +252,26 @@ export function backslashUEscape(s) {
   return out;
 }
 
-/** True when a spelling contains no ASCII letter or digit at all (CJK etc.). */
+/**
+ * Scripts that do not put spaces between words.
+ *
+ * The predicate below used to mean "contains no ASCII letter or digit", which
+ * put every non-Latin script in the same bucket. Measured by running the
+ * engine: `Роман` inside `романы` (novels) became `PERSON_01ы`, `דוד` inside
+ * `דודה` (aunt) became `PERSON_03ה`, and both spans came back flagged CJK. That
+ * is BRIEF §4.5's `小明` inside `小明天` failure reproduced in scripts where the
+ * writing system does not force it: Cyrillic, Greek, Hebrew and Arabic are
+ * space-delimited and the boundary rule works perfectly for them the moment the
+ * character class stops being ASCII.
+ *
+ * So the test is the writing system, not the alphabet. What is in here has no
+ * word boundary to check, runs unguarded, and is flagged for review, which is
+ * the honest handling §4.5 asks for. Everything else gets the ordinary rule.
+ */
+export const SPACELESS_RE =
+  /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\p{sc=Thai}\p{sc=Lao}\p{sc=Khmer}\p{sc=Myanmar}\p{sc=Tibetan}]/u;
+
+/** True when a spelling is written in a script that has no word boundaries. */
 export function isCjkOnly(s) {
-  return !/[A-Za-z0-9]/.test(s) && /[^\x00-\x7F]/.test(s);
+  return !/[A-Za-z0-9]/.test(s) && SPACELESS_RE.test(s);
 }
