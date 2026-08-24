@@ -100,8 +100,8 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
     // discarded in full. Measured over a copy of the real corpus (216 depth-0
     // files, 87,797 prose chunks, pre-filter): 1,590 chunks, 10,443,749
     // characters, dropped by that key while not being byte-identical to the
-    // chunk that claimed it. Session prose opens the same way constantly — a
-    // pasted error, a repeated instruction, the same command re-run — and the
+    // chunk that claimed it. Session prose opens the same way constantly (a
+    // pasted error, a repeated instruction, the same command re-run), and the
     // names are in what comes after.
     //
     // An exact duplicate is still dropped, and that one is safe: the reader
@@ -110,8 +110,8 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
     seen.add(text);
     // The cap, and the thing the old cap did not do: count what it took.
     // The old value was 400 characters and it dropped 76.2% of the prose,
-    // 5,904 chunks (6.7%) exceeding it, longest chunk 938,529 characters —
-    // none of it counted, printed or knowable to the reader who was then asked
+    // 5,904 chunks (6.7%) exceeding it, longest chunk 938,529 characters. None
+    // of it was counted, printed, or knowable to the reader who was then asked
     // to declare the names in it. CANDIDATE_CHUNK_CHARS states what the
     // current value is measured against.
     if (text.length > CANDIDATE_CHUNK_CHARS) {

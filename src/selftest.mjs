@@ -5537,7 +5537,7 @@ const FIXTURES = [
     assert.doesNotMatch(candidates, /not in this file/, 'nothing is omitted when there is no list to build on');
   }],
 
-  // F133 — the candidates file is the ONLY surface the semantic reader ever
+  // F133 - the candidates file is the ONLY surface the semantic reader ever
   // sees, and it used to truncate every chunk at 400 characters. Measured over
   // a copy of the real corpus (216 depth-0 files, 87,797 prose chunks,
   // pre-filter): 27,186 KB of prose extracted, 6,468 KB reaching the reader,
@@ -5563,14 +5563,14 @@ const FIXTURES = [
     assert.equal(written.chars, Buffer.byteLength(body, 'utf8'), 'the reported size must be the file');
   }],
 
-  // F134 — the second loss, and the silent one. The dedupe key was a chunk's
+  // F134 - the second loss, and the silent one. The dedupe key was a chunk's
   // first 80 characters and the `seen` set is global across sessions, so a
   // chunk that merely OPENED like an earlier one was discarded whole.
   // Measured on the same corpus copy: 1,590 chunks (10,443,749 characters)
   // were dropped by that key while not being byte-identical to the chunk that
-  // claimed it. Session prose opens the same way constantly — a pasted error,
-  // a repeated instruction, the same command re-run — and the names are in
-  // what comes after.
+  // claimed it. Session prose opens the same way constantly (a pasted error, a
+  // repeated instruction, the same command re-run), and the names are in what
+  // comes after.
   //
   // Both names are fabricated; the shape is two different third parties named
   // in two turns that begin identically.
@@ -5588,7 +5588,7 @@ const FIXTURES = [
     assert.ok(body.includes('Ottoline Marsh'), 'a chunk was dropped for opening like another one');
   }],
 
-  // F134b — the cap that remains, and the reason it is not the one that was
+  // F134b - the cap that remains, and the reason it is not the one that was
   // removed. Measured on a copy of the real corpus with the cap off: the
   // candidates file goes from 2,957,659 to 13,026,553 bytes, so removing the
   // cap outright lands far above the 915 KB docs/cli-ux.md §11b budgets. The
@@ -5635,7 +5635,7 @@ const FIXTURES = [
     assert.match(spoken.out, /characters of prose were not shown/, `the terminal must say it too: ${spoken.out}`);
   }],
 
-  // F135 — the sweep was anchored on English label words only, so a document
+  // F135 - the sweep was anchored on English label words only, so a document
   // number named in Chinese was never seeded, never substituted, and invisible
   // to the residual scan, which can only look for what it was given. The
   // manifest printed nothing. F81's Taiwan passport number was caught only
@@ -5675,7 +5675,7 @@ const FIXTURES = [
     assert.deepEqual(sweepIdNumbers(['護照號碼：AB-1234567']), ['AB-1234567']);
   }],
 
-  // F136 — F51 grants case-insensitive matching to every bicameral script, and
+  // F136 - F51 grants case-insensitive matching to every bicameral script, and
   // Greek has the one context-sensitive lowercase mapping in Unicode's default
   // algorithm: a trailing sigma lowercases to ς, not σ. buildTable lowered the
   // whole spelling at once, so it got the contextual form; equalsFold lowers
@@ -5708,7 +5708,7 @@ const FIXTURES = [
     assert.equal(residualScan(text, table, new Set()).entityCount, 1, 'the residue scan agreed with the bug');
   }],
 
-  // F137 — root.mjs diagnoses this exact failure for this exact variable, in a
+  // F137 - root.mjs diagnoses this exact failure for this exact variable, in a
   // comment, and fixes it with nonBlank. The MCP seeder was never told: it read
   // `env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude')`, and `??` treats only
   // null and undefined as absent, so a shell profile that exports the variable
