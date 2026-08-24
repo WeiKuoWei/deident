@@ -9,6 +9,47 @@ It reads local files and writes local files. That property is the product.
 Status: slice 1. Claude Code logs only, depth-0 sessions only, no server and no
 browser UI.
 
+## Install it as a Claude Code plugin
+
+The CLI runs straight from a checkout (`node <repo>/deident.js --version`) and
+needs no install. The plugin is how you get the skill, which is what drives the
+whole flow in a conversation instead of by hand:
+
+```
+claude plugin marketplace add <repo>
+claude plugin install deident@deident
+claude plugin details deident          # -> Skills (1)  deident
+```
+
+The third line is the check. It is Claude Code's own component inventory, so it
+says the skill was parsed rather than that a file is on disk. The skill appears
+in a session started **after** the install; restart an open one.
+
+**Installing copies the repository into
+`~/.claude/plugins/cache/deident/deident/<version>/`, and that copy does not
+follow your edits.** Verified 2026-08-24 on Windows: after editing
+`skills/deident/SKILL.md`, `plugin marketplace update` and `plugin update` both
+reported "already at the latest version" and left the old copy in place, because
+the check is on the `version` string in `.claude-plugin/plugin.json` and not on
+the content. Two copies of this document have already drifted once, which is why
+a fixture compares `SKILL.md` against `AGENTS.md`. So, after changing anything a
+user of the plugin sees:
+
+```
+# bump "version" in .claude-plugin/plugin.json, then
+claude plugin marketplace update deident
+claude plugin update deident@deident   # says: Restart to apply changes
+```
+
+Working on the repo itself and not cutting a version? Reinstall instead, which
+always re-copies:
+
+```
+claude plugin uninstall deident@deident && claude plugin install deident@deident
+```
+
+To remove it entirely, add `claude plugin marketplace remove deident`.
+
 ---
 
 ## The four-stage funnel
