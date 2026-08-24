@@ -663,9 +663,29 @@ export async function runExport(flags, env) {
     //                    read.
     const shown = new Set(uncovered.map((s) => s.id));
     const showAll = semantic.why !== 'uncovered';
-    const chunks = perSession
-      .filter((s) => showAll || shown.has(s.id))
-      .flatMap((s) => s.chunks);
+    const offered = perSession.filter((s) => showAll || shown.has(s.id));
+    // The batch, bounded by a running character budget.
+    //
+    // The whole safety gate is a reader getting through this file in one pass,
+    // and nothing was checking the pass was possible. rememberShown runs below
+    // on everything written here, keyed on having been SHOWN, so a reader who
+    // got through 200 KB of the measured 915 KB had all 205 sessions recorded
+    // as read and the next export printed `205/205 sessions read ok`.
+    //
+    // At least one session always goes in, or a single session larger than the
+    // budget stalls the loop forever. What is left out is not remembered, so
+    // coverageRefusal already drives the next batch on the next run: no new
+    // command, no new flag path, no new state.
+    const batch = [];
+    let spent = 0;
+    for (const s of offered) {
+      const size = s.chunks.reduce((a, c) => a + (typeof c === 'string' ? c.length : 0), 0);
+      if (batch.length > 0 && spent + size > flags.batchChars) break;
+      spent += size;
+      batch.push(s);
+    }
+    const deferred = offered.length - batch.length;
+    const chunks = batch.flatMap((s) => s.chunks);
     const omitted = showAll ? 0 : perSession.length - shown.size;
     const candidates = writeCandidates(
       chunks,
@@ -674,15 +694,21 @@ export async function runExport(flags, env) {
       // It is the one artifact intended to be read by an LLM, i.e. the one most
       // likely to leave the machine, and its own header states that the
       // username, paths, git identity and remotes have already been replaced.
-      { table: tier0Table, omitted },
+      { table: tier0Table, omitted, deferred },
     );
     // Written BEFORE the refusal, and it is memory rather than output: these
     // sessions have now been put in front of a reader, and cli-ux §10's "no
     // output file behind" is about the archive. Forgetting it means the next
     // run shows the same prose again, which is the cost this whole file exists
     // to remove.
-    rememberShown(saltDir, dictionary, perSession.filter((s) => showAll || shown.has(s.id)));
-    report.renderCandidates(candidates.path, candidates.chars, omitted, candidates.omittedChars);
+    // `reset` when showAll, because showAll means the session record is by
+    // definition untrustworthy (that is why it is true). Merging a capped
+    // batch into it would recreate exactly the trap the comment above names:
+    // the reader gets batch 1, writes a list from it, and the next run exports
+    // the whole corpus against that list with every gate green, because every
+    // other session is still recorded as read.
+    rememberShown(saltDir, dictionary, batch, { reset: showAll });
+    report.renderCandidates(candidates.path, candidates.chars, omitted, candidates.omittedChars, deferred);
     if (semantic.why === 'uncovered') {
       throw coverageRefusal(uncovered, perSession.length, candidates.path, { full: flags.full });
     }
@@ -972,9 +998,9 @@ function resolveTier1(flags, dictionary) {
 }
 
 /** Record that these sessions have been put in front of a reader. */
-function rememberShown(saltDir, dictionary, sessions) {
+function rememberShown(saltDir, dictionary, sessions, opts = {}) {
   const stamp = nowStamp();
-  const record = { ...dictionary.sessions };
+  const record = opts.reset === true ? {} : { ...dictionary.sessions };
   for (const s of sessions) record[s.id] = { hash: s.hash, read: stamp };
   try {
     saveDictionary(saltDir, { entities: dictionary.entities, sessions: record });

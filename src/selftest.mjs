@@ -6002,6 +6002,92 @@ const FIXTURES = [
       'README still points at a pass that never sees tool output',
     );
   }],
+
+  // F143 - the candidates file is the whole safety gate, and it had no size
+  // cap. rememberShown runs on every session in the batch immediately after
+  // writeCandidates and before the refusal is thrown, keyed on having been
+  // SHOWN, so a reader who read 200 KB of a 915 KB file gets every session in
+  // it recorded as read and the next export prints `205/205 sessions read ok`.
+  // That is worse than silent: it is a positive false claim, and the size is
+  // documented in three places as an argument for why triage exists, never as
+  // a consequence.
+  //
+  // So budget the batch and remember only what was in it. The existing
+  // coverageRefusal already drives the next batch, because a session that was
+  // never recorded is still uncovered.
+  ['F143', 'the candidates file is capped per run, and only the sessions actually in it are recorded as read', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const dir = path.join(root, 'projects', 'ws');
+    fs.mkdirSync(dir, { recursive: true });
+    // Fabricated. SHAPE: three separate sessions in one included workspace,
+    // each carrying a few hundred characters of DISTINCT prose. Distinct
+    // matters: writeCandidates dedupes on exact text, so three identical turns
+    // would collapse into one and no budget would ever fire.
+    const cwd = ['C:', 'Users', 'devuser', 'projects', 'batch'].join(BS);
+    const ids = [
+      '55555555-5555-4555-8555-555555555551',
+      '55555555-5555-4555-8555-555555555552',
+      '55555555-5555-4555-8555-555555555553',
+    ];
+    ids.forEach((sid, i) => {
+      fs.writeFileSync(
+        path.join(dir, `${sid}.jsonl`),
+        JSON.stringify({
+          type: 'user',
+          uuid: `00000000-0000-4000-8000-00000000000${i + 1}`,
+          sessionId: sid,
+          timestamp: '2026-08-20T10:11:12.345Z',
+          cwd,
+          message: { role: 'user', content: [{ type: 'text', text: `session ${i} prose. ` + `filler ${i} `.repeat(40)}] },
+        }) + NL,
+        'utf8',
+      );
+    });
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+    setTier(path.join(out, 'review.md'), 'batch', 'redact');
+
+    // One session's prose is a little under 400 characters, so a 500-character
+    // budget takes exactly one and defers the other two.
+    const args = ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--batch-chars', '500'];
+    const first = runCli(args);
+    assert.equal(first.code, 1, first.out);
+    const dictFile = path.join(saltDir, DICTIONARY_FILENAME);
+    assert.equal(
+      Object.keys(JSON.parse(fs.readFileSync(dictFile, 'utf8')).sessions).length,
+      1,
+      'sessions the reader was never shown were recorded as read',
+    );
+    const body = fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8');
+    assert.match(body, /This is one batch. 2 more sessions are not in this file/, 'the file does not say it is one batch of several');
+
+    // And the loop advances: supply a list, and the next run offers the next
+    // batch rather than the same one.
+    fs.writeFileSync(
+      path.join(root, 'ents.json'),
+      JSON.stringify({ entities: [{ kind: 'person', spellings: ['Nora Lund'], confidence: 'high' }] }),
+      'utf8',
+    );
+    const second = runCli([...args, '--entities', path.join(root, 'ents.json')]);
+    assert.equal(second.code, 1, 'the two deferred sessions still have to be read');
+    assert.equal(
+      Object.keys(JSON.parse(fs.readFileSync(dictFile, 'utf8')).sessions).length,
+      2,
+      'the next run did not advance to the next batch',
+    );
+
+    // A budget below the size of any single session still offers one, or one
+    // oversized session stalls the loop forever.
+    const tiny = runCli(['export', '--root', root, '--out', out, '--salt-dir', path.join(root, 'salt2'), '--batch-chars', '1']);
+    assert.equal(tiny.code, 1, tiny.out);
+    assert.match(
+      fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8'),
+      /session 0 prose/,
+      'a budget below one session size offered nothing at all',
+    );
+  }],
 ];
 
 export function selftest() {

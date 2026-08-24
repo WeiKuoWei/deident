@@ -147,6 +147,7 @@ diff and keep, and a prompt sequence cannot be reviewed by a second person.
 | `--skip-unreadable` | `scan`, `export` | Continue past a line that is not valid JSON instead of exiting 3. Each skipped line is reported. |
 | `--skip-unknown-types` | `scan`, `export` | Drop records whose type deident has never seen instead of refusing. The dropped types and their counts are printed in the "NOT protected against" block. Refusal stays the default; this exists because Claude Code ships a new record type every few weeks and one such line in one session should not block a whole export. |
 | `--include-denied <name>` | `export` | Typed confirmation for one deny-listed workspace. Exact name, no globs. Repeatable. |
+| `--batch-chars <n>` | `export` | How much prose one run puts in `deident-candidates.txt` before deferring the rest. Default 120,000 characters, roughly 30k tokens. Only the sessions actually in the file are recorded as read, so a smaller number means more rounds, never a weaker claim. |
 | `--selftest` | global | Run the fixture suite and exit. |
 | `--help` | global | Print usage and exit 0. |
 | `--version` | global | Print the version and exit 0. |

@@ -183,6 +183,12 @@ their content changed since they were read, so they are the ones now in the
 candidates file. Read them, add anything they turned up to the entity list, and
 run the export again.
 
+**The candidates file is one BATCH, not necessarily the whole backlog.** It is
+capped at 120,000 characters per run (`--batch-chars <n>` to change it), and
+only the sessions actually written into it are recorded as read. When the file
+says sessions were deferred, supply your list, run the export again, and the
+next batch arrives. Do not treat one pass over this file as covering the corpus.
+
 It is a PROSE extract, and the export substitutes over everything it keeps, so
 the file shows you less than what ships. Measured 2026-08-24: a name-part check
 over the candidates file found 8 uncovered surnames and the same check over the

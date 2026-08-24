@@ -84,6 +84,11 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
   // Sessions deident remembers you having read, and therefore did not put in
   // front of you again.
   const omitted = opts.omitted ?? 0;
+  // Sessions deferred to a later run because this file hit its budget. A
+  // different fact from `omitted` above and it needs its own sentence: those
+  // were left out because they are already read, these because the reader
+  // cannot read everything at once, and only these come back.
+  const deferred = opts.deferred ?? 0;
   // Characters the cap below took off the end of a chunk. Counted, because the
   // old cap was not: the reader could not tell a short file from a short
   // corpus, and the pipeline recorded the session as read either way.
@@ -131,6 +136,16 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
   // handful that changed.
   const NEWLINE = String.fromCharCode(10);
   const note =
+    (deferred > 0
+      ? [
+          `# This is one batch. ${deferred} more session${deferred === 1 ? ' is' : 's are'} not in this file and are NOT`,
+          '# recorded as read. Only what is in THIS file is remembered, so read all of',
+          '# it: supply your list and run the export again, and the next batch arrives.',
+          '# To change how much arrives at once:  deident export --batch-chars <n>',
+          '#',
+          '',
+        ].join(NEWLINE)
+      : '') +
     (omitted > 0
       ? [
           `# ${omitted} more session${omitted === 1 ? ' is' : 's are'} not in this file. Their content has not changed`,

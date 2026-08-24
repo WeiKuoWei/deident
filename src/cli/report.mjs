@@ -413,8 +413,8 @@ export function renderWrote(path, bytes, saltPath) {
   say('');
 }
 
-export function renderCandidates(path, chars, omitted = 0, omittedChars = 0) {
-  if (machine !== null) { machineAdd({ candidates: { path, chars, omitted, omittedChars } }); return; }
+export function renderCandidates(path, chars, omitted = 0, omittedChars = 0, deferred = 0) {
+  if (machine !== null) { machineAdd({ candidates: { path, chars, omitted, omittedChars, deferred } }); return; }
   say('');
   say('  Tier-1 candidates written');
   say(`    ${path}    ${humanBytes(chars)} of tier-0-cleaned prose`);
@@ -428,6 +428,13 @@ export function renderCandidates(path, chars, omitted = 0, omittedChars = 0) {
   // had no way to know how much of it they were not being given.
   if (omittedChars > 0) {
     say(`    ${n(omittedChars)} characters of prose were not shown: one chunk ran past the per-chunk limit`);
+  }
+  // The batch budget. Said here as well as in the file because this is the
+  // number that stops "I read the file" meaning "I read the corpus": what is
+  // not in this file is not recorded as read, and comes back next run.
+  if (deferred > 0) {
+    say(`    ${n(deferred)} session${deferred === 1 ? ' is' : 's are'} not in this file and not yet recorded as read:`);
+    say('      run the export again after you supply the list, and the next batch arrives');
   }
   say('');
 }

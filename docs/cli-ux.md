@@ -567,6 +567,17 @@ What it checks is that deident put the prose in front of a reader, not that the
 reader read it. That is the same limit the old gate had, one session at a time
 instead of one corpus at a time.
 
+So the file is capped, at `--batch-chars` characters (120,000 by default,
+roughly 30k tokens against a corpus measured at 915 KB and 250k). The cap is
+not about the file being awkward to open. It is that "shown" is the only thing
+this gate can observe, and a 915 KB file nobody could read in one pass turned
+that into a false claim: every session in it was recorded as read and the next
+export printed `205/205 sessions read ok`. Only the sessions actually written
+into the batch are remembered, so the rest stay uncovered and the same refusal
+offers them next run. At least one session always goes in, so a single
+oversized session cannot stall the loop. The file and the terminal both say how
+many were deferred and that they are not recorded as read.
+
 `deident-candidates.txt` then carries only the uncovered sessions, and says so
 in its own header, because the file is what a reader is handed and a short one
 has to explain why it is short:

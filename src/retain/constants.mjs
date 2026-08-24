@@ -101,6 +101,25 @@ export const EXAMPLES_PER_REPORT = 5;
 export const CANDIDATE_CHUNK_CHARS = 20_000;
 
 /**
+ * How much prose one run puts in front of a reader before deferring the rest.
+ *
+ * The cap above bounds one CHUNK. This one bounds the FILE, and it exists
+ * because the whole safety gate is a human or an agent reading that file in one
+ * pass, and nothing was checking that the pass was possible. rememberShown runs
+ * on every session in the batch before the refusal is thrown, keyed on having
+ * been SHOWN, so a reader who got through 200 KB of the measured 915 KB had all
+ * 205 sessions recorded as read and the next export printed
+ * `205/205 sessions read ok`. That is not a silent failure, it is a positive
+ * false claim.
+ *
+ * A calibration knob, not a constant to guess once and freeze: the right value
+ * is the reader's context window, which this tool cannot see. 120,000
+ * characters is roughly 30k tokens, which against the measured 915 KB and 250k
+ * tokens leaves the reader room to work. `--batch-chars` overrides it.
+ */
+export const CANDIDATE_BATCH_CHARS = 120_000;
+
+/**
  * Content that must not leave even when the session around it may.
  *
  * privacy-tiers 4 assumed the unit of decision is a session. It is not. This
