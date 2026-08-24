@@ -312,6 +312,13 @@ const SECRET_RE = new RegExp(
     // id beside the session token below.
     'ASIA[0-9A-Z]{16}',
     'ntn_[A-Za-z0-9]{20,}',
+    // Scheduled-trigger ids. Found by grepping the SHIPPED archive rather than
+    // the report: one sat in plaintext in an export that had passed all six
+    // checks, because the reader listed two of the three trigger ids in the
+    // corpus and nothing else was looking. A fixed prefix plus a 26-character
+    // base62 id is a machine's job, and an entity list is precisely the thing
+    // that misses one of three.
+    'trig_[A-Za-z0-9]{20,}',
     'AIza[0-9A-Za-z_-]{30,}',
   ].join('|'),
   'g',
