@@ -94,7 +94,13 @@ export async function runScan(flags, env) {
 
   const model = buildReviewModel(
     decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe),
-    nowStamp(), readSessionDrops(reviewPath, lenient).drops,
+    // Both remembered and local, for the same reason the tiers are: a person
+    // should not answer the same question twice. Scanning into a fresh
+    // directory used to render every session as `keep` while the salt
+    // directory held the drops, which produces a review file that invites
+    // exporting exactly what was already refused.
+    nowStamp(),
+    new Set([...remembered.sessionDrops, ...readSessionDrops(reviewPath, lenient).drops]),
   );
   const written = writeReview(model, reviewPath);
 
@@ -146,7 +152,8 @@ export async function runReview(flags, env) {
   const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
   const model = buildReviewModel(
     decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe),
-    nowStamp(), readSessionDrops(reviewPath, lenient).drops,
+    nowStamp(),
+    new Set([...remembered.sessionDrops, ...readSessionDrops(reviewPath, lenient).drops]),
   );
   for (const w of problems) report.renderWarning(w);
 

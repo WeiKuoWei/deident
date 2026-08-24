@@ -111,9 +111,19 @@ function pathForms(spelling, home = null) {
   // machine. A second segment is required: `/Users` alone is not a home
   // directory and giving it a tilde form would be a needle that matches every
   // path on the volume.
-  const posixHome = /^\/(Users|home)\/([^/]+)(\/.*)?$/.exec(spelling);
+  const posixHome = /^\/(Users|home)\/([^/]+)(\/.+)$/.exec(spelling);
   if (posixHome !== null) {
-    forms.add(`~${posixHome[3] ?? ''}`);
+    // Something UNDER the home directory, never the home directory itself.
+    // seed.mjs adds the bare home path on every run, and an optional tail here
+    // turned that into the one-character needle `~`. A tilde is not a word
+    // character, so buildTable gives it no boundary rule, and every tilde in
+    // the corpus is replaced: `cd ~`, `~/.zshrc`, and `approx ~5 min` becoming
+    // a pseudonym with a digit welded to it. All five gates stay green, because
+    // the residue scan looks for the spellings it was handed.
+    //
+    // The home directory has a full spelling that IS safe to replace, and it is
+    // already in the table; it does not need a one-character alias.
+    forms.add(`~${posixHome[3]}`);
   } else if (spelling.startsWith('~/') && typeof home === 'string' && home.length > 0) {
     forms.add(home.replace(/\/$/, '') + spelling.slice(1));
   }

@@ -3318,6 +3318,18 @@ const FIXTURES = [
   // as /var/... . Anything resolved through the filesystem comes back in the
   // long form while anything quoted from the person stays short.
   ['F96', 'a POSIX home path is also spelled with a tilde, and /private is a symlink', () => {
+    // The home directory ITSELF, which is what seed.mjs adds on every run. The
+    // first version of this generator made group 3 optional, so a spelling with
+    // nothing under it emitted the one-character needle `~`. That is not a word
+    // character, so buildTable gives it no boundary rule at all, and every
+    // tilde in the corpus is replaced: `cd ~`, `~/.zshrc`, and `approx ~5 min`
+    // becoming a pseudonym with a digit stuck to it. Fires on 100% of macOS and
+    // Linux runs, 0% of Windows, with every gate green, because the residue
+    // scan looks for the spellings it was given and `~` is one of them.
+    assert.ok(!expandVariants('/Users/devuser').includes('~'), 'a bare tilde is not a needle');
+    assert.ok(!expandVariants('/home/devuser').includes('~'));
+    assert.ok(!expandVariants('/Users/devuser/').includes('~'));
+
     const home = expandVariants('/Users/devuser/projects/app');
     assert.ok(home.includes('~/projects/app'), 'the tilde form of a macOS home path');
 
@@ -3712,6 +3724,76 @@ const FIXTURES = [
     // And the skill must not restate a constant it can read at runtime, which
     // is the drift that already happened once.
     assert.doesNotMatch(skill, /person \| org \| client \| workspace \| machine/);
+  }],
+  // F104 - scanning into a fresh directory forgot every session decision.
+  //
+  // Found by running the documented flow rather than by reading the code.
+  // `scan --out <new dir>` reads review.md from THAT directory, which does not
+  // exist yet, so every session rendered as `keep` - while the salt directory,
+  // three lines above, was holding 142 remembered drops. Workspace tiers came
+  // through, because those are read from `remembered.workspaces`; session
+  // decisions were not, because nothing read `remembered.sessionDrops`.
+  //
+  // The asymmetry is the bug. The two decision kinds are persisted by the same
+  // writer for the same reason - so a person does not answer twice - and one of
+  // them was being dropped on the floor. A fresh review.md that says keep 213
+  // times, with the previous decisions still on disk, is a file that invites
+  // exporting everything the person already refused.
+  ['F104', 'a re-scan elsewhere keeps the session decisions, not only the tiers', () => {
+    const root = tmpdir();
+    const saltDir = path.join(root, 'salt');
+    const first = path.join(root, 'one');
+    const second = path.join(root, 'two');
+    writeCorpus(root);
+
+    const s1 = runCli(['scan', '--root', root, '--out', first, '--salt-dir', saltDir, '--json']);
+    assert.equal(s1.code, 0, s1.out);
+    setTier(path.join(first, 'review.md'), 'alpha', 'redact');
+
+    // Hold back a session that is NOT the only one in its workspace, or the
+    // export refuses for the unrelated reason that nothing is left.
+    const rows = JSON.parse(s1.out).sessions.filter((x) => x.workspace === 'alpha');
+    assert.ok(rows.length >= 2, `alpha needs two sessions to hold one back: ${JSON.stringify(rows)}`);
+    // The last one, not the first: writeCorpus's other alpha session retains
+    // nothing after the cwd gate, so holding back the productive one empties
+    // the archive and the export refuses for an unrelated reason.
+    const heldId = rows[rows.length - 1].id;
+    const reviewPath = path.join(first, 'review.md');
+    fs.writeFileSync(
+      reviewPath,
+      fs.readFileSync(reviewPath, 'utf8').replace(new RegExp(`^keep(\\s+.*${heldId})$`, 'm'), 'drop$1'),
+    );
+
+    // The edit has to have landed, or the rest of this fixture proves nothing.
+    assert.match(
+      fs.readFileSync(reviewPath, 'utf8'),
+      new RegExp(`^drop\\s+.*${heldId}`, 'm'),
+      'the hold was not written into the first review.md',
+    );
+
+    const exported = runCli([
+      'export', '--root', root, '--out', first, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(exported.code, 0, exported.out);
+
+    // It must also have been remembered, or a re-scan has nothing to read.
+    const store = JSON.parse(fs.readFileSync(path.join(saltDir, 'workspaces.json'), 'utf8'));
+    assert.ok(store.sessionDrops.includes(heldId), `not remembered: ${JSON.stringify(store.sessionDrops)}`);
+
+    // Now scan somewhere else. The tiers survive; the session decision must too.
+    const again = runCli(['scan', '--root', root, '--out', second, '--salt-dir', saltDir, '--json']);
+    assert.equal(again.code, 0, again.out);
+    const row = JSON.parse(again.out).sessions.find((x) => x.id === heldId);
+    assert.ok(row, 'the held session is missing from the new scan');
+    assert.equal(row.decision, 'drop', 'a remembered hold must not come back as keep');
+
+    // And it is written into the new review.md, not only into the JSON, or the
+    // next person to edit that file re-answers a question already answered.
+    assert.match(
+      fs.readFileSync(path.join(second, 'review.md'), 'utf8'),
+      new RegExp(`^drop\\s+.*${heldId}`, 'm'),
+    );
   }],
 ];
 
