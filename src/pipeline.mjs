@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto';
 
 import * as report from './cli/report.mjs';
 import { RefusalError, UsageError } from './cli/errors.mjs';
+import { estimateTokens, tokenCost } from './cli/tokens.mjs';
 import { resolveCorpus, corpusDateRange } from './corpus/root.mjs';
 import { readSession, roundTripRefusal, nestingError } from './corpus/reader.mjs';
 import { resolveLineCwd, cwdChangeFrom } from './corpus/cwdtrack.mjs';
@@ -385,6 +386,11 @@ function writeTriage(flags, outDir, reviewText, pathById, rememberedDrops) {
     withoutPrompt: rows.filter((r) => r.prompt === null).length,
     chars: flags.triageChars,
     bytes: Buffer.byteLength(body, 'utf8'),
+    // Same estimator as the candidates file. docs/model-tier.md argues triage
+    // is worth a command because it is 35x cheaper than the entity pass, and
+    // an argument about cost that never prints a cost is one the reader has to
+    // take on trust.
+    tokenEstimate: tokenCost([{ label: 'triage', estimate: estimateTokens(body) }]),
   });
   return 0;
 }
@@ -709,7 +715,14 @@ export async function runExport(flags, env) {
     // the whole corpus against that list with every gate green, because every
     // other session is still recorded as read.
     rememberShown(saltDir, dictionary, batch, { reset: showAll });
-    report.renderCandidates(candidates.path, candidates.chars, omitted, candidates.omittedChars, deferred);
+    report.renderCandidates(
+      candidates.path,
+      candidates.chars,
+      omitted,
+      candidates.omittedChars,
+      deferred,
+      tokenCost([{ label: 'candidates', estimate: candidates.estimate }]),
+    );
     if (semantic.why === 'uncovered') {
       throw coverageRefusal(uncovered, perSession.length, candidates.path, { full: flags.full });
     }

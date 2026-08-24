@@ -152,6 +152,9 @@ $ deident triage --out <workdir>
     3 of them carry no first user prompt and say so in the file
 
   → deident-triage.txt    23.4 KB
+    Reading this will cost roughly 6,990 tokens.
+      triage           5,830   (23,302 characters)
+      the reader's own reasoning adds about 20%
     Raw prose: tier-0 substitution has not run over it. Local only, like review.md
     A verdict can only ever drop a session. There is no keep verdict
 ```
@@ -617,3 +620,37 @@ next run supplies the list as usual. `--full` with `--entities` is a usage
 error: one says "show me everything again" and the other says "here is my
 answer", so a run carrying both would read the answer and then decline to use
 it.
+
+### 11e. What reading it costs, said where the file is announced
+
+The reader is handed `deident-candidates.txt` and, until this, had no idea what
+reading it would cost. Both files that cost a reader anything now say so at the
+moment they are written, and both carry it in `--json` under `tokenEstimate`.
+
+Estimated per script, not by dividing the file by four. Measured on the real
+candidates file: 459,747 characters, 131,895 of them (29%) CJK. CJK runs at
+roughly one token per character and Latin at roughly one per four, so a single
+divisor is wrong by a factor of four in one direction or the other depending on
+the mix. The reader's own reasoning adds about 20% on top. Rounded to three
+significant figures, because a figure printed to the last token invites more
+trust than an estimate has earned.
+
+Three things it does not say, and all three are the point:
+
+- **No percentage of anyone's subscription.** deident cannot read a plan,
+  cannot read remaining usage, and the limits are not published as a token
+  count. Any figure there would be invented, which is worse than no figure at
+  all, because a person would act on it.
+- **No model-tier comparison.** `docs/model-tier.md` is where the tiers are
+  weighed against each other. The tool runs one, and the reader is not choosing
+  between them at this moment.
+- **No second hedge.** "roughly" is the whole disclaimer.
+
+It is **not** in the candidates file's own header, which is the one place it
+looked like it belonged, since that file is what an agent reads directly. Two
+reasons. The header is read once the cost is already committed, so it informs
+nothing anybody can still act on. And the number would be reporting a file that
+no longer exists the moment it is written into it: the line itself changes the
+size it is measuring, and a self-referential estimate is one more thing to be
+subtly wrong. The person deciding whether to pay is at the terminal, and the
+agent orchestrating the read has it in `--json` before it opens the file.

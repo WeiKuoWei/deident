@@ -56,7 +56,15 @@ import { readSession } from './corpus/reader.mjs';
 import { probeCaseFolding, setCaseFolding, caseFolding, normalizeCwd } from './corpus/cwdtrack.mjs';
 import { uncoveredNameParts } from './entities/probe.mjs';
 import { resolveRoot } from './corpus/root.mjs';
-import { setCommand, renderRefusal, renderReadError, renderManifest, captureOutput } from './cli/report.mjs';
+import {
+  setCommand,
+  renderRefusal,
+  renderReadError,
+  renderManifest,
+  renderCandidates,
+  renderTriageWritten,
+  captureOutput,
+} from './cli/report.mjs';
 import {
   namespaceCollisions,
   namespaceRefusal,
@@ -71,6 +79,7 @@ import { buildZip, readZip, readZipFile, MAX_ENTRIES } from './output/zip.mjs';
 import { renderPreview } from './output/preview.mjs';
 import { parseReview, parseSessionDrops, readSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
 import { readEntities, writeCandidates } from './entities/tier1.mjs';
+import { estimateTokens, roundEstimate, tokenCost } from './cli/tokens.mjs';
 import { CANDIDATE_CHUNK_CHARS } from './retain/constants.mjs';
 import { DICTIONARY_FILENAME, mergeEntities } from './policy/dictionary.mjs';
 import { parseCliArgs } from './cli/args.mjs';
@@ -6291,6 +6300,120 @@ const FIXTURES = [
     );
     assert.equal(run.code, 1, run.out);
     assert.match(run.out, /written 1 minute ago/, 'the file mtime never reached the refusal');
+  }],
+
+  // F148 - the estimate is per script, not one divisor over the whole file.
+  // Measured on the real candidates file: 459,747 characters, 131,895 of them
+  // (29%) CJK. CJK runs at roughly one token per character and Latin at
+  // roughly one per four, so a single divisor is wrong by a factor of four in
+  // one direction or the other depending on the mix, and the mix is the whole
+  // reason this corpus needs its own number.
+  ['F148', 'the estimate splits by script, so CJK and Latin of the same length do not cost the same', () => {
+    // Fabricated prose. SHAPE: two strings of the SAME character count, one
+    // pure Han, one pure Latin, so the only thing that can move the estimate
+    // is the script.
+    const han = '這是一段中文字'.repeat(100);
+    const latin = 'abcdefg'.repeat(100);
+
+    const a = estimateTokens(han);
+    const b = estimateTokens(latin);
+    assert.equal(a.chars, 700);
+    assert.equal(b.chars, 700);
+    assert.equal(a.cjkChars, 700, 'Han characters were not counted as CJK');
+    assert.equal(b.cjkChars, 0, 'Latin characters were counted as CJK');
+
+    // Worked by hand from the two rates rather than recomputed the way the
+    // code computes it: 700 Han characters at one token each is 700, and 700
+    // Latin characters at four to the token is 175.
+    assert.equal(a.inputTokens, 700);
+    assert.equal(b.inputTokens, 175);
+    assert.equal(a.inputTokens / b.inputTokens, 4, 'the two scripts no longer differ by the ratio the code claims');
+
+    // A mixed string is neither rate. 100 Han and 400 Latin is 100 + 100.
+    assert.equal(estimateTokens('中文'.repeat(50) + 'abcd'.repeat(100)).inputTokens, 200);
+
+    // The rounding rule: three significant figures, and never finer than a
+    // whole token. One rule for every magnitude, so 7,043 prints as 7,040 and
+    // not as 7,000; a second rule for small numbers would buy one cosmetic
+    // digit and cost the reader a rule they have to know to read the number.
+    assert.equal(roundEstimate(213_858), 214_000);
+    assert.equal(roundEstimate(7_043), 7_040);
+    assert.equal(roundEstimate(50), 50, 'a small file must not round up to a thousand tokens');
+    assert.equal(roundEstimate(0), 0);
+
+    // The headline carries the reader's own reasoning; the row does not.
+    const cost = tokenCost([{ label: 'candidates', estimate: a }]);
+    assert.equal(cost.files[0].tokens, 700);
+    assert.equal(cost.total, 840, '700 input tokens plus 20% is 840');
+    assert.equal(cost.reasoningPercent, 20);
+  }],
+
+  // F149 - the number is for a person at a terminal AND for the agent that
+  // orchestrates the read, and the agent cannot parse prose. Both files that
+  // cost a reader anything carry it.
+  ['F149', 'the token estimate is in --json, for the candidates file and for the triage file', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+
+    // The export refuses for want of an entity list, which is the path that
+    // writes the candidates file. The document is still emitted on a refusal.
+    const refused = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--json'], CORPUS_USER_ENV);
+    assert.notEqual(refused.code, 0);
+    const doc = JSON.parse(refused.out);
+    const est = doc.candidates.tokenEstimate;
+    assert.ok(est, `no tokenEstimate on the candidates document: ${JSON.stringify(doc.candidates)}`);
+    assert.equal(typeof est.total, 'number');
+    assert.ok(est.total > 0, 'a written file costs more than nothing to read');
+    assert.equal(est.reasoningPercent, 20);
+    assert.equal(est.files[0].label, 'candidates');
+    assert.equal(
+      est.files[0].chars,
+      [...fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8')].length,
+      'the estimate is not measured over the file that was actually written',
+    );
+
+    const triaged = runCli(['triage', '--root', root, '--out', out, '--salt-dir', saltDir, '--json'], CORPUS_USER_ENV);
+    assert.equal(triaged.code, 0, triaged.out);
+    const tdoc = JSON.parse(triaged.out);
+    assert.ok(tdoc.triage.tokenEstimate, `no tokenEstimate on the triage document: ${JSON.stringify(tdoc.triage)}`);
+    assert.equal(tdoc.triage.tokenEstimate.files[0].label, 'triage');
+    assert.ok(tdoc.triage.tokenEstimate.total > 0);
+  }],
+
+  // F150 - the estimate is read by an outsider, and there are three numbers it
+  // must never carry. A percentage of a subscription is the worst of them:
+  // deident cannot read a plan, cannot read remaining usage, and the limits
+  // are not published as a token count, so any figure there would be invented
+  // and a person would act on it. A model-tier comparison is a working note
+  // (docs/model-tier.md) about a tier the tool is not running. Asserted
+  // against the rendered bytes, because the way this comes back is somebody
+  // adding one helpful line.
+  ['F150', 'nothing in the estimate mentions a subscription, a plan, a quota or a model tier', () => {
+    const est = estimateTokens('這是一段中文字'.repeat(100) + 'abcdefg'.repeat(100));
+    const printed = [
+      captureOutput(() => renderCandidates('deident-candidates.txt', 12_345, 3, 400, 2, tokenCost([{ label: 'candidates', estimate: est }]))),
+      captureOutput(() => renderTriageWritten({
+        path: 'deident-triage.txt',
+        sessions: 4,
+        withoutPrompt: 1,
+        chars: 300,
+        bytes: 9_001,
+        tokenEstimate: tokenCost([{ label: 'triage', estimate: est }]),
+      })),
+    ].join(NL);
+
+    for (const forbidden of [/subscription/i, /\bquota\b/i, /\bplans?\b/i, /% of/i, /model tier|top tier|cheapest|opus|sonnet|haiku/i]) {
+      assert.ok(!forbidden.test(printed), `the estimate names something it cannot know: ${forbidden} in ${printed}`);
+    }
+
+    // And it does say the thing it is for, once. "roughly" is the whole hedge:
+    // a number hedged in every clause is a number nobody can use.
+    assert.match(printed, /Reading this will cost roughly [\d,]+ tokens/);
+    assert.equal(printed.match(/roughly|estimate|approximate|about/gi).length, 4, 'the estimate is hedged more than once per file');
   }],
 ];
 
