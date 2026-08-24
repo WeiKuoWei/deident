@@ -5626,6 +5626,39 @@ const FIXTURES = [
     // alphanumeric document number.
     assert.deepEqual(sweepIdNumbers(['護照號碼：AB-1234567']), ['AB-1234567']);
   }],
+
+  // F136 — F51 grants case-insensitive matching to every bicameral script, and
+  // Greek has the one context-sensitive lowercase mapping in Unicode's default
+  // algorithm: a trailing sigma lowercases to ς, not σ. buildTable lowered the
+  // whole spelling at once, so it got the contextual form; equalsFold lowers
+  // one isolated character at a time, and an isolated Σ always gives σ. They
+  // disagreed at the last character and nothing matched, including the
+  // spelling against its own text.
+  //
+  // Silent AND ungated: residual.mjs imports equalsFold by design so the two
+  // "never drift". They did not drift, they were wrong together, and the
+  // export printed `known-entity residue 0` with the name in the archive.
+  //
+  // Odysseus is a figure out of Homer, not a person. The shape is what the
+  // fixture needs: a Greek personal name ending in sigma.
+  ['F136', 'a Greek name ending in sigma matches in either case, and the residue scan sees it', () => {
+    const upper = 'ΟΔΥΣΣΕΎΣ';
+    const text = `ο ${upper} ήρθε`;
+
+    const table = buildTable([entity('P1', 'person', upper, 'PERSON_01')]);
+    const self = substituteString(text, table);
+    assert.equal(self.out, 'ο PERSON_01 ήρθε', 'the all-caps spelling did not match its own text');
+    assert.equal(reverseString(self.out, self.spans), text, 'ς and σ are both one UTF-16 unit; the span must reverse');
+
+    // The other direction: declared the way a person writes it, written in the
+    // log the way a shouting header does.
+    const declared = buildTable([entity('P2', 'person', 'Οδυσσεύς', 'PERSON_02')]);
+    assert.equal(substituteString(text, declared).out, 'ο PERSON_02 ήρθε', 'a lowercase declaration missed all-caps text');
+
+    // The gate the leak went past. Scanned against the ORIGINAL text, which is
+    // what the substituter was handed and left alone.
+    assert.equal(residualScan(text, table, new Set()).entityCount, 1, 'the residue scan agreed with the bug');
+  }],
 ];
 
 export function selftest() {

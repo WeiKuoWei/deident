@@ -18,7 +18,7 @@ import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
 // The left-boundary rule is imported, never re-implemented. When the scan had
 // its own copy, both copies had the same escape-tail bug and agreed with each
 // other, which is how a leak was reported as `known-entity residue: 0`.
-import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold } from '../substitute/engine.mjs';
+import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold, foldLower } from '../substitute/engine.mjs';
 
 const WORD_RE = /[A-Za-z0-9_]/;
 function isWordChar(ch) {
@@ -108,7 +108,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       // corpus size. Most probes in a bucket differ from the text at the
       // SECOND character, and rejecting those with one comparison rather than
       // a full fold-compare is the cheapest large constant available.
-      const lower = entry.lower ? form.toLowerCase() : null;
+      const lower = entry.lower ? foldLower(form) : null;
       const probe = {
         form,
         entry,
@@ -163,7 +163,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       if (second !== null) {
         const next = bytes[i + 1];
         if (next === undefined) continue;
-        if (next !== second && (secondLower === null || next.toLowerCase() !== secondLower)) continue;
+        if (next !== second && (secondLower === null || foldLower(next) !== secondLower)) continue;
       }
       if (lower === null ? !bytes.startsWith(form, i) : !equalsFold(bytes, i, lower)) continue;
       // A match that begins inside a JSON escape sequence is an artifact of
