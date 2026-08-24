@@ -253,7 +253,9 @@ export async function runExport(flags, env) {
   // tier. workspaces.json is memory, not output: cli-ux §10's "no output file
   // behind" is about the zip, and forgetting what the person told you is the
   // failure that ends with an excluded workspace shipping.
-  const reviewSessions = readSessionDrops(reviewPath);
+  // Declared before anything is read, so an unknown value refuses at the flag
+  // rather than after twenty minutes of work.
+  const reviewSessions = readSessionDrops(reviewPath, { audience: flags.audience ?? 'public' });
   const sessionDrops = new Set([...remembered.sessionDrops, ...reviewSessions.drops]);
   // A review file that lists sessions is a decision about THOSE sessions. Any
   // session written since it was generated appears in no row, and treating an
@@ -479,7 +481,7 @@ export async function runExport(flags, env) {
   if (unmatched.length > 0) {
     report.renderUnmatched(unmatched.map((e) => ({ id: e.id, kind: e.kind, canonical: e.canonical })));
   }
-  const manifest = buildManifest(retained, decisions, serialized, residue, entities, spanCaveats(allStrings));
+  const manifest = buildManifest(retained, decisions, serialized, residue, entities, spanCaveats(allStrings), reviewSessions);
   report.renderManifest(manifest);
 
   // 17  the only step that writes an output artifact
@@ -1082,7 +1084,7 @@ function sanitizeEntryName(name) {
 }
 
 /** Step 16. */
-function buildManifest(retained, decisions, serialized, residue, entities, caveats = { absorbed: 0, cjk: 0 }) {
+function buildManifest(retained, decisions, serialized, residue, entities, caveats = { absorbed: 0, cjk: 0 }, held = null) {
   const s = retained.stats;
   const num = (v) => v.toLocaleString('en-US');
   const occurrencesOf = (kind) =>
@@ -1134,6 +1136,15 @@ function buildManifest(retained, decisions, serialized, residue, entities, cavea
     // table: review.html and the preview print the limits block and used to
     // carry no residue figure at all.
     residueLine: residue.detail,
+    // privacy-tiers 6: a corpus exported for a teammate and one exported for
+    // the public are not comparable, and nothing in the contents says which.
+    // Recorded even at the default, because an absent field reads as
+    // "not considered" rather than as "public".
+    audience: held?.audience ?? 'public',
+    // Counted apart: only the second changes if the person turns the knob, and
+    // a merged total hides the actionable half.
+    heldByFloor: held?.heldByFloor ?? 0,
+    heldByAudience: held?.heldByAudience ?? 0,
     countOnly: Object.freeze({
       sessions: decisions.filter((d) => d.tier === 'count-only').reduce((a, d) => a + d.sessionCount, 0),
       workspaces: decisions.filter((d) => d.tier === 'count-only').length,

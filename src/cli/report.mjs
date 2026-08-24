@@ -253,8 +253,17 @@ export function renderManifest(m) {
   if (machine !== null) { machineAdd({ manifest: m }); return; }
   say('');
   say('  Leaving this machine');
+  // The recipient claim, in the block whose whole job is being believed.
+  // privacy-tiers 6: a corpus exported for a teammate and one for the public
+  // are not comparable, and nothing in the contents says which is which.
+  say(`    declared audience: ${m.audience ?? 'public'}`);
   say(`    ${n(m.sessions)} sessions from ${n(m.workspaces)} workspaces`);
   say(`    ${n(m.userMessages)} user messages`);
+  // Two reasons, two numbers. Only the second moves if the knob is turned, and
+  // a merged total hides the half the person can act on.
+  if ((m.heldByFloor ?? 0) > 0 || (m.heldByAudience ?? 0) > 0) {
+    say(`    held back  ${n(m.heldByFloor ?? 0)} by the floor, ${n(m.heldByAudience ?? 0)} by the audience setting`);
+  }
   const zeroWidth = Math.max(18, ...m.zeros.map((z) => z.label.length));
   for (const z of m.zeros) {
     say(`    0 ${pad(z.label, zeroWidth)} ${z.suppressed}`);

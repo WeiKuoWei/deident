@@ -25,6 +25,9 @@ const FLAGS = Object.freeze({
   // second code path. The settled operator is an agent, and the alternative is
   // parsing padded columns whose width is data-dependent.
   json: { type: 'boolean', commands: ['scan', 'review', 'export'] },
+  // Who the archive is for. A claim about what the reader already knows, which
+  // is what makes it checkable; a number would not be.
+  audience: { type: 'string', commands: ['export'] },
   // Global, command-less.
   help: { type: 'boolean', commands: null },
   version: { type: 'boolean', commands: null },
@@ -139,6 +142,7 @@ export function parseCliArgs(argv) {
       skipUnknownTypes: values['skip-unknown-types'] === true,
       includeDenied: Object.freeze([...includeDenied]),
       json: values.json === true,
+      audience: values.audience ?? null,
     },
   });
 }

@@ -42,7 +42,11 @@ export function renderReview(model) {
   // gets a line so any single one can be held back without excluding the
   // directory it ran in.
   push('## sessions');
-  push('# Set column 1 to drop to hold back one session. Default keep.');
+  push('# Column 1: keep | drop | drop:audience');
+  push('#   drop            held whatever the recipient knows: someone else’s');
+  push('#                   documents, health, private messages, live credentials.');
+  push('#   drop:audience   held only because of who this is going to. Released by');
+  push('#                   deident export --audience teammate|company.');
   push('# A session whose workspace is excluded is already out; this is on top of that.');
   for (const s of model.sessions ?? []) {
     push(`${s.decision.padEnd(6)} ${s.date}  ${s.workspace.padEnd(26)} ${s.id}`);
@@ -150,7 +154,32 @@ export function parseReview(text, opts = {}) {
   return Object.freeze(decisions);
 }
 
-export const SESSION_DECISIONS = Object.freeze(['keep', 'drop']);
+/**
+ * A held session records WHY it is held, because one of the two reasons can be
+ * moved by a setting and the other cannot.
+ *
+ * `drop` unqualified IS the floor, and that is deliberate: another person's
+ * identity documents, their health, a private message archive, live
+ * credentials. There is no floor taxonomy, because a taxonomy is a second thing
+ * to keep correct and the failure direction of getting it wrong is a release.
+ *
+ * `drop:audience` is held only because of who the archive is going to.
+ * audience-and-floor.md records the measurement that made this necessary: of 28
+ * sessions still held after a full review, 20 moved on the single fact that the
+ * recipient was a colleague. Without somewhere to write that down, changing one
+ * fact means re-adjudicating every row.
+ */
+export const SESSION_DECISIONS = Object.freeze(['keep', 'drop', 'drop:audience']);
+
+/**
+ * Who the archive is for, which is a claim about what the reader already knows.
+ *
+ * Ordered, and `public` is the default: an archive that has left a machine has
+ * left it, and the person who receives it is not the last person who will hold
+ * it. A declared recipient rather than a number, because a number cannot be
+ * audited and gives the person no way to know what moved between 6 and 7.
+ */
+export const AUDIENCES = Object.freeze(['teammate', 'company', 'public']);
 
 /**
  * Parse the per-session decisions back out of `## sessions`. Separate from
@@ -171,8 +200,23 @@ export const SESSION_DECISIONS = Object.freeze(['keep', 'drop']);
  */
 export function parseSessionDrops(text, opts = {}) {
   const onProblem = typeof opts.onProblem === 'function' ? opts.onProblem : null;
+  const audience = opts.audience ?? 'public';
+  if (!AUDIENCES.includes(audience)) {
+    throw new RefusalError(`"${audience}" is not an audience`, {
+      why: [
+        `Audiences are: ${AUDIENCES.join(', ')}.`,
+        'Refusing rather than falling back, because the fallback direction is a release.',
+      ],
+      remedies: [{ label: 'Declare one', command: `deident export --audience ${AUDIENCES[0]}` }],
+    });
+  }
+  // Anything below `public` is a claim that the reader already knows the
+  // company's business, which is what an audience-held row was held for.
+  const releasesAudience = audience !== 'public';
   const drops = new Set();
   const known = new Set();
+  let heldByFloor = 0;
+  let heldByAudience = 0;
   let inSessions = false;
 
   for (const rawLine of text.split('\n')) {
@@ -203,10 +247,24 @@ export function parseSessionDrops(text, opts = {}) {
     }
     if (!id) continue;
     known.add(id);
-    if (decision === 'drop') drops.add(id);
+    if (decision === 'drop') {
+      heldByFloor += 1;
+      drops.add(id);
+    } else if (decision === 'drop:audience') {
+      heldByAudience += 1;
+      if (!releasesAudience) drops.add(id);
+    }
   }
 
-  return Object.freeze({ drops: Object.freeze(drops), known: Object.freeze(known) });
+  // Counted apart, because the second number is the only one that changes if
+  // the person turns the knob, and a merged total hides the actionable half.
+  return Object.freeze({
+    drops: Object.freeze(drops),
+    known: Object.freeze(known),
+    audience,
+    heldByFloor,
+    heldByAudience: releasesAudience ? 0 : heldByAudience,
+  });
 }
 
 /**
@@ -222,7 +280,15 @@ export function readSessionDrops(filePath, opts = {}) {
     return parseSessionDrops(fs.readFileSync(filePath, 'utf8'), opts);
   } catch (err) {
     if (err instanceof RefusalError) throw err;
-    if (err.code === 'ENOENT') return Object.freeze({ drops: Object.freeze(new Set()), known: Object.freeze(new Set()) });
+    if (err.code === 'ENOENT') {
+      return Object.freeze({
+        drops: Object.freeze(new Set()),
+        known: Object.freeze(new Set()),
+        audience: opts.audience ?? 'public',
+        heldByFloor: 0,
+        heldByAudience: 0,
+      });
+    }
     throw new RefusalError(`could not read ${filePath}`, {
       why: [`${err.code}: ${err.message}`],
       remedies: [{ label: 'Regenerate it', command: 'deident scan' }],

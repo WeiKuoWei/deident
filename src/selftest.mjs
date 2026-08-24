@@ -3510,6 +3510,120 @@ const FIXTURES = [
     assert.doesNotMatch(human.out, /^\s*\{/m, 'no JSON leaks into the human path');
     assert.match(human.out, /Workspaces/);
   }],
+  // F100 - a held session records WHY it is held, and one setting moves the
+  // half that a setting can move.
+  //
+  // audience-and-floor.md records the measurement: 36 sessions were held, the
+  // owner released almost all of them, and named the reason - the recipient is a
+  // colleague who already knows the company's business. Twenty of the remaining
+  // 28 moved on that fact alone. A tool that cannot express it makes the person
+  // re-adjudicate 36 rows to change one thing.
+  //
+  // The axis is a declared recipient rather than a number, because a number
+  // cannot be audited and gives no way to know what moved between 6 and 7. The
+  // floor is not on the axis: another person's identity documents, their health,
+  // a private message archive, live credentials. Loosening cannot reach anything
+  // belonging to someone who is not in the room.
+  //
+  // Deliberately no floor taxonomy: an unqualified `drop` IS the floor. A
+  // taxonomy would be a second thing to keep correct, and the failure direction
+  // of getting it wrong is a release.
+  ['F100', 'the audience setting moves audience-held rows and never floor-held ones', () => {
+    const model = {
+      generated: '2026-08-24 00:00',
+      workspaces: [{ tier: 'redact', name: '<home>', sessionCount: 3, cwd: 'C:', note: null }],
+      sessions: [
+        { id: 'aaaa-1111', date: '2026-08-01', workspace: '<home>', decision: 'keep' },
+        { id: 'bbbb-2222', date: '2026-08-02', workspace: '<home>', decision: 'drop' },
+        { id: 'cccc-3333', date: '2026-08-03', workspace: '<home>', decision: 'drop:audience' },
+      ],
+      flaggedSessions: [],
+      entities: [],
+    };
+    const text = renderReview(model);
+
+    // Default is public: nothing is released, because an archive that has left
+    // a machine has left it and the recipient is not the last person to hold it.
+    const strict = parseSessionDrops(text);
+    assert.deepEqual([...strict.drops].sort(), ['bbbb-2222', 'cccc-3333']);
+    assert.deepEqual([...strict.known].sort(), ['aaaa-1111', 'bbbb-2222', 'cccc-3333']);
+
+    // Declaring an insider releases the audience-held row and NOT the floor one.
+    const insider = parseSessionDrops(text, { audience: 'company' });
+    assert.deepEqual([...insider.drops], ['bbbb-2222'], 'the floor row stays, the audience row goes');
+
+    // The two reasons are counted apart, because the second number is the only
+    // one that changes if the person turns the knob, and merging them hides the
+    // only actionable half.
+    assert.equal(strict.heldByFloor, 1);
+    assert.equal(strict.heldByAudience, 1);
+    assert.equal(insider.heldByFloor, 1);
+    assert.equal(insider.heldByAudience, 0);
+
+    // The decision round-trips: rendering what was parsed gives the same rows.
+    assert.match(text, /drop:audience\s+2026-08-03/);
+    assert.equal(parseSessionDrops(renderReview(model)).drops.size, 2);
+
+    // An unknown qualifier refuses rather than being read as the safe default.
+    // Guessing here fails towards release.
+    assert.throws(() => parseSessionDrops('## sessions' + NL + 'drop:later 2026-08-01 ws aaaa-1111' + NL), RefusalError);
+
+    // And an unknown audience refuses too, for the same reason.
+    assert.throws(() => parseSessionDrops(text, { audience: 'friends' }), RefusalError);
+  }],
+  // F101 - the manifest must say which audience it was exported for, and count
+  // the two reasons apart.
+  //
+  // privacy-tiers 6: a recipient comparing two corpora needs to see that one
+  // uploader withheld 40% of theirs, or a privacy choice reads downstream as a
+  // skill gap. The audience is the other half of that: a corpus exported for a
+  // teammate and one exported for the public are not comparable, and nothing in
+  // the contents says which is which.
+  ['F101', 'the declared audience is recorded, and the two held counts are separate', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+
+    // An unknown audience refuses at the flag, before any work is done.
+    const bogus = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--audience', 'friends',
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.notEqual(bogus.code, 0);
+    assert.match(bogus.out, /audience/i);
+
+    const exported = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--audience', 'company', '--json',
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(exported.code, 0, exported.out);
+    const doc = JSON.parse(exported.out);
+    assert.equal(doc.manifest.audience, 'company', 'the recipient claim travels with the archive');
+    assert.equal(typeof doc.manifest.heldByFloor, 'number');
+    assert.equal(typeof doc.manifest.heldByAudience, 'number');
+
+    // Default is public when nothing is declared, and it is recorded as such
+    // rather than left absent: absent reads as "not considered".
+    const dflt = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--json',
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(dflt.code, 0, dflt.out);
+    assert.equal(JSON.parse(dflt.out).manifest.audience, 'public');
+
+    // The human path prints it too, in the block whose whole job is being
+    // believed.
+    const human = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--audience', 'teammate',
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(human.code, 0, human.out);
+    assert.match(human.out, /teammate/);
+  }],
 ];
 
 export function selftest() {
