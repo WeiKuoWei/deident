@@ -133,7 +133,88 @@ export function probeOutliers(rows, { top = 15, includeZero = true } = {}) {
 const MIN_NAME_PART = 3;
 
 /**
- * Parts of a declared person's name that occur ALONE in the corpus and are not
+ * The longest run of words proposed from one spelling.
+ *
+ * Every shorter run inside a long one is proposed too, so a longer run adds
+ * rows without adding findings, and a spelling that is a whole quoted sentence
+ * would otherwise contribute a candidate per word position.
+ */
+const MAX_RUN_WORDS = 4;
+
+/**
+ * The pieces of one declared spelling that are worth proposing on their own.
+ *
+ * A single word is proposed only from a `person`. A contiguous run of two or
+ * more words is proposed from ANY kind. That asymmetry is the whole rule, and
+ * it is what admits a street out of an office address while rejecting
+ * `Advisory` out of an org name:
+ *
+ *   A word taken out of a person's name is still a name. That is what a
+ *   surname is. A word taken out of anything else is a noun.
+ *
+ * Measured 2026-08-24 over the live entity list and the tier-0-cleaned prose
+ * of the same run. Proposing single words from every kind produced 52
+ * candidates, 16 of which occurred in the prose, led by `and` at 337 and
+ * followed by `Pro` 11, `Baltimore` 4, `Founders` 3, `Commercial` 2, `USD` 2,
+ * `Industry` 1, `Road` 1, `South` 1: ordinary words at the top of a list a
+ * person is supposed to read line by line, which is §F7's cry-wolf failure
+ * arriving as a report nobody finishes. Adding runs of two or more added none
+ * of that noise, because two adjacent words a corpus repeats verbatim are not
+ * an accident of vocabulary. `Bramble Road` names one street (fabricated here,
+ * the real one is in the entity file this was measured on); `Advisory` on its
+ * own names nothing.
+ *
+ * A run is also a longer needle, so the boundary rule has more to work with,
+ * which is the same argument SEPARATOR_BOUNDARY_MIN makes in the substituter.
+ *
+ * One condition on top, and it is a correctness rule rather than a tidiness
+ * one: a word that starts with a lowercase Latin letter cannot be part of a
+ * run. Measured on the live corpus after the run rule went in, a declared
+ * `Founders and Wei` proposed `and Wei` at 7 occurrences, and every one of
+ * them was an occurrence of the declared name `Wei`. The probe table is sorted
+ * longest first, so a run that merely prefixes a declared spelling with a
+ * connector outranks it and claims spans that are already covered, and the
+ * report then says the prose still names someone the export replaces.
+ *
+ * The cost, stated rather than hidden: a name with a lowercase particle
+ * (`van Dijk`, `de Vries`) contributes no run. For a person the single-word
+ * path still proposes `Dijk`, which is the half that carries the identity.
+ */
+function partsOf(spelling, kind) {
+  // Split on whitespace, then strip whatever punctuation the writer put around
+  // each word. A word whose TRAILING punctuation was stripped ENDS the run:
+  // an address reads `…, 20-28 Bramble Road, Harbour Point`, and `Road Harbour`
+  // is a phrase nobody wrote.
+  const words = [];
+  for (const raw of spelling.split(/\s+/)) {
+    const word = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+    words.push({ word, ends: word.length === 0 || /[^\p{L}\p{N}]$/u.test(raw) });
+  }
+
+  const found = [];
+  if (kind === 'person') {
+    for (const { word } of words) if (word.length >= MIN_NAME_PART) found.push(word);
+  }
+  // A connector breaks a run exactly the way punctuation does. Both mean the
+  // same thing: the identity does not continue across it.
+  const carries = (word) => word.length > 0 && !/^[a-z]/.test(word);
+  for (let i = 0; i < words.length; i += 1) {
+    if (!carries(words[i].word)) continue;
+    const run = [];
+    for (let j = i; j < words.length && run.length < MAX_RUN_WORDS; j += 1) {
+      if (!carries(words[j].word)) break;
+      run.push(words[j].word);
+      // Joined with one space, which is the form a corpus writes even where
+      // the declared spelling was laid out with more.
+      if (run.length >= 2) found.push(run.join(' '));
+      if (words[j].ends) break;
+    }
+  }
+  return found;
+}
+
+/**
+ * Parts of a declared spelling that occur ALONE in the corpus and are not
  * themselves declared.
  *
  * Measured 2026-08-24, comparing entity lists produced at three model tiers on
@@ -144,14 +225,19 @@ const MIN_NAME_PART = 3;
  * prose says who it is two sentences later. The residue scan cannot catch it,
  * because it only looks for what it was given.
  *
+ * The same half-replacement reaches every other kind through multi-word
+ * spellings. Measured on the same run: a registered office address was
+ * declared as ONE comma-separated string, so only the whole string was ever a
+ * needle, and the shipped archive still carried the street on its own in two
+ * spellings. The building name happened to be covered by another entity; the
+ * street was not. See partsOf for the rule that admits the street without proposing
+ * `Road`, `Centre` or `Advisory`.
+ *
  * A REPORT, not an extra spelling, and for the same reason the probe is not a
  * gate. In this corpus alone, May, Wise and Ray are all parts of real names and
  * all ordinary words; adding them automatically is the 202-occurrence failure
  * with a new source. What is automatic is the FINDING - the count, and one
  * excerpt showing how the word is actually used.
- *
- * Only `person`. An org's words are not name parts: splitting "Acme
- * Advisory" proposes "Advisory".
  *
  * @param {ReadonlyArray<{kind:string, spellings:ReadonlyArray<string>}>} entities
  * @param {Iterable<string>} texts
@@ -165,18 +251,24 @@ export function uncoveredNameParts(entities, texts) {
     }
   }
 
-  // part -> the longest declared spelling it came from, for the report line.
+  // part -> the declared spelling it came from, for the report line, and the
+  // SHORTEST of them rather than the longest.
+  //
+  // readEntities runs every declared spelling through expandVariants, so a
+  // path-shaped spelling arrives carrying escaping twins that are longer than
+  // the original: an address with `12/F` in it also has a `12\\F` form. The
+  // label is the column that tells a reader which entry in their own file to
+  // edit, and pointing it at a variant they never typed makes the row unusable.
   const candidates = new Map();
   for (const e of entities ?? []) {
-    if (e?.kind !== 'person') continue;
-    for (const s of e.spellings ?? []) {
-      if (typeof s !== 'string' || !s.includes(' ')) continue;
-      for (const raw of s.split(/\s+/)) {
-        const part = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
-        if (part.length < MIN_NAME_PART) continue;
+    for (const s of e?.spellings ?? []) {
+      // A single-word spelling has no parts: the only piece of it is itself,
+      // and it is already a needle.
+      if (typeof s !== 'string' || !/\s/.test(s)) continue;
+      for (const part of partsOf(s, e.kind)) {
         if (declared.has(part.toLowerCase())) continue;
         const prev = candidates.get(part);
-        if (prev === undefined || s.length > prev.length) candidates.set(part, s);
+        if (prev === undefined || s.length < prev.length) candidates.set(part, s);
       }
     }
   }

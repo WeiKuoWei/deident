@@ -467,12 +467,14 @@ export function renderProbe({ hits, zeros }) {
 }
 
 /**
- * Surnames of declared people that still stand alone in the exported text.
+ * Pieces of a declared spelling that still stand alone in the exported text.
  *
  * Substituting "Grace Hopper" and leaving the bare "Morgan" is a half
  * replacement: the pseudonym appears once and the prose names him again two
- * sentences later. No gate can catch it, because the residue scan only looks
- * for what it was given, and every check stays green.
+ * sentences later. The same shape reaches every other kind through multi-word
+ * spellings. An office address declared as one string shipped its street
+ * on its own. No gate can catch either, because the residue scan only
+ * looks for what it was given, and every check stays green.
  *
  * Printed rather than fixed, because the fix is not mechanical: in this corpus
  * May, Wise and Ray are all parts of real names and all ordinary words. The
@@ -482,15 +484,15 @@ export function renderNameParts(rows) {
   if (machine !== null) { machineAdd({ uncoveredNameParts: rows }); return; }
   if (rows.length === 0) return;
   warn('');
-  warn(`  ! ${n(rows.length)} name part${rows.length === 1 ? '' : 's'} of a declared person still stand${rows.length === 1 ? 's' : ''} alone in the text.`);
-  warn('    The full name was replaced; these were not, so the prose still names them.');
+  warn(`  ! ${n(rows.length)} part${rows.length === 1 ? '' : 's'} of a declared entity still stand${rows.length === 1 ? 's' : ''} alone in the text.`);
+  warn('    The full spelling was replaced; these were not, so the text still carries them.');
   for (const r of rows.slice(0, 12)) {
     warn(`      ${String(r.count).padStart(6)}  ${pad(r.part, 18)} from "${r.from}"`);
     if (r.excerpt) warn(`              ${r.excerpt.slice(0, 96)}`);
   }
   if (rows.length > 12) warn(`      ... and ${n(rows.length - 12)} more`);
   warn('');
-  warn('    Add the ones that are really this person to the entity list and re-run.');
+  warn('    Add the ones that really are this entity to the entity list and re-run.');
   warn('    Leave out any that are ordinary words: that costs nothing, and adding');
   warn('    one replaces a common word everywhere with every check still green.');
   warn('');

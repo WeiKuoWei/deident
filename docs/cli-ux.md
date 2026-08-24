@@ -271,6 +271,38 @@ $ deident export
     salt stays at ~/.deident-private/salt — do not share it, do not commit it
 ```
 
+### 6b. A finding that prints beside the gate and is not a gate
+
+It exists because a check that only reports what it was given cannot report
+what it was not, and it was found by grepping a zip that had passed all six
+checks.
+
+**Parts of a declared spelling that still stand alone.** `Grace Hopper`
+replaced and a bare `Morgan` left behind is a half replacement: the pseudonym
+appears once and the prose names him two sentences later. The same shape
+reaches every other kind through multi-word spellings. An office address
+declared as one comma-separated string shipped its street on its own, because
+only the whole string was ever a needle.
+
+A single word is proposed only from a `person`, because a word taken out of a
+person's name is still a name. From every other kind only a contiguous run of
+two or more words is proposed, because a word taken out of anything else is a
+noun. That is what admits a street such as `Bramble Road` (fabricated; the
+real one was a line of a registered office address) while never proposing
+`Road`, `Centre` or `Advisory`. Measured 2026-08-24 on the live entity list: proposing
+single words from every kind produced 16 rows led by `and` at 337 occurrences,
+followed by `Pro`, `Commercial`, `USD`, `Road`, `Industry` and `South`. Runs
+added none of that, and found five real half-replacements the person rule
+could not see.
+
+A word starting with a lowercase Latin letter never joins a run. `Founders and
+Wei` proposed `and Wei` at 7 occurrences, every one of them the declared name
+`Wei`: the longer run outranks the declared spelling in the probe table and
+claims spans that are already covered.
+
+It prints to stderr as a finding, carries `uncoveredNameParts` in `--json`,
+and cannot fail an export.
+
 Three blocks do the work:
 
 - **"Leaving this machine"** is the trust mechanism. Zeros where zeros are the
