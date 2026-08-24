@@ -6567,6 +6567,60 @@ const FIXTURES = [
     assert.equal(virgin.code, 0, virgin.out);
     assert.ok(!/denied\.json/.test(virgin.out), `warned with no rules to lose: ${virgin.out}`);
   }],
+
+  // F153 - the occurrence list is capped per pseudonym and the COUNT is not.
+  //
+  // The cap exists because the live corpus replaced file paths 26,505 times
+  // across a handful of spellings (cli-ux 6), so an uncapped index writes tens
+  // of megabytes of excerpts nobody reads, for the entity class whose identity
+  // was never in doubt. The number that must survive the cap is the total: a
+  // drill-down answering 2,000 for a spelling the export reported at 2,100
+  // makes the reader distrust the export, which is the exact opposite of what
+  // section 5 is for. And the short list has to SAY it is short, or a reader
+  // counting the rows re-derives the wrong number by hand.
+  ['F153', 'a spelling past the occurrence cap keeps its true count, and the short list says so', () => {
+    const CAP = 2000; // occurrences.mjs MAX_PER_PSEUDONYM
+    const OVER = 2100;
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const sid = '11111111-1111-4111-8111-111111111111';
+    // Fabricated. SHAPE: a two-word Latin personal name, repeated far past the
+    // cap in one record, which is how a workspace path reaches five figures.
+    const NAME = 'Marisol Ferrand';
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    appendTurn(root, sid, corpus.cwd, new Array(OVER).fill(NAME).join(' and then '));
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    const ents = path.join(root, 'drill.json');
+    fs.writeFileSync(ents, JSON.stringify({ entities: [{ kind: 'person', spellings: [NAME], confidence: 'high' }] }), 'utf8');
+    const exp = runCli(
+      ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', ents, '--json'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(exp.code, 0, exp.out);
+    const row = JSON.parse(exp.out).replacementCounts.hits.find((h) => h.spelling === NAME);
+    assert.equal(row.count, OVER, 'the export itself miscounted, so the rest of this fixture proves nothing');
+
+    const j = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', row.pseudonym, '--json'],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(j.code, 0, j.out);
+    const jd = JSON.parse(j.out);
+    assert.equal(jd.total, OVER, 'the drill-down reported a smaller count than the export it drills into');
+    assert.equal(jd.occurrences.length, CAP, `the occurrence list is not capped: ${jd.occurrences.length}`);
+
+    const h = runCli(
+      ['review', '--root', root, '--out', out, '--salt-dir', saltDir, '--entity', row.pseudonym],
+      CORPUS_USER_ENV,
+    );
+    assert.equal(h.code, 0, h.out);
+    assert.match(h.out, new RegExp(`${OVER - CAP} more occurrences counted and not listed`), 'the short list does not say it is short');
+    assert.match(h.out, /2,100 occurrences/, 'the header must carry the true count, not the listed one');
+  }],
 ];
 
 export function selftest() {
