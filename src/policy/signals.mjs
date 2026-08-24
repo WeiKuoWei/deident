@@ -90,9 +90,10 @@ export function proposeTier(group, probeRemote) {
     // A git remote is evidence a directory is a REPOSITORY. It is not evidence
     // its content is shareable, and this row was the only thing standing
     // between a 187-chat personal message archive and the zip: measured on a
-    // real export, `whatsapp-archive` was proposed `redact` on the strength of
-    // its remote alone and shipped a third party's real name 10 times, plus
-    // per-chat filenames naming the people in them. The deny-list never looked,
+    // real export, a personal message archive (`chat-archive` in F58) was
+    // proposed `redact` on the strength of its remote alone and shipped a third
+    // party's real name 10 times, plus per-chat filenames naming the people in
+    // them. The deny-list never looked,
     // because privacy-tiers §3 matches it against directory names and the
     // directory does not carry a deny token.
     const personal = personalDataShape(group.name) ?? personalDataShape(remote.repo);

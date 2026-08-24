@@ -149,7 +149,7 @@ function writeCorpus(root, { unknownType = false } = {}) {
   const projects = path.join(root, 'projects', 'ws');
   fs.mkdirSync(projects, { recursive: true });
   const cwd = ['C:', 'Users', 'devuser', 'projects', 'alpha'].join(BS);
-  const denied = [cwd, 'private', 'derek-evidence'].join(BS);
+  const denied = [cwd, 'private', 'auditor-notes'].join(BS);
   const sid = '11111111-1111-4111-8111-111111111111';
   const other = '22222222-2222-4222-8222-222222222222';
   const PRIVATE = 'PRIVATE-MATERIAL-TYPED-IN-THE-DENIED-DIRECTORY';
@@ -227,7 +227,7 @@ function writeCorpus(root, { unknownType = false } = {}) {
 
   fs.writeFileSync(
     path.join(root, 'ents.json'),
-    JSON.stringify({ entities: [{ kind: 'person', spellings: ['Ada Wang'], confidence: 'high' }] }),
+    JSON.stringify({ entities: [{ kind: 'person', spellings: ['Nora Lund'], confidence: 'high' }] }),
     'utf8',
   );
   return { cwd, denied, private: PRIVATE };
@@ -380,31 +380,40 @@ const FIXTURES = [
   // F01 — BRIEF §4.5 row 1. Python \b MISSES this; Node \b happens to hit it.
   // The regression guard is against anyone "simplifying" the lookaround back
   // to \b, which would make behaviour runtime-dependent.
-  ['F01', '因為Dean他他想要 / Jake: Latin entity abutting CJK', () => {
-    const t = buildTable([entity('P1', 'person', 'Jake', 'PERSON_1')]);
-    assert.equal(substituteString('因為Dean他他想要', t).out, '因為PERSON_1他想要');
+  ['F01', '因為Dean他想要 / Dean: Latin entity abutting CJK', () => {
+    // `Dean` is fabricated. Shape: a Latin name with a CJK character hard
+    // against BOTH sides and no whitespace anywhere, which is what Python's
+    // \b misses.
+    const t = buildTable([entity('P1', 'person', 'Dean', 'PERSON_1')]);
+    assert.equal(substituteString('因為Dean他想要', t).out, '因為PERSON_1他想要');
   }],
 
   // F02 — BRIEF §4.5 row 2, the other side of the CJK boundary.
-  ['F02', 'Ivy跟小語 / Wei: CJK on the trailing side', () => {
-    const t = buildTable([entity('P1', 'person', 'Wei', 'PERSON_1')]);
-    assert.equal(substituteString('Ivy跟小語', t).out, 'PERSON_1跟路易');
+  ['F02', 'Ivy跟小語 / Ivy: CJK on the trailing side', () => {
+    // Fabricated. Shape: the Latin name leads and the CJK follows, so the
+    // trailing side of the lookaround is the one under test. `小語` must stay
+    // CJK: a Latin word after the name tests nothing new.
+    const t = buildTable([entity('P1', 'person', 'Ivy', 'PERSON_1')]);
+    assert.equal(substituteString('Ivy跟小語', t).out, 'PERSON_1跟小語');
   }],
 
-  // F03 — BRIEF §4.5 row 3. Both \b implementations MISS 林先生/郭, and the
+  // F03 — BRIEF §4.5 row 3. Both \b implementations MISS 林先生/林, and the
   // lookaround HITS it — but hitting it is over-matching inside a longer word,
   // so the rule is length >= 2 and FLAG, never substitute.
-  ['F03', '林先生 / 郭: one-char CJK is flagged, not substituted', () => {
-    const reason = rejectReason('郭');
+  ['F03', '林先生 / 林: one-char CJK is flagged, not substituted', () => {
+    // `林` and `林大明` are fabricated. Shape: a ONE-character CJK surname that
+    // is also the first character of a longer CJK word, and the same surname
+    // in a three-character full name. Both lengths are load-bearing here.
+    const reason = rejectReason('林');
     assert.ok(reason !== null, 'a single-character CJK entity must be rejected');
     assert.match(reason, /single-character CJK/);
-    assert.ok(isCjkOnly('郭'));
-    const t = buildTable([entity('P1', 'person', '郭', null, { rejected: reason, spellings: [] })]);
+    assert.ok(isCjkOnly('林'));
+    const t = buildTable([entity('P1', 'person', '林', null, { rejected: reason, spellings: [] })]);
     assert.equal(substituteString('林先生', t).out, '林先生', 'must not substitute');
     assert.equal(t.flagged.length, 1, 'must be flagged for review');
     // A two-character CJK entity IS substituted.
-    const t2 = buildTable([entity('P2', 'person', '郭大明', 'PERSON_2')]);
-    assert.equal(substituteString('郭大明說', t2).out, 'PERSON_2說');
+    const t2 = buildTable([entity('P2', 'person', '林大明', 'PERSON_2')]);
+    assert.equal(substituteString('林大明說', t2).out, 'PERSON_2說');
   }],
 
   // F04 — BRIEF §4.5 row 4, the correct NON-match. Catches the over-eager
@@ -464,8 +473,8 @@ const FIXTURES = [
   // F08 — I2 over F01..F07 together, plus the independent verifier.
   ['F08', 'substitute then reverse over every earlier fixture (I2)', () => {
     const entities = [
-      entity('P1', 'person', 'Jake', 'PERSON_1'),
-      entity('P2', 'person', 'Wei', 'PERSON_2'),
+      entity('P1', 'person', 'Dean', 'PERSON_1'),
+      entity('P2', 'person', 'Ivy', 'PERSON_2'),
       entity('P3', 'person', 'devuser', 'PERSON_3'),
       entity('P4', 'person', 'devuser', 'PERSON_4'),
       entity('O1', 'org', 'gitroll', 'ORG_1'),
@@ -473,7 +482,7 @@ const FIXTURES = [
     ];
     const t = buildTable(entities);
     const inputs = [
-      '因為Dean他他想要',
+      '因為Dean他想要',
       'Ivy跟小語',
       'array index',
       '-rw-r--r-- 1 devuser 197609 929 x',
@@ -551,7 +560,7 @@ const FIXTURES = [
   }],
 
   // F12 — I3, and PLAN C4: this fires on the real corpus today, so the test
-  // protects a path Ray hits on his first run.
+  // protects a path Sam hits on his first run.
   ['F12', 'a pre-existing PERSON_1 token aborts, and --namespace X clears it', () => {
     const lines = [
       { file: 'a.jsonl', line: 1, text: '{"text":"the plan says PERSON_1 is Ray"}' },
@@ -585,14 +594,14 @@ const FIXTURES = [
     // URL-encoded, on the email rather than the path (§4.6's measured case).
     assert.ok(expandVariants('devuser@gitroll.io').includes('devuser%40gitroll.io'));
     // Backslash-u-escaped CJK, as found inside embedded JSON.
-    assert.equal(backslashUEscape('郭大明'), `${BS}u90ed${BS}u5927${BS}u660e`);
-    assert.ok(expandVariants('郭大明').includes(`${BS}u90ed${BS}u5927${BS}u660e`));
+    assert.equal(backslashUEscape('林大明'), `${BS}u6797${BS}u5927${BS}u660e`);
+    assert.ok(expandVariants('林大明').includes(`${BS}u6797${BS}u5927${BS}u660e`));
 
     // All six forms in ONE string, all replaced.
     const t = buildTable([
       entity('W1', 'workspace', `C:${BS}Users${BS}devuser`, 'WORKSPACE_1'),
       entity('P1', 'person', 'devuser@gitroll.io', 'PERSON_1'),
-      entity('P2', 'person', '郭大明', 'PERSON_2'),
+      entity('P2', 'person', '林大明', 'PERSON_2'),
     ]);
     const s = [
       `C:${BS}Users${BS}devuser`,
@@ -600,11 +609,11 @@ const FIXTURES = [
       '/c/Users/devuser',
       `C:${BS}${BS}Users${BS}${BS}devuser`,
       'devuser%40gitroll.io',
-      `${BS}u90ed${BS}u5927${BS}u660e`,
+      `${BS}u6797${BS}u5927${BS}u660e`,
     ].join(' | ');
     const out = substituteString(s, t).out;
     assert.ok(!out.includes('devuser'), `leaked: ${out}`);
-    assert.ok(!out.includes('u90ed'), `leaked escaped CJK: ${out}`);
+    assert.ok(!out.includes('u6797'), `leaked escaped CJK: ${out}`);
   }],
 
   // F14 — a truncated last line. Exit 3, cli-ux §9 shape, no stack trace.
@@ -756,7 +765,7 @@ const FIXTURES = [
     const file = path.join(dir, 'hard.jsonl');
     const values = [
       { type: 'mode', mode: 'normal', note: '🧑‍💻 family 👨‍👩‍👧‍👦 and 𝕏' },
-      { type: 'mode', mode: 'plan', note: '郭大明 said "ok"\ttab\nnewline' },
+      { type: 'mode', mode: 'plan', note: '林大明 said "ok"\ttab\nnewline' },
       { type: 'mode', mode: 'x', note: `path C:${BS}Users${BS}devuser` },
     ];
     fs.writeFileSync(file, `${values.map((v) => JSON.stringify(v)).join('\n')}\n`, 'utf8');
@@ -806,10 +815,10 @@ const FIXTURES = [
 
     // A legitimate tier-1 entity is still applied through the guard.
     const g2 = buildTable(
-      [entity('T2', 'person', 'Ada', 'PERSON_98', { tier: 1 })],
+      [entity('T2', 'person', 'Nora', 'PERSON_98', { tier: 1 })],
       { forbidInside: pseudonymPattern(null) },
     );
-    assert.equal(substituteString('PERSON_7 met Ada', g2).out, 'PERSON_7 met PERSON_98');
+    assert.equal(substituteString('PERSON_7 met Nora', g2).out, 'PERSON_7 met PERSON_98');
   }],
 
   // F23 — I10 idempotence, and I11: a failed run leaves nothing behind.
@@ -892,7 +901,7 @@ const FIXTURES = [
   // `info`, `support` and `admin`; the guard is that the handle must contain
   // the OS username, which is what makes it demonstrably the uploader's own.
   ['F69', "the uploader's own email handle is an entity, other people's are not", () => {
-    const texts = ['write to devuser@gitroll.io or legal@catalyte.ai, cc support@deel.com'];
+    const texts = ['write to devuser@gitroll.io or legal@kestrelis.ai, cc support@northsky-hr.com'];
     const seeded = seedEntities(
       { USERNAME: 'devuser' },
       { files: [] },
@@ -905,8 +914,8 @@ const FIXTURES = [
       assert.ok(!canonicals.includes(other), `${other} must not become an entity`);
     }
     // The full addresses still are, per §F1/§F2.
-    assert.ok(canonicals.includes('legal@catalyte.ai'));
-    assert.ok(canonicals.includes('support@deel.com'));
+    assert.ok(canonicals.includes('legal@kestrelis.ai'));
+    assert.ok(canonicals.includes('support@northsky-hr.com'));
   }],
 
   // F70 — §F4 required MCP server names to be entities. seed.mjs read them from
@@ -934,11 +943,11 @@ const FIXTURES = [
 
   ['F27', 'the email sweep is precise and finds third-party addresses (§F1, §F7)', () => {
     const found = sweepEmails([
-      'cc legal@catalyte.ai and ray@evansmayadvisory.com about it',
+      'cc legal@kestrelis.ai and dana@norbrookvanceadvisory.com about it',
       'not an email: a@b, foo@, @bar.com, M1019757',
     ]);
-    assert.ok(found.includes('legal@catalyte.ai'));
-    assert.ok(found.includes('ray@evansmayadvisory.com'));
+    assert.ok(found.includes('legal@kestrelis.ai'));
+    assert.ok(found.includes('dana@norbrookvanceadvisory.com'));
     // §F7: a passport-shaped regex matched M1019757, a thermal-paste part
     // number. An email regex cannot.
     assert.equal(found.filter((e) => e.includes('M1019757')).length, 0);
@@ -951,7 +960,10 @@ const FIXTURES = [
     assert.equal(projectShaped('dashboard'), false);
     assert.equal(projectShaped('references'), false);
     assert.equal(projectShaped('private-archive'), true);
-    assert.equal(projectShaped('moss-local'), true);
+    // Fabricated. The shape under test is the hyphen: projectShaped accepts on
+    // [-_.0-9] or a non-ASCII character, so a replacement without one flips
+    // this to false and the assertion stops testing the accept path.
+    assert.equal(projectShaped('note-vault'), true);
     assert.equal(projectShaped('wf_20783'), true);
     // A name with no letter in it is a version or a date, never a project.
     // Seeded from a real cwd on 2026-08-22; substituting it rewrites every
@@ -969,7 +981,10 @@ const FIXTURES = [
       workspaces: [
         { name: 'gitroll', cwd: 'C:/w/gitroll', sessionCount: 61, tier: 'redact', note: 'git remote g/g', denyToken: null },
         { name: 'private-archive', cwd: 'C:/w/private-archive', sessionCount: 4, tier: 'exclude', note: 'deny-list matched: "private"', denyToken: 'private' },
-        { name: 'passport-viz', cwd: 'C:/w/passport-viz', sessionCount: 6, tier: 'unclassified', note: 'NEW', denyToken: null },
+        // Fabricated. Shape: an unclassified row whose name is NOT a deny token
+        // and is not one of the two decided rows above, so parseReview has
+        // something it must drop rather than round-trip.
+        { name: 'passport-map', cwd: 'C:/w/passport-map', sessionCount: 6, tier: 'unclassified', note: 'NEW', denyToken: null },
       ],
       flaggedSessions: [],
       entities: [
@@ -981,7 +996,7 @@ const FIXTURES = [
     const back = parseReview(text);
     assert.equal(back.gitroll, 'redact');
     assert.equal(back['private-archive'], 'exclude');
-    assert.equal(back['passport-viz'], undefined, 'unclassified must not become a decision');
+    assert.equal(back['passport-map'], undefined, 'unclassified must not become a decision');
     // §F6: low-confidence entities are individual rows, never a collapsed count.
     assert.ok(text.includes('PERSON_2'), 'the low-confidence entity must be listed by name');
     assert.ok(text.includes('← check me'));
@@ -1004,11 +1019,11 @@ const FIXTURES = [
     assert.throws(() => readEntities(write('nosp.json', '{"entities":[{"kind":"person"}]}')), RefusalError);
     assert.throws(() => readEntities(path.join(dir, 'missing.json')), RefusalError);
 
-    const good = readEntities(write('ok.json', '{"entities":[{"kind":"person","spellings":["Ada Wang","Ada"],"confidence":"high"}]}'));
+    const good = readEntities(write('ok.json', '{"entities":[{"kind":"person","spellings":["Nora Lund","Nora"],"confidence":"high"}]}'));
     assert.equal(good.ran, true);
     assert.equal(good.entities.length, 1);
     assert.equal(good.entities[0].tier, 1);
-    assert.ok(good.entities[0].spellings.includes('Ada Wang'));
+    assert.ok(good.entities[0].spellings.includes('Nora Lund'));
     // A bare array is accepted too.
     assert.equal(readEntities(write('arr.json', '[{"kind":"org","spellings":["Acme"]}]')).entities.length, 1);
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1112,12 +1127,12 @@ const FIXTURES = [
   }],
 
   ['F35', 'the serialized-form scan catches an escaped CJK entity (§4.6)', () => {
-    const t = buildTable([entity('P1', 'person', '郭大明', 'PERSON_1')]);
+    const t = buildTable([entity('P1', 'person', '林大明', 'PERSON_1')]);
     // JSON.stringify does not escape CJK by default, so the decoded form is
     // what lands; but an embedded JSON string carries the \\uXXXX form, and
     // jsonEscaped is how the scan reaches it.
     assert.equal(jsonEscaped(`a${BS}b`), `a${BS}${BS}b`);
-    const bytes = JSON.stringify({ text: 'a 郭大明 b' });
+    const bytes = JSON.stringify({ text: 'a 林大明 b' });
     assert.equal(residualScan(bytes, t).entityCount, 1, 'the CJK entity must be findable in the bytes');
   }],
 
@@ -1179,24 +1194,24 @@ const FIXTURES = [
     // These logs nest JSON inside JSON: a pasted email body arrives as a
     // string whose own newlines are the two characters backslash + n, and CJK
     // inside it arrives as backslash-u escapes. Before this rule the `n` of
-    // `\n` counted as a word character, so `Best\nJake` was classified as the
+    // `\n` counted as a word character, so `Best\nDean` was classified as the
     // spelling sitting inside a longer word and left in the output — and the
     // residual scan had its own copy of the same rule, so it agreed and
     // reported `known-entity residue: 0` over a zip that named a third party.
     // Found by the live acceptance run, 2026-08-22, in 210 exported sessions.
-    const t = buildTable([entity('P1', 'person', 'Jake', 'PERSON_1')]);
-    assert.equal(substituteString(`Best${BS}nJake${BS}n${BS}nOn Jul`, t).out, `Best${BS}nPERSON_1${BS}n${BS}nOn Jul`);
-    assert.equal(substituteString(`${BS}t${BS}tJake's push`, t).out, `${BS}t${BS}tPERSON_1's push`);
-    assert.equal(substituteString(`${BS}u4e0bJake${BS}u7684`, t).out, `${BS}u4e0bPERSON_1${BS}u7684`);
+    const t = buildTable([entity('P1', 'person', 'Dean', 'PERSON_1')]);
+    assert.equal(substituteString(`Best${BS}nDean${BS}n${BS}nOn Jul`, t).out, `Best${BS}nPERSON_1${BS}n${BS}nOn Jul`);
+    assert.equal(substituteString(`${BS}t${BS}tDean's push`, t).out, `${BS}t${BS}tPERSON_1's push`);
+    assert.equal(substituteString(`${BS}u4e0bDean${BS}u7684`, t).out, `${BS}u4e0bPERSON_1${BS}u7684`);
 
     // Negative controls. F04's correct non-match must survive unchanged, and a
     // doubled backslash means the `n` really is a letter, not an escape.
     const r = buildTable([entity('P2', 'person', 'ray', 'PERSON_2')]);
     assert.equal(substituteString('array index', r).out, 'array index');
-    assert.equal(substituteString('Jakeson', t).out, 'Jakeson', 'a lowercase continuation is still embedded');
-    // A camel-case hump IS a token boundary, though: `JakeJoin` is two words in
-    // any reading, and this is the shape that shipped `CatalyteAI` x187.
-    assert.equal(substituteString('JakeJoin', t).out, 'PERSON_1Join');
+    assert.equal(substituteString('Deanson', t).out, 'Deanson', 'a lowercase continuation is still embedded');
+    // A camel-case hump IS a token boundary, though: `DeanJoin` is two words in
+    // any reading, and this is the shape that shipped `KestrelisAI` x187.
+    assert.equal(substituteString('DeanJoin', t).out, 'PERSON_1Join');
     // An escaped backslash means the `n` really is a letter. Asserted with a
     // lowercase entity, so the camel-hump rule cannot mask the escape rule:
     // one backslash is an escape and the entity follows it, two backslashes
@@ -1228,7 +1243,10 @@ const FIXTURES = [
     const groups = groupSessions(
       [
         session('s1', [`C:${BS}Users${BS}u${BS}projects${BS}gitroll`]),
-        session('s2', [`C:${BS}Users${BS}u${BS}projects${BS}catalyte-whitepaper${BS}scripts`]),
+        // Fabricated. Shape: a project directory with a generic subdirectory
+        // below it, so the group name must come out `scripts` (the last
+        // segment) and not the project. A single-segment path tests nothing.
+        session('s2', [`C:${BS}Users${BS}u${BS}projects${BS}market-report${BS}scripts`]),
       ],
       { homedir: `C:${BS}Users${BS}u` },
     );
@@ -1278,7 +1296,7 @@ const FIXTURES = [
       key: name, name, cwd: `C:/w/${name}`, normCwd: `c:/w/${name}`,
       sessionCount: 1, denyToken: null, unresolved: false, ...extra,
     });
-    const probe = (dir) => (dir === 'C:/w/gitroll' ? { raw: 'gitroll-dev/gitroll' } : null);
+    const probe = (dir) => (dir === 'C:/w/gitroll' ? { raw: 'northwind-co/ledger' } : null);
 
     assert.equal(proposeTier(g('gitroll'), probe).tier, 'redact');
     assert.equal(proposeTier(g('scratch'), probe).tier, 'exclude', 'no remote fails closed');
@@ -1566,21 +1584,21 @@ const FIXTURES = [
   // two agree, which made I4 untested by construction: whatever the substituter
   // declined to replace, the scan declined to report. §4.5 row 4 justifies not
   // FAILING on `ray` inside `array`. It does not justify putting
-  // `mcp__playwright-headless__` and `CatalyteAI` in the same bucket as `array`.
+  // `mcp__playwright-headless__` and `KestrelisAI` in the same bucket as `array`.
   ['F50', 'a separator or a camel hump is a token boundary, an ordinary letter is not', () => {
     const t = buildTable([
       entity('M1', 'machine', 'playwright-headless', 'MACHINE_1'),
-      entity('O1', 'org', 'Catalyte', 'ORG_1'),
-      entity('P1', 'person', 'Ada', 'PERSON_1'),
+      entity('O1', 'org', 'Kestrelis', 'ORG_1'),
+      entity('P1', 'person', 'Nora', 'PERSON_1'),
       entity('O2', 'org', 'gitroll', 'ORG_2'),
       entity('P2', 'person', 'ray', 'PERSON_2'),
     ]);
     const leaks = [
       // The whole §F4 MCP class: the log form is always mcp__NAME__tool.
       ['mcp__playwright-headless__browser_navigate', 'mcp__MACHINE_1__browser_navigate'],
-      ['project_gitroll_site_hk_us.md', 'project_ORG_2_site_hk_us.md'],
-      ['CatalyteAI funds payroll', 'ORG_1AI funds payroll'],
-      ['MeetingAda和Jacob', 'MeetingPERSON_1和Jacob'],
+      ['project_gitroll_site_migration.md', 'project_ORG_2_site_migration.md'],
+      ['KestrelisAI funds payroll', 'ORG_1AI funds payroll'],
+      ['MeetingNora和Ivan', 'MeetingPERSON_1和Ivan'],
     ];
     for (const [before, after] of leaks) assert.equal(substituteString(before, t).out, after, before);
 
@@ -1591,12 +1609,12 @@ const FIXTURES = [
     }
 
     // And the residual scan agrees, because it reads the same two predicates.
-    const scan = residualScan('mcp__playwright-headless__x and CatalyteAI', t, new Set());
+    const scan = residualScan('mcp__playwright-headless__x and KestrelisAI', t, new Set());
     assert.equal(scan.entityCount, 2, 'both must be reported as residue, not counted as embedded');
     assert.equal(residualScan('an array index', t, new Set()).entityCount, 0);
   }],
 
-  // F51 — the org entity is seeded from the git remote `gitroll-dev/gitroll`,
+  // F51 — the org entity is seeded from the git remote `northwind-co/ledger`,
   // i.e. lowercase, and the company writes itself `GitRoll` everywhere. That
   // spelling survived 1,804 times in a real export and the scan had no idea it
   // existed. Enumerating lower/UPPER/Title does not help: `GitRoll` is none of
@@ -1612,7 +1630,7 @@ const FIXTURES = [
       entity('P2', 'person', 'ray', 'PERSON_2'),
     ]);
     for (const [before, after] of [
-      ['GitRoll x CatalyteAI Exchange', 'ORG_1 x CatalyteAI Exchange'],
+      ['GitRoll x KestrelisAI Exchange', 'ORG_1 x KestrelisAI Exchange'],
       ['the GITROLL repo', 'the ORG_1 repo'],
       ['gitroll', 'ORG_1'],
       ['RENATA delacroix', 'PERSON_1 delacroix'],
@@ -1691,20 +1709,20 @@ const FIXTURES = [
   //
   // The scan jumped past each replacement, so an entity that STARTS INSIDE the
   // span just claimed was never examined and its remainder shipped verbatim.
-  // With `the operator` and `Bell Wang Wei` both declared high-confidence persons —
+  // With `the operator` and `Bell Wang Ivy` both declared high-confidence persons —
   // the exact shape the tier-1 schema example invites, two names sharing a
-  // token — the export contained the complete third-party name `Wang Wei`
+  // token — the export contained the complete third-party name `Wang Ivy`
   // while the report read `4 replacements, all reversible  ok` and
   // `known-entity residue  0  ok`. Three gates, all blind to one class.
   ['F53', 'a partially overlapping entity does not ship its tail', () => {
     const t = buildTable([
       entity('P1', 'person', 'the operator', 'PERSON_1'),
-      entity('P2', 'person', 'Bell Wang Wei', 'PERSON_2'),
+      entity('P2', 'person', 'Bell Wang Ivy', 'PERSON_2'),
     ]);
-    const before = 'intro call: the operator Wang Wei and the team';
+    const before = 'intro call: the operator Wang Ivy and the team';
     const r = substituteString(before, t);
-    assert.ok(!r.out.includes('Wang Wei'), `the declared name must not survive: ${r.out}`);
-    assert.ok(!r.out.includes('Kuo'), `no token of either entity may survive: ${r.out}`);
+    assert.ok(!r.out.includes('Wang Ivy'), `the declared name must not survive: ${r.out}`);
+    assert.ok(!r.out.includes('Reed'), `no token of either entity may survive: ${r.out}`);
     assert.equal(r.out, 'intro call: PERSON_1 PERSON_2 and the team');
     assert.equal(reverseString(r.out, r.spans), before, 'I2 still holds over the covering span');
 
@@ -1858,23 +1876,29 @@ const FIXTURES = [
   }],
 
   // F58 — a git remote is evidence a directory is a repository. It is not
-  // evidence its content is shareable. `whatsapp-archive` was proposed `redact`
-  // on the strength of its remote alone and shipped a third party's real name
-  // 10 times plus per-chat filenames naming the people in them; the deny-list
-  // never looked, because privacy-tiers §3 matches it against directory names
-  // and the directory carries no deny token.
+  // evidence its content is shareable. A personal message archive was proposed
+  // `redact` on the strength of its remote alone and shipped a third party's
+  // real name 10 times plus per-chat filenames naming the people in them; the
+  // deny-list never looked, because privacy-tiers §3 matches it against
+  // directory names and the directory carries no deny token.
   ['F58', 'a git remote alone does not make a personal archive shareable', () => {
     const remote = (raw) => ({ raw, owner: raw.split('/')[0], repo: raw.split('/')[1], host: null });
     const group = (name) => ({ name, cwd: `C:${BS}x${BS}${name}`, denyToken: null, unresolved: false });
 
-    const personal = proposeTier(group('whatsapp-archive'), () => remote('me/whatsapp-archive'));
+    // Fabricated. Shape: a whole segment in PERSONAL_TOKENS (here `chat`), so
+    // personalDataShape returns non-null and the proposal drops to
+    // unclassified. A name with no personal segment proposes redact instead
+    // and the fixture asserts nothing.
+    const personal = proposeTier(group('chat-archive'), () => remote('me/chat-archive'));
     assert.equal(personal.tier, 'unclassified', 'a personal archive must not be swept in by its remote');
     assert.match(personal.reason, /personal data/);
 
     // Ordinary work still proposes redact, or the row becomes 29 questions.
-    assert.equal(proposeTier(group('gitroll'), () => remote('gitroll-dev/gitroll')).tier, 'redact');
+    assert.equal(proposeTier(group('gitroll'), () => remote('northwind-co/ledger')).tier, 'redact');
     // Whole segments only: a substring test would call these personal data.
-    assert.equal(personalDataShape('cohort-learning-dashboard'), null);
+    // Fabricated. Shape: an ordinary multi-segment work name whose every
+    // segment is outside PERSONAL_TOKENS, so it must come back null.
+    assert.equal(personalDataShape('learning-signal-dashboard'), null);
     assert.equal(personalDataShape('pipeline-runner'), null);
     assert.equal(personalDataShape('timeline'), null);
     assert.equal(personalDataShape('private-archive'), 'archive');
@@ -1981,7 +2005,7 @@ const FIXTURES = [
     // record that carries the cwd of a LATER moment (BRIEF §4.11).
     assert.ok(!bytes.includes(corpus.private), 'material from the denied directory must not leave');
     // The deny-listed subtree's own path, which used to survive as a tail.
-    assert.ok(!bytes.includes('derek-evidence'), 'the excluded subtree must not be spelled out');
+    assert.ok(!bytes.includes('auditor-notes'), 'the excluded subtree must not be spelled out');
     // §F7-safe credential shapes, E.164 numbers, and the §F3 owner id.
     assert.ok(!bytes.includes('github_pat_'), 'a credential must not leave');
     assert.ok(!bytes.includes('5136 7788'), 'a personal mobile must not leave');
@@ -2020,7 +2044,7 @@ const FIXTURES = [
     writeCorpus(root);
     runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
-    setTier(path.join(out, 'review.md'), 'derek-evidence', 'redact');
+    setTier(path.join(out, 'review.md'), 'auditor-notes', 'redact');
     const args = [
       'export', '--root', root, '--out', out, '--salt-dir', saltDir,
       '--entities', path.join(root, 'ents.json'),
@@ -2036,8 +2060,8 @@ const FIXTURES = [
     // the denied directory back into the session, so the prose a reader would
     // see is not the prose they saw last time. A session whose retained text
     // changes is shown again, whether the corpus changed or the settings did.
-    primeSemanticPass(root, out, saltDir, null, ['--include-denied', 'derek-evidence']);
-    const withFlag = runCli([...args, '--include-denied', 'derek-evidence']);
+    primeSemanticPass(root, out, saltDir, null, ['--include-denied', 'auditor-notes']);
+    const withFlag = runCli([...args, '--include-denied', 'auditor-notes']);
     assert.equal(withFlag.code, 0, withFlag.out);
     assert.match(withFlag.out, /2 sessions from 2 workspaces/, 'the typed confirmation must actually include it');
 
@@ -2059,7 +2083,7 @@ const FIXTURES = [
     );
     fs.writeFileSync(
       path.join(empty, 'ents.json'),
-      JSON.stringify({ entities: [{ kind: 'person', spellings: ['Ada Wang'], confidence: 'high' }] }),
+      JSON.stringify({ entities: [{ kind: 'person', spellings: ['Nora Lund'], confidence: 'high' }] }),
       'utf8',
     );
     runCli(['scan', '--root', empty, '--out', emptyOut, '--salt-dir', path.join(empty, 'salt')]);
@@ -2113,11 +2137,11 @@ const FIXTURES = [
   // --out defaults to the working directory, so the file lands next to the zip.
   ['F64', 'the preview shows what leaves, not a map back to who it was', () => {
     const table = buildTable([
-      entity('P1', 'person', 'Ada Wang', 'PERSON_1'),
+      entity('P1', 'person', 'Nora Lund', 'PERSON_1'),
       entity('P2', 'person', 'devuser', 'PERSON_2'),
       entity('O1', 'org', 'Acme Advisory', 'ORG_1'),
     ]);
-    const before = 'devuser: call with Ada Wang about the Acme Advisory invoice';
+    const before = 'devuser: call with Nora Lund about the Acme Advisory invoice';
     const r = substituteString(before, table);
 
     const text = renderPreview({
@@ -2125,14 +2149,14 @@ const FIXTURES = [
       strings: [{ path: 'x', before, after: r.out, spans: r.spans }],
       table,
       entities: [
-        { id: 'P1', kind: 'person', pseudonym: 'PERSON_1', spellings: ['Ada Wang'], confidence: 'high', source: 'semantic pass', rejected: null, canonical: 'Ada Wang' },
+        { id: 'P1', kind: 'person', pseudonym: 'PERSON_1', spellings: ['Nora Lund'], confidence: 'high', source: 'semantic pass', rejected: null, canonical: 'Nora Lund' },
         { id: 'O1', kind: 'org', pseudonym: 'ORG_1', spellings: ['Acme Advisory'], confidence: 'high', source: 'semantic pass', rejected: null, canonical: 'Acme Advisory' },
       ],
       manifest: { sessions: 1, workspaces: 1, userMessages: 1, zeros: [] },
       checks: [],
     });
 
-    for (const spelling of ['Ada Wang', 'Acme Advisory', 'devuser']) {
+    for (const spelling of ['Nora Lund', 'Acme Advisory', 'devuser']) {
       assert.ok(!text.includes(spelling), `${spelling} must not appear beside its pseudonym`);
     }
     // The excerpt is still there, in exported form, or the preview shows nothing.
@@ -2304,7 +2328,7 @@ const FIXTURES = [
     const real = checkSemanticPass({
       ran: true,
       source: '--entities e.json',
-      entities: [{ id: 'T1', canonical: 'Ada Wang', spellings: ['Ada Wang'], rejected: null }],
+      entities: [{ id: 'T1', canonical: 'Nora Lund', spellings: ['Nora Lund'], rejected: null }],
     });
     assert.equal(real.ok, true);
     // The count in the report is the USABLE count, and it says so when the two
@@ -2313,7 +2337,7 @@ const FIXTURES = [
       ran: true,
       source: '--entities e.json',
       entities: [
-        { id: 'T1', canonical: 'Ada Wang', spellings: ['Ada Wang'], rejected: null },
+        { id: 'T1', canonical: 'Nora Lund', spellings: ['Nora Lund'], rejected: null },
         { id: 'T2', canonical: 'a', spellings: [], rejected: 'too short' },
       ],
     });
@@ -2807,29 +2831,38 @@ const FIXTURES = [
 
     // An identity-document number, only where the words say what it is.
     assert.deepEqual(sweepIdNumbers(['Taiwan passport No. 361234560   U.S. TIN: none']), ['361234560']);
-    assert.deepEqual(sweepIdNumbers(['passport number pending', 'the passport-viz project']), [],
+    // `passport-map` is fabricated, but the word `passport` in it is not
+    // decoration: the shape under test is the cue word appearing with no
+    // digits beside it. Drop the word and this stops testing the guard.
+    assert.deepEqual(sweepIdNumbers(['passport number pending', 'the passport-map project']), [],
       'no number, no entity');
     // §F7's own example: a passport-shaped regex matched a thermal-paste part
     // number, and nothing here says "passport" beside it.
     assert.deepEqual(sweepIdNumbers(['the part is M1019757 and it runs hot']), []);
 
-    // Account ids: stable join keys for a named person.
+    // Account ids: stable join keys for a named person. All four ids are
+    // fabricated. The shapes are what the sweep keys off: `U` + 9 alphanumerics
+    // for a user, `D` for a DM channel, and 32 hex that only counts as an id
+    // when a notion.com URL puts it there, which the negative below pins.
     const ids = sweepPlatformIds([
-      'Participants: A (ID: U06ET0DWQM), B (ID: U06EVQ4GLB)  Channel: DM (ID: D06EVTZZ4J)',
-      'notes at app.notion.com/3290b700541e81a2a23fc0ee24eab375',
+      'Participants: A (ID: U07QX4MN2K), B (ID: U07QX9PT6R)  Channel: DM (ID: D07QXB3WV8)',
+      'notes at app.notion.com/7c41d9a2e8b640f5b1de73a209cc5e84',
     ]);
-    assert.ok(ids.includes('U06ET0DWQM') && ids.includes('D06EVTZZ4J'), `slack ids: ${ids}`);
-    assert.ok(ids.includes('3290b700541e81a2a23fc0ee24eab375'), 'the notion page id');
+    assert.ok(ids.includes('U07QX4MN2K') && ids.includes('D07QXB3WV8'), `slack ids: ${ids}`);
+    assert.ok(ids.includes('7c41d9a2e8b640f5b1de73a209cc5e84'), 'the notion page id');
     // A bare 32-hex string is every content hash in the corpus (§F7).
-    assert.deepEqual(sweepPlatformIds(['sha 3290b700541e81a2a23fc0ee24eab375 of the blob']), []);
+    assert.deepEqual(sweepPlatformIds(['sha 7c41d9a2e8b640f5b1de73a209cc5e84 of the blob']), []);
 
-    // Phone numbers as they appear in a signature block, not in E.164.
+    // Phone numbers as they appear in a signature block, not in E.164. The
+    // digits are fabricated; the four punctuation shapes are what is under
+    // test, so changing a bracket or a separator breaks the fixture and
+    // changing a digit does not.
     const phones = sweepPhones([
-      'M: +1 (650) 665 4812',
-      'HK (+852) 5136 0512 / (+886) 976 570 312',
-      'office (650) 877-4012 or 801-401-9012',
+      'M: +1 (650) 555 0148',
+      'HK (+852) 5550 0142 / (+886) 900 123 456',
+      'office (650) 555-0173 or 801-555-0119',
     ]);
-    for (const want of ['+1 (650) 665 4812', '(+852) 5136 0512', '(650) 877-4012', '801-401-9012']) {
+    for (const want of ['+1 (650) 555 0148', '(+852) 5550 0142', '(650) 555-0173', '801-555-0119']) {
       assert.ok(phones.includes(want), `${want} survived: ${phones}`);
     }
     assert.deepEqual(sweepPhones(['built 2026-08-22 from 1.2.3', 'range 2024-2025']), [],
@@ -2844,7 +2877,7 @@ const FIXTURES = [
     // Every new kind mints a token, or the entity is carried and never applied.
     const seeded = buildEntities([
       { kind: 'idnumber', canonical: '361234560', source: 'x', confidence: 'high' },
-      { kind: 'account', canonical: 'U06ET0DWQM', source: 'x', confidence: 'high' },
+      { kind: 'account', canonical: 'U07QX4MN2K', source: 'x', confidence: 'high' },
     ]);
     const assigned = assignPseudonyms(seeded, SALT, null).entities;
     assert.deepEqual(assigned.map((e) => e.pseudonym.replace(/_\d+$/, '')), ['ACCOUNT', 'IDNUM']);
@@ -3321,8 +3354,8 @@ const FIXTURES = [
     assert.equal(over.out, '明天PERSON_1天氣很好', 'BRIEF §4.5: the lookaround cannot stop this');
     assert.equal(over.spans[0].cjk, true, 'so the occurrence has to be counted');
     // A Latin entity is not flagged, or the count means nothing.
-    const latin = buildTable([entity('P2', 'person', 'Jake', 'PERSON_2')]);
-    assert.equal(substituteString('因為Dean他他', latin).spans[0].cjk, false);
+    const latin = buildTable([entity('P2', 'person', 'Dean', 'PERSON_2')]);
+    assert.equal(substituteString('因為Dean他', latin).spans[0].cjk, false);
 
     // SHAPE: two fabricated multi-word entities SHARING A MIDDLE TOKEN,
     // `Rosa Barnard` and `Barnard Freight`. Input (a) writes the shared token
@@ -3403,7 +3436,7 @@ const FIXTURES = [
   // F92 - every gate asks whether a substitution was done correctly. None asks
   // whether it should have been done at all.
   //
-  // Measured 2026-08-24: the ordinary noun for taxation was a declared spelling,
+  // Measured 2026-08-24: the ordinary noun for "meeting" was a declared spelling,
   // Han needles get no boundary rule because isWordChar is /[A-Za-z0-9_]/, and
   // 202 occurrences of a common word were replaced across a corpus already
   // delivered. Serialization invariant green, substitution invariant green,
@@ -5042,8 +5075,8 @@ const FIXTURES = [
     // rule rather than a tidiness rule.
     //
     // Measured on the live corpus after the run rule went in: a declared
-    // workspace "Founders and Wei" proposed "and Wei", which occurred 7 times
-    // and every one of them was an occurrence of the declared name "Wei". The probe
+    // workspace "Founders and Ivy" proposed "and Ivy", which occurred 7 times
+    // and every one of them was an occurrence of the declared name "Ivy". The probe
     // table is sorted longest first, so the 7-character run outranked the
     // 3-character declared spelling and claimed spans that were already
     // covered. The report then said "the prose still names them" about a name
@@ -5053,10 +5086,10 @@ const FIXTURES = [
     // ("van Dijk") proposes no run. For a person the single-word path still
     // proposes "Dijk", which is the half that carries the identity.
     const connector = uncoveredNameParts(
-      [{ kind: 'workspace', spellings: ['Founders and Wei'] }, { kind: 'person', spellings: ['Wei Chen'] }],
-      ['Founders and Wei met, and Wei signed it, and Wei filed it.'],
+      [{ kind: 'workspace', spellings: ['Founders and Ivy'] }, { kind: 'person', spellings: ['Ivy Chen'] }],
+      ['Founders and Ivy met, and Ivy signed it, and Ivy filed it.'],
     ).map((r) => r.part);
-    assert.ok(!connector.includes('and Wei'), `a lowercase connector joined a run: ${JSON.stringify(connector)}`);
+    assert.ok(!connector.includes('and Ivy'), `a lowercase connector joined a run: ${JSON.stringify(connector)}`);
   }],
 
   ['F125', 'a tier-0 spelling of the uploader glued to alphanumerics is reported, with the boundary rule off', () => {
@@ -5159,7 +5192,7 @@ const FIXTURES = [
     // a string nobody wrote is a row nobody can act on.
     assert.deepEqual(
       dict.entities.map((e) => e.spellings),
-      [['Ada Wang']],
+      [['Nora Lund']],
       `the declared spelling was not remembered as written: ${JSON.stringify(dict.entities)}`,
     );
 
@@ -5175,7 +5208,7 @@ const FIXTURES = [
     const entries = readZipFile(path.join(out, zips[0]));
     assert.ok(!entries.some((e) => e.name.includes(DICTIONARY_FILENAME)), 'the dictionary is an archive entry');
     const bytes = entries.map((e) => `${e.name}${NL}${e.data}`).join(NL);
-    assert.ok(!bytes.includes('Ada Wang'), 'the remembered spelling must not be in the archive');
+    assert.ok(!bytes.includes('Nora Lund'), 'the remembered spelling must not be in the archive');
     assert.ok(!bytes.includes('_note'), 'the dictionary body must not be in the archive');
     const repo = fileURLToPath(new URL('..', import.meta.url));
     assert.ok(!fs.existsSync(path.join(repo, DICTIONARY_FILENAME)), 'the dictionary was written into the repository');
@@ -5382,7 +5415,7 @@ const FIXTURES = [
       declared,
       JSON.stringify({
         entities: [
-          { kind: 'person', spellings: ['Ada Wang'], confidence: 'high' },
+          { kind: 'person', spellings: ['Nora Lund'], confidence: 'high' },
           // Two spellings, and that is the case the second strip exists for.
           // An entity whose ONLY spelling is a minted uuid is dropped whole by
           // the first strip and never reaches the merge; one that also carries

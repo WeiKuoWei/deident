@@ -32,12 +32,18 @@ function isWordChar(ch) {
 //     corpus. The log format is always `mcp__NAME__tool`, so `_` on both sides
 //     made the whole §F4 MCP entity class inert — a 100% miss rate on a control
 //     the manifest simultaneously claimed was not implemented.
-//   project_gitroll_site_hk_us_entity_rollback.md, dm-derek-cpa
-//   CatalyteAI x187, AdaWang x3, MeetingAda和Jacob x8
+//   project_gitroll_site_migration.md, dm-vance-cpa
+//   KestrelisAI x187, NoraLund x3, MeetingNora和Ivan x8
+//
+// Those five strings are fabricated stand-ins and the counts are the real
+// ones. The shapes are what the rule turns on: two are `_`-separated with the
+// entity spelling five characters or more, one is `-`-separated, and three are
+// camel humps where the entity is followed by an uppercase letter (`KestrelisAI`)
+// or preceded by one (`MeetingNora`, `NoraLund`).
 //
 // So: an underscore is a boundary for a spelling long enough that an accidental
 // match is not the likelier reading, and a camel-case hump is a boundary
-// always, because `MeetingAda` is two words in any reading. `ray` inside
+// always, because `MeetingNora` is two words in any reading. `ray` inside
 // `array` is untouched by both rules: `ray` is three characters and starts
 // lowercase, so neither fires.
 const SEPARATOR_BOUNDARY_MIN = 5;
@@ -344,9 +350,9 @@ export function substituteString(s, table, forbidOverride = undefined) {
     //
     // Without this the scan jumped the whole replaced span, so a longer entity
     // beginning inside it was never examined and its non-overlapping remainder
-    // shipped verbatim. Declare `the operator` and `Bell Wang Wei` — the shape the
+    // shipped verbatim. Declare `the operator` and `Bell Wang Ivy` — the shape the
     // tier-1 schema example invites, two person entities sharing a token — and
-    // `the operator Wang Wei` became `PERSON_A Wang Wei`, with the substitution
+    // `the operator Wang Ivy` became `PERSON_A Wang Ivy`, with the substitution
     // invariant reporting "all reversible" and the residual scan reporting
     // "0 occurrences", because neither looks for a partially present entity.
     //
@@ -385,7 +391,7 @@ export function substituteString(s, table, forbidOverride = undefined) {
         entityId: hit.entityId,
         tier: hit.tier,
         // Two overlapping entities collapsed into one span. The token they
-        // SHARED is gone, so `A: the operator Wang` and `B: the operator Kuo Wang` both
+        // SHARED is gone, so `A: the operator Wang` and `B: the operator Reed Wang` both
         // come out as `PERSON_a ORG_b` — identical output from different
         // input. I2 still passes because reverseString is fed the spans, which
         // carry the original text; but BRIEF §3 forbids persisting a map, so

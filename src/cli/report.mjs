@@ -62,7 +62,7 @@ let capturing = false;
 // arrives as an ASYNCHRONOUS 'error' event on the stdout socket, so it never
 // passes through main()'s try/catch — a synchronous try/catch cannot catch it,
 // and Node's default handler turns it into a full V8 traceback. BRIEF §2: a
-// traceback on Ray's machine is a failed delivery.
+// traceback on Sam's machine is a failed delivery.
 //
 // Attached here rather than in the entry point because this is the only module
 // that writes to either stream, so a future entry point cannot forget.
@@ -448,7 +448,7 @@ export function renderUnmatched(entities) {
  * How often each declared spelling would be replaced, both tails, no verdict.
  *
  * stderr, like every other finding about the run. Deliberately not a gate: on
- * the 2026-08-24 corpus the ordinary noun for taxation counted 202 and had to
+ * the 2026-08-24 corpus the ordinary noun for "meeting" counted 202 and had to
  * be refused, a real brokerage counted 255 and had to be kept, and a personal
  * name counted 17. No threshold orders those three correctly, so printing the
  * number beside an excerpt and letting a reader decide is the only honest

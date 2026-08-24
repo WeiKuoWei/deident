@@ -40,7 +40,7 @@ Default `public`, because an archive that leaves a machine has left it, and the 
 receives it is not the last person who will hold it.
 
 Each setting is a claim about what the reader already knows, which is what makes it
-checkable. "Is this something Ada already knows?" is a question the owner can answer in
+checkable. "Is this something Nora already knows?" is a question the owner can answer in
 two seconds per row. "Is this a 6 or a 7?" is not.
 
 ## 3. What the setting moves

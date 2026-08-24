@@ -11,10 +11,14 @@ changes slice 1's data path.
 The obvious model is "client work vs personal work". It is wrong, and it is wrong
 in both directions on real data.
 
-- `moss-local` is personal, and it is one of the better demonstrations of skill
+- `note-vault` is personal, and it is one of the better demonstrations of skill
   in the corpus. It should be exported.
-- `private-archive` is personal, and it is a couples-counselling chat archive. It must
+- `private-archive` is personal, and it holds another person's messages. It must
   never leave the machine.
+
+(Workspace names throughout this document are fabricated. What each one has to
+carry is the shape the argument turns on: here, one personal directory that
+should ship and one that must not.)
 
 Same category, opposite treatment. The same failure runs the other way: work on
 our own product is not the same exposure as work on a client's data.
@@ -74,7 +78,7 @@ person facing 29 questions answers none of them. Every row that carries a
 readable signal gets a proposal and the person corrects the ones that are wrong.
 
 Three notes on what the table can and cannot do, measured while implementing it
-(2026-08-22, Ray's corpus, 43 workspaces).
+(2026-08-22, Sam's corpus, 43 workspaces).
 
 **`open` is never proposed.** Repository visibility is not on disk. A remote URL
 says nothing about who may read it, and BRIEF §2 forbids the network call that
@@ -86,8 +90,9 @@ of those rows were `redact` anyway.
 **The deny-list is read from the workspace's own directory, not from every line
 that passed through it.** Applying it to any per-line `cwd` was tried and
 reverted: it excluded the home directory, `ops-handover` and
-`personal-finance` outright, and labelled the last of those `deny-list matched:
-"private"`, which is not true of that workspace. §4 below has three levels for
+`home-budget` outright, and labelled the last of those `deny-list matched:
+"private"`, which is not true of that workspace: its own name carries no deny
+token, which is the whole reason the label was wrong. §4 below has three levels for
 exactly this reason. The wandering line is caught by level 2, twice over: by its
 own deny token, and because the directory it moved into is itself an excluded
 workspace.

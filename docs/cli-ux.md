@@ -59,13 +59,13 @@ reviewed by a second person; a file can.
 # Tiers: exclude | count-only | redact | open
 
 ## workspaces
-redact       gitroll                   61 sessions   gitroll-dev/gitroll (private)
-redact       treasury-fde-bpa          22 sessions   gitroll-dev/... (private)
-open         moss-local                 9 sessions   no remote  ← consider redact
+redact       gitroll                   61 sessions   northwind-co/ledger (private)
+redact       billing-recon-ui          22 sessions   northwind-co/... (private)
+open         note-vault                 9 sessions   no remote  ← consider redact
 exclude      private-archive                  4 sessions   deny-list matched: "private"
 exclude      ops-handover-private   0 sessions   deny-list matched: "private"
 exclude      <home>                    47 sessions   no remote, outside projects/
-unclassified passport-viz               6 sessions   NEW since last export
+unclassified passport-map               6 sessions   NEW since last export
 
 ## sessions worth a second look
 drop   2026-08-14  gitroll   "幫我看一下這個月薪水怎麼算"      cwd touched \private
@@ -298,8 +298,8 @@ added none of that, and found five real half-replacements the person rule
 could not see.
 
 A word starting with a lowercase Latin letter never joins a run. `Founders and
-Wei` proposed `and Wei` at 7 occurrences, every one of them the declared name
-`Wei`: the longer run outranks the declared spelling in the probe table and
+Ivy` proposed `and Ivy` at 7 occurrences, every one of them the declared name
+`Ivy`: the longer run outranks the declared spelling in the probe table and
 claims spans that are already covered.
 
 **Seed spellings that are glued to alphanumerics.** The word-boundary rule is
@@ -387,8 +387,8 @@ Not a stack trace, not a bare exit code.
 ```
   ✗ Refusing to export: 2 workspaces are unclassified.
 
-      passport-viz      6 sessions
-      fde-factory       2 sessions
+      passport-map      6 sessions
+      demo-runner       2 sessions
 
     New workspaces are excluded by default and never exported silently.
     Set a tier for each in review.md, or run with --skip-unclassified to

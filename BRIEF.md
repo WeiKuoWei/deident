@@ -18,7 +18,7 @@ Two consumers, in order:
 
 1. **Now (this week).** The 2026-08-19 Mid Sync-up action item: the whole team
    exports recent session logs, filters anything private, zips them, and hands
-   them to Ada Wang to re-run the team's AI fluency scoring. Seven people,
+   them to Nora Lund to re-run the team's AI fluency scoring. Seven people,
    internal, one time.
 2. **Later.** Ticket 110 + 114: replace EntireIO with an upload tool that has a
    redaction mechanism, for Fellowship apprentices and eventually enterprise
@@ -29,13 +29,13 @@ abstractions are worth keeping, not which features get built now.
 
 ## 2. Non-negotiable constraints
 
-- **It must not throw when Ray runs it.** A traceback on his machine is a
+- **It must not throw when Sam runs it.** A traceback on his machine is a
   failed delivery regardless of how correct the logic is. Every path he can
   hit needs a handled error and a useful message.
 - **Full git history.** Commit per meaningful step with Conventional Commit
   messages (`feat:`, `fix:`, `docs:`, `test:`, `chore:`). No squashing.
   **No AI attribution trailers of any kind** (`Co-Authored-By: Claude`,
-  `Generated with…`, `Claude-Session:`). Commits are authored by Ray's git
+  `Generated with…`, `Claude-Session:`). Commits are authored by Sam's git
   identity only.
 - **Node only, no npm dependencies.** Node v22. Standard library only.
   A dependency is a supply-chain question for a privacy tool; do not open it.
@@ -48,7 +48,7 @@ abstractions are worth keeping, not which features get built now.
 
 | Question | Decision |
 |---|---|
-| Pseudonyms reversible? | **Stable salted hash, no plaintext map file.** `pseudonym = hash(salt + entity)`, salt at `~/.deident-private/salt`. Reversal is done by regenerating the local entity list and hashing candidates. A plaintext map is a portable re-identification key for data that has already left the machine; the raw logs are not. Do not write one. **Qualified 2026-08-22:** where two declared entities OVERLAP in the text the substituter replaces the union and emits both tokens, so the token they shared is gone and two different inputs (`the operator Wang`, `the operator Kuo Wang`) produce identical output. That collapse is not reversible by the documented path, because the spans that would resolve it exist in memory only. The invariant in §4.7(a) is span-relative and still holds; the export prints the count of merged replacements so the caveat is visible rather than implied. |
+| Pseudonyms reversible? | **Stable salted hash, no plaintext map file.** `pseudonym = hash(salt + entity)`, salt at `~/.deident-private/salt`. Reversal is done by regenerating the local entity list and hashing candidates. A plaintext map is a portable re-identification key for data that has already left the machine; the raw logs are not. Do not write one. **Qualified 2026-08-22:** where two declared entities OVERLAP in the text the substituter replaces the union and emits both tokens, so the token they shared is gone and two different inputs (`the operator Wang`, `the operator Reed Wang`) produce identical output. That collapse is not reversible by the documented path, because the spans that would resolve it exist in memory only. The invariant in §4.7(a) is span-relative and still holds; the export prints the count of merged replacements so the caveat is visible rather than implied. |
 | Salt shared across people? | **Per-uploader salt.** Seven teammates uploading to one recipient who also holds the roster is a seven-way guess; a shared salt means cracking one cracks all. AI fluency is scored per person, so cross-uploader entity joins have no consumer. |
 | Semantic (LLM) entity discovery | **Mandatory, not optional.** Without it the tool cannot honestly claim safety (see F1 below). If it did not run, **refuse to emit the zip**. |
 | Code content | **Never exported.** Replaced by a count. There is no per-workspace "is this client code" question and no UI for it. |
@@ -95,7 +95,8 @@ placeholder on a Write/Edit parameter does **not** carry enough.
 
 ### 4.3 `code_added_lines`: `null` and `0` are different, and `0` is dangerous
 
-From `cohort-learning-dashboard/lib/fluency/distill.ts:137-139`:
+From `learning-signal-dashboard/lib/fluency/distill.ts:137-139` (repository name
+fabricated; the file path under it is what the citation needs):
 
 ```ts
 failedWithWork:   (s.code_added_lines ?? 0) > 0
@@ -139,11 +140,17 @@ Measured, identical pattern, same inputs:
 
 ```
                         Python \b   Node \b   lookaround
-因為Dean他他想要 / Jake      MISS       HIT        HIT
-Ivy跟小語 / Wei            MISS       HIT        HIT
-林先生 / 郭                MISS       MISS       HIT
+因為Dean他想要 / Dean      MISS       HIT        HIT
+Ivy跟小語 / Ivy            MISS       HIT        HIT
+林先生 / 林                MISS       MISS       HIT
 array index / ray         MISS       MISS       MISS   <- correct non-match
 ```
+
+The four names are fabricated. What each row has to carry is its shape, and
+losing the shape loses the row: `Dean` is a Latin name with CJK on the leading
+side, `Ivy` is a Latin name with CJK on the trailing side, `林` is a
+single-character CJK entity sitting inside a longer CJK word, and `ray` is a
+three-character name embedded in a longer Latin word.
 
 `/\w/` matches CJK in Python and not in JS. `\b` can never match a pure-CJK
 entity in either runtime.
@@ -154,7 +161,7 @@ prevent over-matching inside a longer CJK word. The length rule shipped and the
 flag did not, so `小明` matched inside `小明天` and corrupted a sentence naming
 nobody with every gate green. Each CJK occurrence is counted, and the count is in
 the manifest. Both cases go in the self-check
-with `因為Dean他他` and `林先生` as fixtures.
+with `因為Dean他` and `林先生` as fixtures.
 
 **Correction, measured 2026-08-22 over a real export.** `_` in that character
 class is wrong, and the cost is not marginal: 870 known-entity occurrences were
@@ -162,19 +169,19 @@ classified "embedded" and shipped verbatim while the gate read `known-entity
 residue 0 ok`. They were `mcp__playwright-headless__browser_navigate` and every
 other MCP server name in the corpus (the log form is always `mcp__NAME__tool`,
 so the §F4 MCP entity class had a 100% miss rate and was inert by
-construction), `project_gitroll_site_hk_us_entity_rollback.md`, `dm-derek-cpa`,
-`CatalyteAI` x187 and `MeetingAda和Jacob` x8. Row 4 above justifies not
+construction), `project_gitroll_site_migration.md`, `dm-vance-cpa`,
+`KestrelisAI` x187 and `MeetingNora和Ivan` x8. Row 4 above justifies not
 FAILING on `ray` inside `array`; it does not justify one bucket for both.
 
 The rule is therefore: `_` is a token boundary for a spelling of five
 characters or more, and a camel-case hump is a token boundary always, because
-`MeetingAda` is two words in any reading. `ray` inside `array` is untouched
+`MeetingNora` is two words in any reading. `ray` inside `array` is untouched
 by either exception — three characters, starts lowercase — so row 4 still
 holds. Fixture F50 pins both directions.
 
 **Second correction, same measurement.** "case-variant only 7" understated the
 case, because the variant table generated case variants only for a path's drive
-letter. The org entity is seeded from the git remote `gitroll-dev/gitroll`, the
+letter. The org entity is seeded from the git remote `northwind-co/ledger`, the
 company writes itself `GitRoll`, and `GitRoll` survived **1,804 times** in a
 real export with the scan unaware it existed. Enumerating lower/UPPER/Title does
 not help: `GitRoll` is none of them. Spellings of four characters or more are
@@ -242,7 +249,9 @@ per-line `cwd` value as well.
 
 `:`, `\`, `/` and `.` all collapse to `-`. Observed collisions:
 `C--Users-devuser--claude-skills` could be `.claude\skills` or `-claude-skills`;
-`...-moss-local-src` is ambiguous; case is preserved so `projects` and
+`...-note-vault-src` is ambiguous (the name is fabricated; the shape is a
+hyphenated basename with a further segment after it, which is what makes the
+`-` unreadable); case is preserved so `projects` and
 `Projects` are two directories for one Windows path.
 
 Storage root is overridable by `CLAUDE_CONFIG_DIR` (official). Since Claude Code
@@ -290,8 +299,8 @@ a person's own added token is excluded by default and requires a typed confirmat
 The residual scan searches for **known** entities. A third-party name that the
 seed sources never knew about and the semantic pass missed is, by construction,
 undetectable by it. Measured: 230 distinct emails across a 90-file sample, **228
-of them not the user** (`legal@catalyte.ai`, `evansmayadvisory.com`,
-`deel.com`, `nowcfo.com`, `fearless.com`). Emails have a regex. **Names do not.**
+of them not the user** (`legal@kestrelis.ai`, `norbrookvanceadvisory.com`,
+`northsky-hr.com`, `ledgerpost.com`, `ironvale.com`). Emails have a regex. **Names do not.**
 
 Required:
 - The indicator must read **`known-entity residue: 0`**, never a bare green
@@ -460,11 +469,11 @@ no server, no browser UI.
    is written.**
 7. `--preview` writes a diff to a file for inspection in the user's own editor;
    otherwise write the zip.
-8. One `--selftest` with assert-based fixtures covering, at minimum: `因為Dean他他`,
+8. One `--selftest` with assert-based fixtures covering, at minimum: `因為Dean他`,
    `林先生`, `array`/`ray` non-match, an `ls -l` line, a prefix-collision pair, an
    `Edit` record whose net line count is 0 but whose added count is not.
 
-Test data is Ray's own real mixed zh/en sessions, not synthetic fixtures.
+Test data is Sam's own real mixed zh/en sessions, not synthetic fixtures.
 
 **Slice 2 and beyond — do not build until triggered.**
 
@@ -472,10 +481,10 @@ Test data is Ray's own real mixed zh/en sessions, not synthetic fixtures.
 |---|---|
 | Browser review UI | the first uploader who is not on the team |
 | Plaintext reversible map | an uploader who does not retain the original files |
-| `boundary_signals` annotation | Ada reports a real granularity failure with an example |
+| `boundary_signals` annotation | Nora reports a real granularity failure with an example |
 | manifest + merge script | the platform has merge logic that consumes it |
 | Any non-Claude-Code adapter | see §8 |
-| subagent/workflow tree | Ada asks for orchestration evidence and says the parent session's tool_use records are insufficient |
+| subagent/workflow tree | Nora asks for orchestration evidence and says the parent session's tool_use records are insufficient |
 
 ## 8. Adapter research — do this from vendor sources, not from this machine
 
@@ -523,7 +532,7 @@ exports carry prose and timestamps only, so they can support Framing / Precision
 ## 9. Definition of done
 
 - `node deident.mjs --selftest` passes.
-- `node deident.mjs --preview` runs to completion on Ray's real corpus with no
+- `node deident.mjs --preview` runs to completion on Sam's real corpus with no
   unhandled exception.
 - A full export produces a zip, and the residual scan reports zero known-entity
   residue.

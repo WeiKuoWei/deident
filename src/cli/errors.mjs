@@ -57,7 +57,7 @@ export function osErrorLine(err) {
 
 /**
  * Wrap an unexpected throw so the entry point never prints a traceback.
- * BRIEF §2: a traceback on Ray's machine is a failed delivery.
+ * BRIEF §2: a traceback on Sam's machine is a failed delivery.
  */
 export function wrapUnexpected(err, context) {
   if (err instanceof DeidentError) return err;

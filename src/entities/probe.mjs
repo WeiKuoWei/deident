@@ -4,8 +4,10 @@
 // asks whether it should have been done at all, and a wrong replacement that is
 // reversible satisfies all five of them.
 //
-// Measured 2026-08-24 on the live entity file: `課稅` — an ordinary noun meaning
-// taxation — was a declared spelling, so it was a needle. `isWordChar` is
+// Measured 2026-08-24 on the live entity file: `會議` — an ordinary noun meaning
+// "meeting" — was a declared spelling, so it was a needle. The word is
+// fabricated and the counts are real; the shape is that it is HAN, which is
+// what leaves it with no boundary rule. `isWordChar` is
 // /[A-Za-z0-9_]/, so a Han needle gets needsLeft false and needsRight false and
 // therefore no boundary rule at all. 202 occurrences of a common word were
 // replaced with a pseudonym across a corpus that had already been delivered,
@@ -14,8 +16,8 @@
 // find it. This file would have printed it on the first run.
 //
 // It is deliberately NOT a gate. Frequency does not separate a noun from a name:
-// on the same corpus 課稅 (noun, must not be replaced) counted 202, 小凱拉 (a
-// name, must be replaced) counted 17, and 富途 (a brokerage, a real identity)
+// on the same corpus 會議 (noun, must not be replaced) counted 202, 林大明 (a
+// name, must be replaced) counted 17, and 遠帆 (a brokerage, a real identity)
 // counted 255 in between. A threshold that catches the first would refuse the
 // third, which is §F7's cry-wolf failure arriving on schedule. The number goes
 // in front of a reader; the reader decides.
@@ -170,8 +172,8 @@ const MAX_RUN_WORDS = 4;
  * One condition on top, and it is a correctness rule rather than a tidiness
  * one: a word that starts with a lowercase Latin letter cannot be part of a
  * run. Measured on the live corpus after the run rule went in, a declared
- * `Founders and Wei` proposed `and Wei` at 7 occurrences, and every one of
- * them was an occurrence of the declared name `Wei`. The probe table is sorted
+ * `Founders and Ivy` proposed `and Ivy` at 7 occurrences, and every one of
+ * them was an occurrence of the declared name `Ivy`. The probe table is sorted
  * longest first, so a run that merely prefixes a declared spelling with a
  * connector outranks it and claims spans that are already covered, and the
  * report then says the prose still names someone the export replaces.

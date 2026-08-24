@@ -162,14 +162,17 @@ export function seedEntities(env, corpus, opts = {}) {
   // --- Emails found in the retained text itself.
   //
   // §F1 measured 230 distinct emails across a 90-file sample, 228 of them NOT
-  // the user: legal@catalyte.ai, evansmayadvisory.com, deel.com, nowcfo.com,
-  // fearless.com. §F2 says third parties never consented and are
-  // force-replaced with no opt-out. §F1 also says the thing that makes this
-  // tractable: "Emails have a regex. Names do not."
+  // the user. The domains below are fabricated stand-ins for the real
+  // counterparties; the shape they carry is the only thing under discussion,
+  // which is that a third-party domain looks exactly like the uploader's own:
+  // legal@kestrelis.ai, norbrookvanceadvisory.com, northsky-hr.com,
+  // ledgerpost.com, ironvale.com. §F2 says third parties never consented and
+  // are force-replaced with no opt-out. §F1 also says the thing that makes
+  // this tractable: "Emails have a regex. Names do not."
   //
   // This is not in BRIEF §7.3's seed list, and without it the tool leaks. The
   // measured case on this corpus: `devuser@gitroll.io` and
-  // `devuser@example.net` have no tier-0 source at all — git config carries
+  // `devuser@brightfern.ai` have no tier-0 source at all — git config carries
   // only the personal address — so the local part survived tier 0 in 46
   // places. An email regex is also precisely the shape §F7 asks for: it
   // cannot match a thermal-paste part number.
@@ -471,8 +474,11 @@ const SEPARATOR_RE = /[-. ]/;
 // Measured on a real export: 12 distinct numbers survived beside a printed
 // `0 phone numbers   103 replaced (36 distinct)`, including the uploader's own
 // mobile in a resume header. Every one came out of a signature block or a
-// contact table: `(+852) 5136 0512`, `M: +1 (650) 665 4812`, `(650) 877-4012`,
-// `801-401-9012`. §F6b required a leading `+`, a country code and 8-15 digits
+// contact table. The digits below are fabricated (the 555-01xx reserved
+// range); the four PUNCTUATION shapes are the real ones and are the whole
+// point, because §F6b matched none of them:
+// `(+852) 5550 0142`, `M: +1 (650) 555 0148`, `(650) 555-0173`,
+// `801-555-0119`. §F6b required a leading `+`, a country code and 8-15 digits
 // CONTIGUOUSLY, so it fired only on the one form that does not appear in a
 // signature block.
 //

@@ -3,7 +3,7 @@
 Two consumers, and only the first one is real today.
 
 **Now.** The 2026-08-19 Mid Sync-up action item: the team exports recent session
-logs, filters anything private, and hands the result to Ada Wang to re-run the
+logs, filters anything private, and hands the result to Nora Lund to re-run the
 team's AI fluency scoring. Seven people, internal, once. There is no receiving
 endpoint and no platform pipeline to attach to yet.
 
@@ -41,13 +41,13 @@ third category is called out separately below, because it is neither.
 | Piece | Trigger |
 |---|---|
 | Browser review GUI | The first uploader who is not on the team. |
-| `deident push`, auth, resumable chunked upload | A receiving endpoint exists. Blocked on Ada's pipeline shape, not on us. |
+| `deident push`, auth, resumable chunked upload | A receiving endpoint exists. Blocked on Nora's pipeline shape, not on us. |
 | The receiving endpoint itself | The platform decides what it wants to ingest. |
 | `count-only` and `open` tiers | Someone declines to share content but wants to be counted. Slice 1 runs on `exclude` and `redact` alone. |
 | Incremental **logic** (new / changed / already sent) | The second export. Cheap once the ledger has entries. |
-| Semantic session grouping | The user asks for it, or Ada reports the granularity is actually broken with an example. Until then `unresolved` is the honest value. |
+| Semantic session grouping | The user asks for it, or Nora reports the granularity is actually broken with an example. Until then `unresolved` is the honest value. |
 | Any non-Claude-Code adapter | Somebody on the team produces a real log in that format to test against. Vendor docs alone are not enough to write a parser. |
-| The subagent and workflow tree | Ada asks for orchestration evidence and says the parent session's `Agent` / `Workflow` records are insufficient. It is 931 MB of machine-to-machine traffic with no human turns. |
+| The subagent and workflow tree | Nora asks for orchestration evidence and says the parent session's `Agent` / `Workflow` records are insufficient. It is 931 MB of machine-to-machine traffic with no human turns. |
 
 ## Neither: things that are not ours to fix
 
