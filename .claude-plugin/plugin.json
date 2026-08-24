@@ -1,0 +1,9 @@
+{
+  "name": "deident",
+  "version": "0.1.0",
+  "description": "De-identify your AI coding-agent session logs and pack them into an archive you can hand to someone else. Reads local files, writes local files, makes no network calls.",
+  "author": { "name": "GitRoll" },
+  "homepage": "https://github.com/gitroll-dev/deident",
+  "license": "MIT",
+  "skills": "./skills/"
+}

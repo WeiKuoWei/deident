@@ -203,9 +203,14 @@ export function semanticRefusal(candidatesPath, why = 'absent') {
         '',
         candidatesPath ? `The tier-0-cleaned prose to review is at:  ${candidatesPath}` : '',
       ].filter((line) => line !== ''),
+      // A remedy is a thing to do, and the thing to do is the same in every
+      // harness: produce the candidates file, read it, write the entity list.
+      // This used to name a slash command that existed only with the working
+      // directory inside this repository, so the tool's most careful moment
+      // named a step a Codex user, or anyone working elsewhere, could not run.
       remedies: [
-        { label: 'Inside Claude Code', command: '/deident-scan' },
-        { label: 'Or supply a list', command: 'deident export --entities entities.json' },
+        { label: 'Produce the prose to read', command: 'deident export --preview' },
+        { label: 'Then supply the list', command: 'deident export --entities deident-entities.json' },
       ],
     });
   }
@@ -220,8 +225,8 @@ export function semanticRefusal(candidatesPath, why = 'absent') {
         : 'Run "deident export --preview" first to produce the candidates file.',
     ],
     remedies: [
-      { label: 'Inside Claude Code', command: '/deident-scan' },
-      { label: 'Or supply a list', command: 'deident export --entities entities.json' },
+      { label: 'Produce the prose to read', command: 'deident export --preview' },
+      { label: 'Then supply the list', command: 'deident export --entities deident-entities.json' },
     ],
   });
 }

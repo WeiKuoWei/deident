@@ -3663,6 +3663,56 @@ const FIXTURES = [
     assert.ok(checkRuntime({ node: 'not-a-version' }) instanceof UsageError);
     assert.ok(checkRuntime({}) instanceof UsageError);
   }],
+  // F103 - the hardest gate in the tool told you to run a command you do not
+  // have.
+  //
+  // semanticRefusal printed `{ label: 'Inside Claude Code', command: '/deident-scan' }`
+  // as its FIRST remedy, on both branches, on the one refusal BRIEF section 3
+  // makes mandatory. That slash command existed only when the working directory
+  // was inside this repository, so for a Codex user, or a Claude Code user
+  // working anywhere else, the tool's most careful moment named a remedy that
+  // could not be run.
+  //
+  // The fix is not a better slash command. A remedy is a thing to do, and the
+  // thing to do is the same in every harness: produce the candidates file, read
+  // it, write the entity list. So the remedy names files and a CLI invocation,
+  // which is portable by construction.
+  ['F103', 'no refusal names a command that belongs to one harness', () => {
+    const HARNESS_SHAPED = /(^|"|`|\s)\/[a-z][a-z0-9-]{2,}(\s|"|`|$)/;
+    const root = fileURLToPath(new URL('.', import.meta.url));
+    const offenders = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!e.name.endsWith('.mjs') || e.name === 'selftest.mjs') continue;
+        const text = fs.readFileSync(p, 'utf8');
+        for (const m of text.matchAll(/command:\s*(`[^`]*`|'[^']*')/g)) {
+          const cmd = m[1].slice(1, -1);
+          if (HARNESS_SHAPED.test(cmd)) offenders.push(`${e.name}: ${cmd}`);
+        }
+        // And the label must not promise one either.
+        for (const m of text.matchAll(/label:\s*'([^']*)'/g)) {
+          if (/inside claude code|in codex|in cursor/i.test(m[1])) offenders.push(`${e.name}: label ${m[1]}`);
+        }
+      }
+    };
+    walk(root);
+    assert.deepEqual(offenders, [], `harness-specific remedies: ${offenders.join('; ')}`);
+
+    // The operator contract ships in two places because harnesses disagree
+    // about where to look. They must not drift: a reader following the stale
+    // one is exactly how the entity-kind list fell 62 commits behind.
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const skill = fs.readFileSync(path.join(repo, 'skills', 'deident', 'SKILL.md'), 'utf8');
+    const agents = fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8');
+    const bodyOf = (text) => text.slice(text.indexOf('# deident')).trim();
+    assert.equal(bodyOf(skill), bodyOf(agents), 'SKILL.md and AGENTS.md have drifted');
+
+    // And the skill must not restate a constant it can read at runtime, which
+    // is the drift that already happened once.
+    assert.doesNotMatch(skill, /person \| org \| client \| workspace \| machine/);
+  }],
 ];
 
 export function selftest() {
