@@ -67,8 +67,33 @@ export const MIN_REPLAY_MATCH_CHARS = 40;
 /** How many example occurrences a refusal or a review row prints. */
 export const EXAMPLES_PER_REPORT = 5;
 
-/** Characters of tier-0-cleaned prose written to the candidates file. */
-export const CANDIDATE_EXCERPT_CHARS = 400;
+/**
+ * Characters of one prose chunk written to the candidates file.
+ *
+ * This replaces a 400-character cap that dropped 76.2% of the prose and
+ * counted none of it. Removing the cap outright was measured over a copy of
+ * the whole depth-0 corpus (216 files, 934 MB, one namespace shift, unclassified
+ * workspaces skipped): the candidates file goes from 2,957,659 to 13,026,553
+ * bytes, against the 915 KB docs/cli-ux.md §11b budgets for the stage. So a cap
+ * stays.
+ *
+ * The value is taken from the measured post-retention distribution rather than
+ * guessed. Over the twelve largest sessions, 17,466 prose chunks: p50 62
+ * characters, p90 236, p95 404, p99 1,562, longest 10,045. At 20,000 the cap
+ * fires on nothing that corpus contains, which is the point: it bounds the
+ * pathological single chunk BRIEF measured at 938,529 characters (a pasted
+ * document, a dumped log) without touching prose anybody wrote.
+ *
+ * Most of the growth is the dedupe change, not the cap, and that half is not
+ * restorable: the old key was a chunk's first 80 characters and it discarded
+ * 1,590 chunks (10,443,749 characters) that were not identical to the chunk
+ * that claimed the key. No cap value brings this file near 915 KB without
+ * reinstating exactly that silent loss.
+ *
+ * Whatever this cap does drop is counted and printed, in the file and in the
+ * report. A silent cap is what made the old one a disclosure.
+ */
+export const CANDIDATE_CHUNK_CHARS = 20_000;
 
 /**
  * Content that must not leave even when the session around it may.

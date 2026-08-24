@@ -413,8 +413,8 @@ export function renderWrote(path, bytes, saltPath) {
   say('');
 }
 
-export function renderCandidates(path, chars, omitted = 0) {
-  if (machine !== null) { machineAdd({ candidates: { path, chars, omitted } }); return; }
+export function renderCandidates(path, chars, omitted = 0, omittedChars = 0) {
+  if (machine !== null) { machineAdd({ candidates: { path, chars, omitted, omittedChars } }); return; }
   say('');
   say('  Tier-1 candidates written');
   say(`    ${path}    ${humanBytes(chars)} of tier-0-cleaned prose`);
@@ -422,6 +422,12 @@ export function renderCandidates(path, chars, omitted = 0) {
   // like a corpus that shrank rather than like a memo that worked.
   if (omitted > 0) {
     say(`    ${n(omitted)} session${omitted === 1 ? '' : 's'} left out: unchanged since you last read them`);
+  }
+  // The per-chunk cap, said out loud. Its predecessor cut 76.2% of the prose
+  // and printed nothing, so the person asked to declare the names in this file
+  // had no way to know how much of it they were not being given.
+  if (omittedChars > 0) {
+    say(`    ${n(omittedChars)} characters of prose were not shown: one chunk ran past the per-chunk limit`);
   }
   say('');
 }

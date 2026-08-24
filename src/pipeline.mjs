@@ -682,7 +682,7 @@ export async function runExport(flags, env) {
     // run shows the same prose again, which is the cost this whole file exists
     // to remove.
     rememberShown(saltDir, dictionary, perSession.filter((s) => showAll || shown.has(s.id)));
-    report.renderCandidates(candidates.path, candidates.chars, omitted);
+    report.renderCandidates(candidates.path, candidates.chars, omitted, candidates.omittedChars);
     if (semantic.why === 'uncovered') {
       throw coverageRefusal(uncovered, perSession.length, candidates.path, { full: flags.full });
     }

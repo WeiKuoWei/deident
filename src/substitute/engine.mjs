@@ -121,6 +121,35 @@ function caseInsensitive(spelling) {
 }
 
 /**
+ * Lowercase, with final sigma folded onto sigma.
+ *
+ * `String.prototype.toLowerCase` applies Unicode's Final_Sigma rule, so a
+ * trailing `Σ` in a whole word becomes `ς`. equalsFold lowers ONE isolated
+ * character at a time, and `Σ` with nothing after it always gives `σ`. The
+ * table lowered whole spellings and the matcher lowered characters, so they
+ * disagreed at the last character of every Greek entity ending in sigma, and
+ * a spelling did not match even against its own text.
+ *
+ * Silent, and it defeated the gate too: residual.mjs imports equalsFold so the
+ * two can never drift. They did not drift; they were wrong together, and the
+ * export printed `known-entity residue 0` with the plaintext name in the
+ * archive.
+ *
+ * Both sides route through here. Whole-window lowercasing inside equalsFold
+ * would allocate a string per comparison across tens of megabytes, and
+ * Final_Sigma is the ONLY context-sensitive lowercase mapping in Unicode's
+ * default non-locale-tailored algorithm, so one character covers the class.
+ * `ς` and `σ` are both single UTF-16 units, so span lengths and the reversal
+ * invariant are untouched.
+ *
+ * Exported so the residual scan cannot drift from the substituter.
+ */
+export function foldLower(s) {
+  const lower = s.toLowerCase();
+  return lower.includes('ς') ? lower.replaceAll('ς', 'σ') : lower;
+}
+
+/**
  * Does `entry` match `s` at `at`? The matched TEXT may differ from the entry's
  * spelling, which is why every caller records `s.slice(at, end)` as the span's
  * spelling rather than the entry's — reversal has to restore what was there.
@@ -144,7 +173,7 @@ export function equalsFold(s, at, lower) {
   for (let k = 0; k < lower.length; k += 1) {
     const ch = s[at + k];
     if (ch === lower[k]) continue;
-    if (ch === undefined || ch.toLowerCase() !== lower[k]) return false;
+    if (ch === undefined || foldLower(ch) !== lower[k]) return false;
   }
   return true;
 }
@@ -256,7 +285,7 @@ export function buildTable(entities, opts = {}) {
           // word (小明 inside 小明天) corrupted a sentence that named nobody,
           // with every gate green and nothing in the manifest saying so.
           cjk: isCjkOnly(spelling),
-          lower: caseInsensitive(spelling) ? spelling.toLowerCase() : null,
+          lower: caseInsensitive(spelling) ? foldLower(spelling) : null,
         }),
       );
     }

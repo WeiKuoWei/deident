@@ -18,7 +18,7 @@ import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
 // The left-boundary rule is imported, never re-implemented. When the scan had
 // its own copy, both copies had the same escape-tail bug and agreed with each
 // other, which is how a leak was reported as `known-entity residue: 0`.
-import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold } from '../substitute/engine.mjs';
+import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold, foldLower } from '../substitute/engine.mjs';
 
 const WORD_RE = /[A-Za-z0-9_]/;
 function isWordChar(ch) {
@@ -108,7 +108,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       // corpus size. Most probes in a bucket differ from the text at the
       // SECOND character, and rejecting those with one comparison rather than
       // a full fold-compare is the cheapest large constant available.
-      const lower = entry.lower ? form.toLowerCase() : null;
+      const lower = entry.lower ? foldLower(form) : null;
       const probe = {
         form,
         entry,
@@ -163,7 +163,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       if (second !== null) {
         const next = bytes[i + 1];
         if (next === undefined) continue;
-        if (next !== second && (secondLower === null || next.toLowerCase() !== secondLower)) continue;
+        if (next !== second && (secondLower === null || foldLower(next) !== secondLower)) continue;
       }
       if (lower === null ? !bytes.startsWith(form, i) : !equalsFold(bytes, i, lower)) continue;
       // A match that begins inside a JSON escape sequence is an artifact of
@@ -270,7 +270,14 @@ function excerptAt(bytes, at, len) {
   return bytes.slice(start, end).replace(/\s+/g, ' ');
 }
 
-const EXCERPT_CONTEXT = Number(process.env.DEIDENT_EXCERPT_CONTEXT ?? 30);
+// The same `??` root cause as the MCP seeder, with a smaller blast radius and
+// a worse failure. `??` treats only null and undefined as absent, so a blank
+// DEIDENT_EXCERPT_CONTEXT became Number('') === 0 and every printed example
+// lost its surrounding context. A non-numeric value was worse still: NaN
+// reaches String.prototype.slice, every excerpt comes out empty, and the
+// examples ARE the remedy a residue refusal offers.
+const EXCERPT_CONTEXT_SET = Number(process.env.DEIDENT_EXCERPT_CONTEXT);
+const EXCERPT_CONTEXT = Number.isFinite(EXCERPT_CONTEXT_SET) && EXCERPT_CONTEXT_SET > 0 ? EXCERPT_CONTEXT_SET : 30;
 
 /** The report line. cli-ux §7: this exact wording, never "safe". */
 export function residueLine(scan) {

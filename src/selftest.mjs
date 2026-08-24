@@ -68,7 +68,8 @@ import {
 import { buildZip, readZip, readZipFile, MAX_ENTRIES } from './output/zip.mjs';
 import { renderPreview } from './output/preview.mjs';
 import { parseReview, parseSessionDrops, readSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
-import { readEntities } from './entities/tier1.mjs';
+import { readEntities, writeCandidates } from './entities/tier1.mjs';
+import { CANDIDATE_CHUNK_CHARS } from './retain/constants.mjs';
 import { DICTIONARY_FILENAME, mergeEntities } from './policy/dictionary.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
@@ -5534,6 +5535,216 @@ const FIXTURES = [
       'a list written from the changed session alone would cover a corpus nobody re-read',
     );
     assert.doesNotMatch(candidates, /not in this file/, 'nothing is omitted when there is no list to build on');
+  }],
+
+  // F133 — the candidates file is the ONLY surface the semantic reader ever
+  // sees, and it used to truncate every chunk at 400 characters. Measured over
+  // a copy of the real corpus (216 depth-0 files, 87,797 prose chunks,
+  // pre-filter): 27,186 KB of prose extracted, 6,468 KB reaching the reader,
+  // so 76.2% of it was dropped. 5,904 chunks (6.7%) were longer than the cap
+  // and the longest was 938,529 characters. A name past the cap could not be
+  // declared, so the residual scan could not look for it and the export
+  // printed `known-entity residue 0` over a name nobody had been shown.
+  //
+  // "Ingrid Halvorsen" is fabricated. The shape is what the fixture needs: a
+  // two-word Latin personal name, which is exactly the class §F1 says has no
+  // regex and can only come from the reader.
+  ['F133', 'a name 900 characters into one prose chunk reaches the candidates file', () => {
+    const file = path.join(tmpdir(), 'candidates.txt');
+    const marker = 'Ingrid Halvorsen';
+    const prefix = 'the session rambles on and on. '.repeat(30).slice(0, 900);
+    const chunk = `${prefix}${marker} reviewed it.`;
+    assert.equal(chunk.indexOf(marker), 900, 'the fixture must plant the name past any excerpt cap');
+
+    const written = writeCandidates([chunk], file);
+    const body = fs.readFileSync(file, 'utf8');
+    assert.ok(body.includes(marker), 'a name past the excerpt cap never reached the reader');
+    assert.ok(body.includes(chunk), 'the whole chunk goes, not a window of it: a window can split a name');
+    assert.equal(written.chars, Buffer.byteLength(body, 'utf8'), 'the reported size must be the file');
+  }],
+
+  // F134 — the second loss, and the silent one. The dedupe key was a chunk's
+  // first 80 characters and the `seen` set is global across sessions, so a
+  // chunk that merely OPENED like an earlier one was discarded whole.
+  // Measured on the same corpus copy: 1,590 chunks (10,443,749 characters)
+  // were dropped by that key while not being byte-identical to the chunk that
+  // claimed it. Session prose opens the same way constantly — a pasted error,
+  // a repeated instruction, the same command re-run — and the names are in
+  // what comes after.
+  //
+  // Both names are fabricated; the shape is two different third parties named
+  // in two turns that begin identically.
+  ['F134', 'two chunks sharing their first 80 characters both reach the reader', () => {
+    const file = path.join(tmpdir(), 'candidates.txt');
+    const shared = 'I asked the agent to redo the database migration script and it failed again at step ';
+    assert.ok(shared.length >= 80, `the shared opening must fill the old 80-character key: ${shared.length}`);
+    const first = `${shared}four. Ingrid Halvorsen wrote it.`;
+    const second = `${shared}nine. Ottoline Marsh wrote that one.`;
+    assert.equal(first.slice(0, 80), second.slice(0, 80), 'the fixture must collide on the old key');
+
+    writeCandidates([first, second], file);
+    const body = fs.readFileSync(file, 'utf8');
+    assert.ok(body.includes('Ingrid Halvorsen'), 'the first chunk is missing');
+    assert.ok(body.includes('Ottoline Marsh'), 'a chunk was dropped for opening like another one');
+  }],
+
+  // F134b — the cap that remains, and the reason it is not the one that was
+  // removed. Measured on a copy of the real corpus with the cap off: the
+  // candidates file goes from 2,957,659 to 13,026,553 bytes, so removing the
+  // cap outright lands far above the 915 KB docs/cli-ux.md §11b budgets. The
+  // cap therefore stays, at a value taken from the measured post-retention
+  // distribution rather than from the old 400, and the loss it causes is
+  // COUNTED and printed. A reader handed a short file has to be told it is
+  // short; that is the whole difference from what was there before.
+  ['F134b', 'a chunk past the cap is truncated, and the omitted characters are counted and stated', () => {
+    const file = path.join(tmpdir(), 'candidates.txt');
+    const over = 5_000;
+    const chunk = 'a'.repeat(CANDIDATE_CHUNK_CHARS + over);
+
+    const written = writeCandidates([chunk], file);
+    assert.equal(written.omittedChars, over, 'the omitted characters must be counted, not dropped silently');
+
+    const body = fs.readFileSync(file, 'utf8');
+    assert.ok(!body.includes('a'.repeat(CANDIDATE_CHUNK_CHARS + 1)), 'the cap did not apply');
+    // Stated in the file as well as in the terminal, for the same reason the
+    // omitted-sessions note is: the file is what gets handed to a reader.
+    assert.match(body, /characters of prose were not shown/, 'the file must say it is short');
+
+    // A chunk at the cap is not truncated and reports nothing omitted.
+    const exact = writeCandidates(['b'.repeat(CANDIDATE_CHUNK_CHARS)], file);
+    assert.equal(exact.omittedChars, 0);
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /characters of prose were not shown/);
+
+    // ...and the count reaches the terminal and --json, not just the file. A
+    // number that only exists inside the artifact it describes is not a
+    // disclosure to whoever is running the tool.
+    const root = tmpdir();
+    const outDir = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    writeLongPromptSession(root, corpus.cwd, 'PAST-THE-CAP '.repeat(2_000));
+    assert.equal(runCli(['scan', '--root', root, '--out', outDir, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(outDir, 'review.md'), 'alpha', 'redact');
+
+    const refused = runCli(['export', '--root', root, '--out', outDir, '--salt-dir', saltDir, '--json'], CORPUS_USER_ENV);
+    assert.equal(refused.code, 1, refused.out);
+    const doc = JSON.parse(refused.out);
+    assert.ok(doc.candidates.omittedChars > 0, `--json must carry the loss: ${JSON.stringify(doc.candidates)}`);
+
+    const spoken = runCli(['export', '--root', root, '--out', outDir, '--salt-dir', saltDir, '--full'], CORPUS_USER_ENV);
+    assert.match(spoken.out, /characters of prose were not shown/, `the terminal must say it too: ${spoken.out}`);
+  }],
+
+  // F135 — the sweep was anchored on English label words only, so a document
+  // number named in Chinese was never seeded, never substituted, and invisible
+  // to the residual scan, which can only look for what it was given. The
+  // manifest printed nothing. F81's Taiwan passport number was caught only
+  // because that one document happened to be written in English.
+  //
+  // All three numbers are fabricated. The shape is what the sweep keys off: a
+  // leading letter and nine digits, which is the ROC passport / national id
+  // form, sitting after a Chinese label with no space, since CJK does not
+  // space its words.
+  ['F135', 'a document number labelled in Chinese is swept, and a label with no number is not', () => {
+    assert.deepEqual(sweepIdNumbers(['護照號碼：A123456789']), ['A123456789']);
+    assert.deepEqual(sweepIdNumbers(['身分證字號: A123456789']), ['A123456789']);
+    assert.deepEqual(sweepIdNumbers(['台胞證 A123456789 過期了']), ['A123456789']);
+    // §F7 in the language the labels are in: the words appear constantly in
+    // ordinary sentences, and a sweep that fires without a number beside them
+    // is the scan that gets switched off.
+    assert.deepEqual(sweepIdNumbers(['身分證字號忘記了']), []);
+    assert.deepEqual(sweepIdNumbers(['護照過期，要去辦新的']), []);
+
+    // A date is never a document number, and an expiry date is the thing most
+    // likely to be written right after the label. Measured over the whole
+    // depth-0 corpus (216 files, 934 MB): the Chinese labels added exactly two
+    // numbers to the swept set, and one of them was an ISO date sitting in
+    // `舊護照 <date> 到期`. Seeding it would substitute every occurrence of
+    // that date everywhere in the export, which is §F7 exactly.
+    //
+    // The English half has the same hole and nobody had hit it, because
+    // English puts a word between the label and the date and the pattern does
+    // not allow one. Punctuate it the way a form does and it is reachable
+    // there too, so the guard is on the captured VALUE rather than on one
+    // language's labels.
+    assert.deepEqual(sweepIdNumbers(['他的舊護照 2026-08-24 到期']), []);
+    assert.deepEqual(sweepIdNumbers(['passport: 2026-08-24']), []);
+    // ...and the guard is date-shaped only, so a hyphenated document number
+    // of the same length still counts. Fabricated; the shape is a grouped
+    // alphanumeric document number.
+    assert.deepEqual(sweepIdNumbers(['護照號碼：AB-1234567']), ['AB-1234567']);
+  }],
+
+  // F136 — F51 grants case-insensitive matching to every bicameral script, and
+  // Greek has the one context-sensitive lowercase mapping in Unicode's default
+  // algorithm: a trailing sigma lowercases to ς, not σ. buildTable lowered the
+  // whole spelling at once, so it got the contextual form; equalsFold lowers
+  // one isolated character at a time, and an isolated Σ always gives σ. They
+  // disagreed at the last character and nothing matched, including the
+  // spelling against its own text.
+  //
+  // Silent AND ungated: residual.mjs imports equalsFold by design so the two
+  // "never drift". They did not drift, they were wrong together, and the
+  // export printed `known-entity residue 0` with the name in the archive.
+  //
+  // Odysseus is a figure out of Homer, not a person. The shape is what the
+  // fixture needs: a Greek personal name ending in sigma.
+  ['F136', 'a Greek name ending in sigma matches in either case, and the residue scan sees it', () => {
+    const upper = 'ΟΔΥΣΣΕΎΣ';
+    const text = `ο ${upper} ήρθε`;
+
+    const table = buildTable([entity('P1', 'person', upper, 'PERSON_01')]);
+    const self = substituteString(text, table);
+    assert.equal(self.out, 'ο PERSON_01 ήρθε', 'the all-caps spelling did not match its own text');
+    assert.equal(reverseString(self.out, self.spans), text, 'ς and σ are both one UTF-16 unit; the span must reverse');
+
+    // The other direction: declared the way a person writes it, written in the
+    // log the way a shouting header does.
+    const declared = buildTable([entity('P2', 'person', 'Οδυσσεύς', 'PERSON_02')]);
+    assert.equal(substituteString(text, declared).out, 'ο PERSON_02 ήρθε', 'a lowercase declaration missed all-caps text');
+
+    // The gate the leak went past. Scanned against the ORIGINAL text, which is
+    // what the substituter was handed and left alone.
+    assert.equal(residualScan(text, table, new Set()).entityCount, 1, 'the residue scan agreed with the bug');
+  }],
+
+  // F137 — root.mjs diagnoses this exact failure for this exact variable, in a
+  // comment, and fixes it with nonBlank. The MCP seeder was never told: it read
+  // `env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude')`, and `??` treats only
+  // null and undefined as absent, so a shell profile that exports the variable
+  // unconditionally left it as '' and path.join('', 'settings.json') became a
+  // bare relative path read against the cwd.
+  //
+  // Silent on top of that: the "no Claude settings file found" warning fires
+  // only when NONE of the three candidates was read, and ~/.claude.json is one
+  // of them, so on most machines the seeder lost settings.json and .mcp.json
+  // and said nothing at all.
+  ['F137', 'a blank CLAUDE_CONFIG_DIR falls through to the default, and MCP names are still seeded', () => {
+    const home = tmpdir();
+    fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+    // Fabricated server name. The shape is what matters: an mcpServers key, in
+    // the settings file the blank value hid.
+    fs.writeFileSync(
+      path.join(home, '.claude', 'settings.json'),
+      JSON.stringify({ mcpServers: { 'harbourline-notes': { command: 'node' } } }),
+      'utf8',
+    );
+
+    const seeded = seedEntities(
+      { HOME: home, USERPROFILE: home, USERNAME: 'devuser', CLAUDE_CONFIG_DIR: '' },
+      { files: [] },
+      { cwds: [], repoDirs: [], texts: [] },
+    );
+    const canonicals = seeded.entities.map((e) => e.canonical);
+    assert.ok(
+      canonicals.includes('harbourline-notes'),
+      `a blank CLAUDE_CONFIG_DIR sent the seeder to the cwd: ${canonicals.join(', ')}`,
+    );
+    // And the warning that hid it must not be the thing reporting success.
+    assert.ok(
+      !seeded.warnings.some((w) => w.includes('no Claude settings file found')),
+      `the settings file was read, so nothing should say it was not: ${seeded.warnings.join(' | ')}`,
+    );
   }],
 ];
 
