@@ -474,8 +474,11 @@ const SEPARATOR_RE = /[-. ]/;
 // Measured on a real export: 12 distinct numbers survived beside a printed
 // `0 phone numbers   103 replaced (36 distinct)`, including the uploader's own
 // mobile in a resume header. Every one came out of a signature block or a
-// contact table: `(+852) 5136 0512`, `M: +1 (650) 665 4812`, `(650) 877-4012`,
-// `801-401-9012`. §F6b required a leading `+`, a country code and 8-15 digits
+// contact table. The digits below are fabricated (the 555-01xx reserved
+// range); the four PUNCTUATION shapes are the real ones and are the whole
+// point, because §F6b matched none of them:
+// `(+852) 5550 0142`, `M: +1 (650) 555 0148`, `(650) 555-0173`,
+// `801-555-0119`. §F6b required a leading `+`, a country code and 8-15 digits
 // CONTIGUOUSLY, so it fired only on the one form that does not appear in a
 // signature block.
 //

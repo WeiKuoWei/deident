@@ -2840,23 +2840,29 @@ const FIXTURES = [
     // number, and nothing here says "passport" beside it.
     assert.deepEqual(sweepIdNumbers(['the part is M1019757 and it runs hot']), []);
 
-    // Account ids: stable join keys for a named person.
+    // Account ids: stable join keys for a named person. All four ids are
+    // fabricated. The shapes are what the sweep keys off: `U` + 9 alphanumerics
+    // for a user, `D` for a DM channel, and 32 hex that only counts as an id
+    // when a notion.com URL puts it there, which the negative below pins.
     const ids = sweepPlatformIds([
-      'Participants: A (ID: U06ET0DWQM), B (ID: U06EVQ4GLB)  Channel: DM (ID: D06EVTZZ4J)',
-      'notes at app.notion.com/3290b700541e81a2a23fc0ee24eab375',
+      'Participants: A (ID: U07QX4MN2K), B (ID: U07QX9PT6R)  Channel: DM (ID: D07QXB3WV8)',
+      'notes at app.notion.com/7c41d9a2e8b640f5b1de73a209cc5e84',
     ]);
-    assert.ok(ids.includes('U06ET0DWQM') && ids.includes('D06EVTZZ4J'), `slack ids: ${ids}`);
-    assert.ok(ids.includes('3290b700541e81a2a23fc0ee24eab375'), 'the notion page id');
+    assert.ok(ids.includes('U07QX4MN2K') && ids.includes('D07QXB3WV8'), `slack ids: ${ids}`);
+    assert.ok(ids.includes('7c41d9a2e8b640f5b1de73a209cc5e84'), 'the notion page id');
     // A bare 32-hex string is every content hash in the corpus (§F7).
-    assert.deepEqual(sweepPlatformIds(['sha 3290b700541e81a2a23fc0ee24eab375 of the blob']), []);
+    assert.deepEqual(sweepPlatformIds(['sha 7c41d9a2e8b640f5b1de73a209cc5e84 of the blob']), []);
 
-    // Phone numbers as they appear in a signature block, not in E.164.
+    // Phone numbers as they appear in a signature block, not in E.164. The
+    // digits are fabricated; the four punctuation shapes are what is under
+    // test, so changing a bracket or a separator breaks the fixture and
+    // changing a digit does not.
     const phones = sweepPhones([
-      'M: +1 (650) 665 4812',
-      'HK (+852) 5136 0512 / (+886) 976 570 312',
-      'office (650) 877-4012 or 801-401-9012',
+      'M: +1 (650) 555 0148',
+      'HK (+852) 5550 0142 / (+886) 900 123 456',
+      'office (650) 555-0173 or 801-555-0119',
     ]);
-    for (const want of ['+1 (650) 665 4812', '(+852) 5136 0512', '(650) 877-4012', '801-401-9012']) {
+    for (const want of ['+1 (650) 555 0148', '(+852) 5550 0142', '(650) 555-0173', '801-555-0119']) {
       assert.ok(phones.includes(want), `${want} survived: ${phones}`);
     }
     assert.deepEqual(sweepPhones(['built 2026-08-22 from 1.2.3', 'range 2024-2025']), [],
@@ -2871,7 +2877,7 @@ const FIXTURES = [
     // Every new kind mints a token, or the entity is carried and never applied.
     const seeded = buildEntities([
       { kind: 'idnumber', canonical: '361234560', source: 'x', confidence: 'high' },
-      { kind: 'account', canonical: 'U06ET0DWQM', source: 'x', confidence: 'high' },
+      { kind: 'account', canonical: 'U07QX4MN2K', source: 'x', confidence: 'high' },
     ]);
     const assigned = assignPseudonyms(seeded, SALT, null).entities;
     assert.deepEqual(assigned.map((e) => e.pseudonym.replace(/_\d+$/, '')), ['ACCOUNT', 'IDNUM']);
