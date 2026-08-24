@@ -162,7 +162,7 @@ export function residueRefusal(result) {
  * step 17, because a refusal a single skipped code path can bypass is not a
  * refusal.
  */
-export function checkSemanticPass(tier1) {
+export function checkSemanticPass(tier1, coverage = null) {
   const ran = tier1 !== null && tier1 !== undefined && tier1.ran === true;
   // An EMPTY list is indistinguishable from not running, and it is exactly the
   // file a failed or interrupted /deident-scan leaves behind. tier1.mjs's own
@@ -180,15 +180,82 @@ export function checkSemanticPass(tier1) {
   // reason the tool can claim safety at all.
   const usable = ran ? tier1.entities.filter((e) => !e.rejected && e.spellings.length > 0).length : 0;
   const delivered = ran && usable > 0;
+  // The list AND the per-session accounting. A list on its own says a reader
+  // answered; it does not say which sessions the question covered.
+  const uncovered = coverage === null ? 0 : coverage.uncovered.length;
+  const read = coverage === null ? '' : ` · ${coverage.total - uncovered}/${coverage.total} sessions read`;
   return Object.freeze({
     name: 'semantic pass',
-    ok: delivered,
+    ok: delivered && uncovered === 0,
     detail: ran
-      ? `${tier1.source} · ${usable} entities${usable === tier1.entities.length ? '' : ` (${tier1.entities.length - usable} rejected)`}`
+      ? `${tier1.source} · ${usable} entities${usable === tier1.entities.length ? '' : ` (${tier1.entities.length - usable} rejected)`}${read}`
       : 'did not run',
-    why: ran && !delivered ? 'empty' : 'absent',
+    // `absent` and `empty` first: they are the more fundamental failure and
+    // their remedy is the same one whether or not any session is covered.
+    why: !delivered ? (ran ? 'empty' : 'absent') : 'uncovered',
+    coverage,
     tier1,
   });
+}
+
+/**
+ * I6, per session.
+ *
+ * The gate used to be all-or-nothing: supplying `--entities` satisfied it for
+ * the whole corpus, however much of that corpus anybody had actually read.
+ * With a remembered dictionary that is not good enough, because a repeat run
+ * could satisfy it having read nothing new at all — and the corpus grows
+ * between runs, which is the ordinary case rather than the exotic one.
+ *
+ * So the accounting is per session. A session is covered when its prose has
+ * been put in front of a reader and the hash of that prose is remembered; a
+ * session that is new, or whose content has changed since, has not been. This
+ * is STRICTER than the old gate in both directions, including the one that has
+ * nothing to do with the dictionary: `export --entities an-old-list.json` over
+ * a corpus that has grown used to ship the new sessions on the strength of a
+ * list written before they existed.
+ *
+ * What it cannot check is whether the reader read the file, only that deident
+ * put it in front of them. That is the same limit the old gate had, one
+ * session at a time instead of one corpus at a time.
+ *
+ * @param {ReadonlyArray<{id, reason}>} uncovered
+ * @param {number} total sessions in this export
+ */
+export function coverageRefusal(uncovered, total, candidatesPath, opts = {}) {
+  const n = uncovered.length;
+  // Under --full nothing is wrong and the person asked for this, so saying
+  // "have not been through a semantic pass" about sessions they read last week
+  // would be the tool stating something false in its most careful moment.
+  const reason = opts.full === true
+    ? `--full: ${n} session${n === 1 ? '' : 's'} to read again before the next export`
+    : `${n} session${n === 1 ? ' has' : 's have'} not been through a semantic pass`;
+  return new RefusalError(
+    reason,
+    {
+      why: [
+        ...uncovered.slice(0, EXAMPLES_PER_REPORT).map((s) => `  ${s.id}   ${s.reason}`),
+        ...(n > EXAMPLES_PER_REPORT ? [`  ... and ${n - EXAMPLES_PER_REPORT} more`] : []),
+        '',
+        ...(opts.full === true
+          ? ['--full ignores what deident remembers you having read, so every session', 'is offered again and the export waits for your answer.']
+          : [
+              'A session is covered once its prose has been put in front of a reader and',
+              'the answer is remembered. Exporting one that never was would mean claiming',
+              'a semantic pass covered text nobody has seen.',
+            ]),
+        '',
+        ...(total > n
+          ? [`The other ${total - n} session${total - n === 1 ? ' is' : 's are'} covered and were left out of the file below.`]
+          : []),
+        ...(candidatesPath ? [`The tier-0-cleaned prose to read is at:  ${candidatesPath}`] : []),
+      ],
+      remedies: [
+        { label: 'Read the prose above', command: 'read the file named above, then write deident-entities.json' },
+        { label: 'Then supply the list', command: 'deident export --entities deident-entities.json' },
+      ],
+    },
+  );
 }
 
 export function semanticRefusal(candidatesPath, why = 'absent') {

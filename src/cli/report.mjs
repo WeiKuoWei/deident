@@ -410,10 +410,16 @@ export function renderWrote(path, bytes, saltPath) {
   say('');
 }
 
-export function renderCandidates(path, chars) {
+export function renderCandidates(path, chars, omitted = 0) {
+  if (machine !== null) { machineAdd({ candidates: { path, chars, omitted } }); return; }
   say('');
   say('  Tier-1 candidates written');
   say(`    ${path}    ${humanBytes(chars)} of tier-0-cleaned prose`);
+  // The number that says a repeat run is cheap. Without it a short file looks
+  // like a corpus that shrank rather than like a memo that worked.
+  if (omitted > 0) {
+    say(`    ${n(omitted)} session${omitted === 1 ? '' : 's'} left out: unchanged since you last read them`);
+  }
   say('');
 }
 

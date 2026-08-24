@@ -1964,6 +1964,7 @@ const FIXTURES = [
     const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
     assert.equal(scan.code, 0, scan.out);
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
 
     const exported = runCli([
       'export', '--root', root, '--out', out, '--salt-dir', saltDir,
@@ -2025,10 +2026,17 @@ const FIXTURES = [
       '--entities', path.join(root, 'ents.json'),
     ];
 
+    primeSemanticPass(root, out, saltDir);
     const without = runCli(args);
     assert.equal(without.code, 0, without.out);
     assert.match(without.out, /1 sessions from 1 workspaces/, 'the denied workspace stays out by default');
 
+    // Primed AGAIN for the second configuration, and that is the correct
+    // answer rather than a fixture wrinkle: --include-denied puts lines from
+    // the denied directory back into the session, so the prose a reader would
+    // see is not the prose they saw last time. A session whose retained text
+    // changes is shown again, whether the corpus changed or the settings did.
+    primeSemanticPass(root, out, saltDir, null, ['--include-denied', 'derek-evidence']);
     const withFlag = runCli([...args, '--include-denied', 'derek-evidence']);
     assert.equal(withFlag.code, 0, withFlag.out);
     assert.match(withFlag.out, /2 sessions from 2 workspaces/, 'the typed confirmation must actually include it');
@@ -2076,6 +2084,9 @@ const FIXTURES = [
     writeCorpus(root, { unknownType: true });
     runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    // With the escape hatch, or the priming run refuses on the unknown record
+    // type before it ever reaches the step that puts prose in front of a reader.
+    primeSemanticPass(root, out, saltDir, null, ['--skip-unknown-types']);
     const args = [
       'export', '--root', root, '--out', out, '--salt-dir', saltDir,
       '--entities', path.join(root, 'ents.json'),
@@ -2203,6 +2214,7 @@ const FIXTURES = [
     writeCorpus(root);
     runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir);
     const args = [
       'export', '--root', root, '--out', out, '--salt-dir', saltDir,
       '--entities', path.join(root, 'ents.json'),
@@ -3025,6 +3037,7 @@ const FIXTURES = [
 
     runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir);
     const exported = runCli([
       'export', '--root', root, '--out', out, '--salt-dir', saltDir,
       '--entities', path.join(root, 'ents.json'),
@@ -3265,6 +3278,7 @@ const FIXTURES = [
     writeCorpus(root);
     runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir);
     const exported = runCli([
       'export', '--root', root, '--out', out, '--salt-dir', saltDir,
       '--entities', path.join(root, 'ents.json'),
@@ -3692,6 +3706,7 @@ const FIXTURES = [
 
     assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir);
     const exported = runCli([
       'export', '--root', root, '--out', out, '--salt-dir', saltDir,
       '--entities', path.join(root, 'ents.json'),
@@ -3756,6 +3771,7 @@ const FIXTURES = [
 
     // export
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir);
     const ok = runCli([
       'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--json',
       '--entities', path.join(root, 'ents.json'),
@@ -3860,6 +3876,7 @@ const FIXTURES = [
 
     assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir);
 
     // An unknown audience refuses at the flag, before any work is done.
     const bogus = runCli([
@@ -4031,6 +4048,7 @@ const FIXTURES = [
       'the hold was not written into the first review.md',
     );
 
+    primeSemanticPass(root, first, saltDir);
     const exported = runCli([
       'export', '--root', root, '--out', first, '--salt-dir', saltDir,
       '--entities', path.join(root, 'ents.json'),
@@ -5261,7 +5279,7 @@ const FIXTURES = [
       !candidates.includes('KEEP-THIS-STRING-FORM-PROMPT'),
       'a session whose content has not changed was put in front of the reader again',
     );
-    assert.match(candidates, /1 session[^\n]*not in this file/, 'the header must say what was left out and why');
+    assert.match(candidates, /1 more session is not in this file/, 'the header must say what was left out and why');
     assert.ok(
       candidates.length < primed.candidateBytes,
       `the second read (${candidates.length} B) is not smaller than the first (${primed.candidateBytes} B)`,
@@ -5360,7 +5378,14 @@ const FIXTURES = [
       JSON.stringify({
         entities: [
           { kind: 'person', spellings: ['Ada Wang'], confidence: 'high' },
-          { kind: 'secret', spellings: [minted[0]], confidence: 'low' },
+          // Two spellings, and that is the case the second strip exists for.
+          // An entity whose ONLY spelling is a minted uuid is dropped whole by
+          // the first strip and never reaches the merge; one that also carries
+          // a real spelling survives, and its declared array still holds the
+          // uuid unless the merge strips it again.
+          // `Bramblesoft Ltd` is fabricated: SHAPE is a real spelling beside
+          // the poisoned one, so the entity has to survive minus the uuid.
+          { kind: 'secret', spellings: [minted[0], 'Bramblesoft Ltd'], confidence: 'low' },
         ],
       }),
       'utf8',
@@ -5373,6 +5398,7 @@ const FIXTURES = [
     const dict = JSON.parse(fs.readFileSync(path.join(saltDir, DICTIONARY_FILENAME), 'utf8'));
     const remembered = JSON.stringify(dict.entities);
     assert.ok(!remembered.includes(minted[0]), `a minted uuid was remembered as a spelling: ${remembered}`);
+    assert.ok(remembered.includes('Bramblesoft Ltd'), `the rest of the entity was thrown away too: ${remembered}`);
   }],
 
   // F131 — the record is a memory of what a person decided, and a person is
