@@ -1,8 +1,7 @@
 # AGENTS.md
 
 This repository is a tool an agent operates. If you are an agent working in a
-checkout of it, or a user has asked you to export their AI coding-agent session
-logs, the contract below is the whole of it.
+checkout of it, or a user has asked you to export their Claude Code session logs, the contract below is the whole of it.
 
 It is the same text as `skills/deident/SKILL.md`, duplicated here because
 harnesses disagree about where to look: Claude Code reads `skills/` through

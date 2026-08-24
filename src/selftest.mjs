@@ -3795,6 +3795,78 @@ const FIXTURES = [
       new RegExp(`^drop\\s+.*${heldId}`, 'm'),
     );
   }],
+  // F105 - macOS resolves /tmp and /var into /private, and the deny-list read
+  // that as the word the user meant.
+  //
+  // On macOS /tmp, /var and /etc are symlinks into /private, and process.cwd()
+  // returns the physical path. So a session started from /tmp records a cwd of
+  // /private/var/folders/..., matchDenyToken sees the substring `private`, the
+  // workspace is force-excluded, its lines are dropped, and review.md tells the
+  // person `deny-list matched: "private"` about a directory they never called
+  // that. It fails safe, but it loses sessions silently and states something
+  // false about the user's own filesystem.
+  //
+  // The codebase already knows about this symlink: variants.mjs generates both
+  // spellings of a path deliberately. The deny path never got the same
+  // treatment, and the difference only shows on a platform nobody here runs.
+  ['F105', 'the macOS /private symlink is not the deny-listed word private', () => {
+    // The symlink prefix alone is not a deny match.
+    assert.equal(matchDenyToken('/private/tmp/scratch'), null);
+    assert.equal(matchDenyToken('/private/var/folders/zz/T/session'), null);
+    assert.equal(matchDenyToken('/private/etc/hosts'), null);
+
+    // A real private directory UNDER it still is, or the exemption would be a
+    // hole rather than a fix.
+    assert.equal(matchDenyToken('/private/var/folders/zz/private/notes'), 'private');
+    assert.equal(matchDenyToken('/private/tmp/payroll-2026'), 'payroll');
+
+    // And /private used as an ordinary directory name, not as the macOS
+    // symlink root, is still caught: only the three system roots are exempt.
+    assert.equal(matchDenyToken('/private/client-files'), 'private');
+    assert.equal(matchDenyToken('/Users/nkoro/private/notes'), 'private');
+    assert.equal(matchDenyToken('C:' + BS + 'w' + BS + 'private'), 'private');
+
+    // Unchanged for everything that is not the exemption.
+    assert.equal(matchDenyToken('/Users/nkoro/projects/app'), null);
+    assert.equal(matchDenyToken('/var/log/system.log'), null);
+  }],
+  // F106 - the tool reads one agent's logs and its own refusal did not say so.
+  //
+  // resolveCorpus enumerates <root>/projects/<dir>/*.jsonl at depth 0, which is
+  // Claude Code's layout. docs/adapters-research.md records Codex's as
+  // $CODEX_HOME/sessions/<YYYY>/<MM>/<DD>/rollout-*.jsonl, three levels deeper
+  // and under a different directory name. So `--root ~/.codex` produces
+  // `no session storage at ~/.codex/projects`, and the refusal then offers
+  // --root again, which is the flag that just failed.
+  //
+  // The skill is installable in more than one harness, so a Codex user WILL
+  // arrive here. Telling them what is read, rather than offering a flag that
+  // cannot help, is the difference between a scope limit and a dead end.
+  ['F106', 'the refusal for a missing corpus says which agent is read', () => {
+    const root = tmpdir();
+    const missing = runCli(['scan', '--root', path.join(root, 'nothing-here'), '--out', path.join(root, 'out')]);
+    assert.notEqual(missing.code, 0);
+    assert.match(missing.out, /no session storage/);
+
+    // Names the agent whose layout it reads, so a reader knows whether the
+    // path is wrong or the tool is.
+    assert.match(missing.out, /Claude Code/i, `the refusal does not say what it reads:${NL}${missing.out}`);
+
+    // And does not offer, as the remedy for a failed --root, the same --root
+    // with nothing else said.
+    const remedyLines = missing.out.split(NL).filter((l) => /--root/.test(l));
+    assert.ok(
+      remedyLines.length === 0 || missing.out.match(/Codex|not read|only reads/i),
+      `--root is offered with no scope stated:${NL}${missing.out}`,
+    );
+
+    // The skill's own description must scope itself too, or a harness routes a
+    // user into a tool that structurally cannot read their logs.
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const skill = fs.readFileSync(path.join(repo, 'skills', 'deident', 'SKILL.md'), 'utf8');
+    const front = skill.slice(0, skill.indexOf('---', 4));
+    assert.match(front, /Claude Code/, 'the skill description does not name the agent it reads');
+  }],
 ];
 
 export function selftest() {

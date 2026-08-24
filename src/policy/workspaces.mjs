@@ -27,10 +27,23 @@ export const DENY_TOKENS = Object.freeze(['private', 'identity', 'payroll']);
 
 export const UNCLASSIFIED = 'unclassified';
 
+/**
+ * macOS resolves /tmp, /var and /etc into /private, and process.cwd() returns
+ * the physical path. So a Mac session started from /tmp records a cwd of
+ * /private/var/folders/..., and a substring test reads the symlink root as the
+ * word the person meant. That force-excluded the workspace, dropped its lines,
+ * and told them `deny-list matched: "private"` about a directory they never
+ * called that.
+ *
+ * Only these three roots, and only as the leading segment. `/private/notes` is
+ * still a private directory; so is anything called private further down.
+ */
+const MACOS_PRIVATE_ROOT = /^[/\\]private(?=[/\\](var|tmp|etc)(?=[/\\]|$))/i;
+
 /** The first deny token this text contains, or null. */
 export function matchDenyToken(text) {
   if (typeof text !== 'string') return null;
-  const lower = text.toLowerCase();
+  const lower = text.replace(MACOS_PRIVATE_ROOT, '').toLowerCase();
   for (const token of [...DENY_TOKENS, ...userDenyTokens()]) {
     if (lower.includes(token)) return token;
   }

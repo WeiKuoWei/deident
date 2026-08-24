@@ -1,6 +1,6 @@
 ---
 name: deident
-description: De-identify the user's own AI coding-agent session logs and pack them into an archive they can hand to someone else. Use when the user asks to export, share, hand over, submit or donate their session logs or transcripts, when a colleague has asked them for their logs for a benchmark or an evaluation, or when they say 導出 session log, 匯出對話紀錄, deident, or paste a request for their coding history. Drives the whole flow: survey, decide what leaves, redact, export, verify. Not for exporting someone else's logs and not for ordinary file archiving.
+description: De-identify the user's own Claude Code session logs and pack them into an archive they can hand to someone else. Reads Claude Code's own log layout only; Codex and Cursor logs are not read yet. Use when the user asks to export, share, hand over, submit or donate their session logs or transcripts, when a colleague has asked them for their logs for a benchmark or an evaluation, or when they say 導出 session log, 匯出對話紀錄, deident, or paste a request for their coding history. Drives the whole flow: survey, decide what leaves, redact, export, verify. Not for exporting someone else's logs and not for ordinary file archiving.
 ---
 
 # deident

@@ -96,10 +96,17 @@ export function resolveCorpus(env, override = null) {
           ? 'That directory does not exist, so there is nothing to export.'
           : `The directory could not be read (${err.code}).`,
         `The root was resolved from ${root.source}.`,
+        '',
+        // The skill installs in more than one harness, so a Codex or Cursor
+        // user reaches this refusal. Offering --root again, which is the flag
+        // that just failed, turns a scope limit into a dead end.
+        'deident reads Claude Code session logs: <root>/projects/<dir>/*.jsonl.',
+        'Codex and Cursor write a different layout and are not read yet, so no',
+        'value of --root reaches them.',
       ],
       remedies: [
-        { label: 'Point at a different root', command: 'deident scan --root <path>' },
-        { label: 'Or set the official variable', command: 'CLAUDE_CONFIG_DIR=<path>' },
+        { label: 'Point at a Claude Code root', command: 'deident scan --root <path to .claude>' },
+        { label: 'Or name it in the environment', command: 'deident scan   # honours CLAUDE_CONFIG_DIR' },
       ],
     });
   }
