@@ -149,7 +149,7 @@ function writeCorpus(root, { unknownType = false } = {}) {
   const projects = path.join(root, 'projects', 'ws');
   fs.mkdirSync(projects, { recursive: true });
   const cwd = ['C:', 'Users', 'devuser', 'projects', 'alpha'].join(BS);
-  const denied = [cwd, 'private', 'derek-evidence'].join(BS);
+  const denied = [cwd, 'private', 'auditor-notes'].join(BS);
   const sid = '11111111-1111-4111-8111-111111111111';
   const other = '22222222-2222-4222-8222-222222222222';
   const PRIVATE = 'PRIVATE-MATERIAL-TYPED-IN-THE-DENIED-DIRECTORY';
@@ -1296,7 +1296,7 @@ const FIXTURES = [
       key: name, name, cwd: `C:/w/${name}`, normCwd: `c:/w/${name}`,
       sessionCount: 1, denyToken: null, unresolved: false, ...extra,
     });
-    const probe = (dir) => (dir === 'C:/w/gitroll' ? { raw: 'gitroll-dev/gitroll' } : null);
+    const probe = (dir) => (dir === 'C:/w/gitroll' ? { raw: 'northwind-co/ledger' } : null);
 
     assert.equal(proposeTier(g('gitroll'), probe).tier, 'redact');
     assert.equal(proposeTier(g('scratch'), probe).tier, 'exclude', 'no remote fails closed');
@@ -1614,7 +1614,7 @@ const FIXTURES = [
     assert.equal(residualScan('an array index', t, new Set()).entityCount, 0);
   }],
 
-  // F51 — the org entity is seeded from the git remote `gitroll-dev/gitroll`,
+  // F51 — the org entity is seeded from the git remote `northwind-co/ledger`,
   // i.e. lowercase, and the company writes itself `GitRoll` everywhere. That
   // spelling survived 1,804 times in a real export and the scan had no idea it
   // existed. Enumerating lower/UPPER/Title does not help: `GitRoll` is none of
@@ -1894,7 +1894,7 @@ const FIXTURES = [
     assert.match(personal.reason, /personal data/);
 
     // Ordinary work still proposes redact, or the row becomes 29 questions.
-    assert.equal(proposeTier(group('gitroll'), () => remote('gitroll-dev/gitroll')).tier, 'redact');
+    assert.equal(proposeTier(group('gitroll'), () => remote('northwind-co/ledger')).tier, 'redact');
     // Whole segments only: a substring test would call these personal data.
     // Fabricated. Shape: an ordinary multi-segment work name whose every
     // segment is outside PERSONAL_TOKENS, so it must come back null.
@@ -2005,7 +2005,7 @@ const FIXTURES = [
     // record that carries the cwd of a LATER moment (BRIEF §4.11).
     assert.ok(!bytes.includes(corpus.private), 'material from the denied directory must not leave');
     // The deny-listed subtree's own path, which used to survive as a tail.
-    assert.ok(!bytes.includes('derek-evidence'), 'the excluded subtree must not be spelled out');
+    assert.ok(!bytes.includes('auditor-notes'), 'the excluded subtree must not be spelled out');
     // §F7-safe credential shapes, E.164 numbers, and the §F3 owner id.
     assert.ok(!bytes.includes('github_pat_'), 'a credential must not leave');
     assert.ok(!bytes.includes('5136 7788'), 'a personal mobile must not leave');
@@ -2044,7 +2044,7 @@ const FIXTURES = [
     writeCorpus(root);
     runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]);
     setTier(path.join(out, 'review.md'), 'alpha', 'redact');
-    setTier(path.join(out, 'review.md'), 'derek-evidence', 'redact');
+    setTier(path.join(out, 'review.md'), 'auditor-notes', 'redact');
     const args = [
       'export', '--root', root, '--out', out, '--salt-dir', saltDir,
       '--entities', path.join(root, 'ents.json'),
@@ -2060,8 +2060,8 @@ const FIXTURES = [
     // the denied directory back into the session, so the prose a reader would
     // see is not the prose they saw last time. A session whose retained text
     // changes is shown again, whether the corpus changed or the settings did.
-    primeSemanticPass(root, out, saltDir, null, ['--include-denied', 'derek-evidence']);
-    const withFlag = runCli([...args, '--include-denied', 'derek-evidence']);
+    primeSemanticPass(root, out, saltDir, null, ['--include-denied', 'auditor-notes']);
+    const withFlag = runCli([...args, '--include-denied', 'auditor-notes']);
     assert.equal(withFlag.code, 0, withFlag.out);
     assert.match(withFlag.out, /2 sessions from 2 workspaces/, 'the typed confirmation must actually include it');
 

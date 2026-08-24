@@ -181,7 +181,7 @@ holds. Fixture F50 pins both directions.
 
 **Second correction, same measurement.** "case-variant only 7" understated the
 case, because the variant table generated case variants only for a path's drive
-letter. The org entity is seeded from the git remote `gitroll-dev/gitroll`, the
+letter. The org entity is seeded from the git remote `northwind-co/ledger`, the
 company writes itself `GitRoll`, and `GitRoll` survived **1,804 times** in a
 real export with the scan unaware it existed. Enumerating lower/UPPER/Title does
 not help: `GitRoll` is none of them. Spellings of four characters or more are

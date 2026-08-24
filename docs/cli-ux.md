@@ -59,8 +59,8 @@ reviewed by a second person; a file can.
 # Tiers: exclude | count-only | redact | open
 
 ## workspaces
-redact       gitroll                   61 sessions   gitroll-dev/gitroll (private)
-redact       billing-recon-ui          22 sessions   gitroll-dev/... (private)
+redact       gitroll                   61 sessions   northwind-co/ledger (private)
+redact       billing-recon-ui          22 sessions   northwind-co/... (private)
 open         note-vault                 9 sessions   no remote  ← consider redact
 exclude      private-archive                  4 sessions   deny-list matched: "private"
 exclude      ops-handover-private   0 sessions   deny-list matched: "private"

@@ -581,7 +581,7 @@ export async function runExport(flags, env) {
   //     ones. An excluded workspace's own path is still spelled out inside
   //     retained text: measured on a real export, the parent matched and the
   //     tail did not, so the zip carried `X_WORKSPACE_10601283/private/
-  //     derek-evidence` x8, `/private/hsbc-out.json` x9 and
+  //     auditor-notes` x8, `/private/hsbc-out.json` x9 and
   //     `/private/payroll-ledger` x12 — a recipient learning the private
   //     subtree's structure, the third party it concerns and what each file is
   //     for, from an export whose review said that workspace was excluded.
@@ -1194,7 +1194,7 @@ function retainCorpus(
     // gives it the cwd in force when it was written — which, for a record that
     // REPLAYS earlier user text, is the cwd of a later moment, not of the turn
     // it replays. Measured on a real export: prose authored only at
-    // `...\ops-handover\private\derek-evidence` was replayed by three
+    // `...\ops-handover\private\auditor-notes` was replayed by three
     // later last-prompt records sitting at `...\ops-handover`, passed the
     // gate, and shipped. Eight distinct fragments that appear ONLY on
     // deny-listed lines in the whole corpus reached the zip that way, including
