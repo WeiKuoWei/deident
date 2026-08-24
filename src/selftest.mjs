@@ -69,6 +69,7 @@ import { buildZip, readZip, readZipFile, MAX_ENTRIES } from './output/zip.mjs';
 import { renderPreview } from './output/preview.mjs';
 import { parseReview, parseSessionDrops, readSessionDrops, renderReview, renderReviewHtml } from './policy/reviewfile.mjs';
 import { readEntities } from './entities/tier1.mjs';
+import { DICTIONARY_FILENAME, mergeEntities } from './policy/dictionary.mjs';
 import { parseCliArgs } from './cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
 import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings } from './pipeline.mjs';
@@ -309,6 +310,48 @@ function writableByThisProcess(file) {
   } catch {
     return false;
   }
+}
+
+/**
+ * The step the documented flow has and these fixtures used to skip: put the
+ * corpus in front of a reader.
+ *
+ * `export` with no entity list refuses and writes deident-candidates.txt on
+ * its way out, and THAT is what records a hash per session. Without it every
+ * session is one nobody has read, and the per-session gate refuses — which is
+ * the whole point of the gate, so the fixtures run the real first step rather
+ * than being exempted from it.
+ *
+ * The candidates file is removed afterwards because it is not what any caller
+ * is measuring, and several of them count the files in the output directory.
+ *
+ * @returns {{code: number, out: string, candidateBytes: number}}
+ */
+function primeSemanticPass(root, out, saltDir, env = null, extra = []) {
+  const r = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir, ...extra], env);
+  assert.equal(r.code, 1, `the priming run should refuse for want of an entity list: ${r.out}`);
+  const file = path.join(out, 'deident-candidates.txt');
+  const candidateBytes = fs.existsSync(file) ? fs.statSync(file).size : 0;
+  fs.rmSync(file, { force: true });
+  return { ...r, candidateBytes };
+}
+
+/** One more user turn appended to a session that already exists, in place. */
+function appendTurn(root, sessionId, cwd, text) {
+  const file = path.join(root, 'projects', 'ws', `${sessionId}.jsonl`);
+  fs.appendFileSync(
+    file,
+    JSON.stringify({
+      type: 'user',
+      uuid: '00000000-0000-4000-8000-000000000907',
+      sessionId,
+      timestamp: '2026-08-21T09:00:00.000Z',
+      cwd,
+      message: { role: 'user', content: [{ type: 'text', text }] },
+    }) + NL,
+    'utf8',
+  );
+  return file;
 }
 
 /** Hold one session back by hand, the way a person edits review.md. */
@@ -5053,6 +5096,325 @@ const FIXTURES = [
     // Still counted in the aggregate the manifest already prints, so the two
     // numbers cannot disagree about the same occurrence.
     assert.ok(scan.embedded >= 4, 'the glued rows are the same occurrences the embedded counter sees');
+  }],
+
+  // F126 — every run started from zero.
+  //
+  // The expensive stage is the only one that scales with the corpus, so a
+  // second run cost as much as the first for almost no new information: the
+  // owner read the prose, wrote an entity list, exported, and the next run
+  // asked them to read the same prose again. The list is now remembered beside
+  // the salt.
+  //
+  // The other half of this fixture is where the file must NOT be. It holds
+  // real spellings and real session ids in plaintext, so it is memory and
+  // never output: not in the archive, not in the output directory, not in the
+  // repository.
+  ['F126', 'a successful export remembers the entity list, and the dictionary never leaves the salt directory', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(scan.code, 0, scan.out);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+
+    const first = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ], CORPUS_USER_ENV);
+    assert.equal(first.code, 0, first.out);
+
+    const dictFile = path.join(saltDir, DICTIONARY_FILENAME);
+    assert.ok(fs.existsSync(dictFile), 'the export did not remember the entity list');
+    const dict = JSON.parse(fs.readFileSync(dictFile, 'utf8'));
+    assert.ok(typeof dict._note === 'string' && dict._note.length > 0, 'a file a person edits by hand needs a header');
+    // The spellings as the person TYPED them, not the escaping variants the
+    // reader expands them into: this file is edited by hand and a row showing
+    // a string nobody wrote is a row nobody can act on.
+    assert.deepEqual(
+      dict.entities.map((e) => e.spellings),
+      [['Ada Wang']],
+      `the declared spelling was not remembered as written: ${JSON.stringify(dict.entities)}`,
+    );
+
+    // The second run supplies no entity list at all and still exports.
+    const second = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(second.code, 0, `the second run should need no --entities: ${second.out}`);
+    assert.match(second.out, /dictionary/, 'the report must say where the entities came from');
+
+    // Where the dictionary must not be.
+    assert.ok(!fs.existsSync(path.join(out, DICTIONARY_FILENAME)), 'the dictionary reached the output directory');
+    const zips = fs.readdirSync(out).filter((f) => f.endsWith('.zip'));
+    assert.equal(zips.length, 1, 'exactly one archive');
+    const entries = readZipFile(path.join(out, zips[0]));
+    assert.ok(!entries.some((e) => e.name.includes(DICTIONARY_FILENAME)), 'the dictionary is an archive entry');
+    const bytes = entries.map((e) => `${e.name}${NL}${e.data}`).join(NL);
+    assert.ok(!bytes.includes('Ada Wang'), 'the remembered spelling must not be in the archive');
+    assert.ok(!bytes.includes('_note'), 'the dictionary body must not be in the archive');
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    assert.ok(!fs.existsSync(path.join(repo, DICTIONARY_FILENAME)), 'the dictionary was written into the repository');
+  }],
+
+  // F127 — merging by position mints two pseudonyms for one person, which
+  // entities/tier1.mjs already warns about in the operator contract: "One
+  // identity per entry, or one person gets two pseudonyms and the prose stops
+  // making sense". A dictionary makes it worse, because the split then
+  // persists across every later run.
+  //
+  // Every value is fabricated. The SHAPE:
+  //   Grace Hopper / Grace   a stored identity with two spellings
+  //   Hopper                 a SECOND stored entry that overlaps the first
+  //                          only through the incoming one, so the merge has
+  //                          to be transitive rather than pairwise
+  //   ghopper                a run-together handle form arriving new
+  //   Acme Advisory          shares nothing, and must stay its own identity
+  //   Bramblesoft/bramblesoft  one org written two ways, which is §4.5's
+  //                          measured case-variant hazard as an identity
+  //                          question rather than a matching one
+  ['F127', 'entities merge by shared spelling and never by position', () => {
+    const stored = [
+      { kind: 'person', spellings: ['Grace Hopper', 'Grace'], confidence: 'high' },
+      { kind: 'person', spellings: ['Hopper'], confidence: 'low' },
+      { kind: 'org', spellings: ['Acme Advisory'], confidence: 'high' },
+    ];
+    const incoming = [
+      { kind: 'person', spellings: ['Grace', 'Hopper', 'ghopper'], confidence: 'high' },
+      { kind: 'client', spellings: ['Northwind Trading'], confidence: 'low' },
+    ];
+
+    const merged = mergeEntities(stored, incoming);
+    assert.equal(merged.entities.length, 3, `expected one person, one org, one client: ${JSON.stringify(merged.entities)}`);
+
+    const person = merged.entities.find((e) => e.spellings.includes('ghopper'));
+    assert.deepEqual(
+      [...person.spellings].sort(),
+      ['Grace', 'Grace Hopper', 'Hopper', 'ghopper'],
+      'the two stored entries and the incoming one are one identity',
+    );
+
+    const org = merged.entities.find((e) => e.kind === 'org');
+    assert.deepEqual(org.spellings, ['Acme Advisory'], 'an identity that shares nothing must stay separate');
+    assert.ok(merged.entities.some((e) => e.kind === 'client'), 'a wholly new identity is added');
+    assert.equal(merged.added, 1, 'one identity was new');
+
+    // Case is a spelling difference, not an identity difference. §4.5 measured
+    // `GitRoll` surviving 1,804 times because the case variant was treated as
+    // a different string; two dictionary entries for one org is the same
+    // mistake one layer up.
+    const cased = mergeEntities(
+      [{ kind: 'org', spellings: ['Bramblesoft'], confidence: 'high' }],
+      [{ kind: 'org', spellings: ['bramblesoft', 'bramblesoft-dev'], confidence: 'high' }],
+    );
+    assert.equal(cased.entities.length, 1, `a case variant is the same identity: ${JSON.stringify(cased.entities)}`);
+    assert.ok(cased.entities[0].spellings.includes('Bramblesoft'), 'both spellings are kept');
+    assert.ok(cased.entities[0].spellings.includes('bramblesoft-dev'));
+  }],
+
+  // F128 — the gate that says "a semantic pass ran" was all-or-nothing:
+  // supplying --entities satisfied it for the whole corpus. With a dictionary
+  // that is not good enough, because a repeat run could satisfy it having read
+  // nothing new, and the corpus grows between runs.
+  //
+  // Per-session accounting instead: a session is covered when its prose has
+  // been put in front of a reader and the hash of that prose is remembered.
+  // A session whose content changed since is not covered, and the export
+  // refuses naming it.
+  ['F128', 'a session whose content changed since it was read is refused by name, and only it is shown again', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    // A second exportable session, so "shown 1, omitted 1" is a number that
+    // can be wrong. With one session both readings look identical.
+    const second = writeLongPromptSession(root, corpus.cwd, 'PROSE-FROM-THE-SESSION-ALREADY-READ');
+
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(scan.code, 0, scan.out);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    const primed = primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+
+    const exported = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ], CORPUS_USER_ENV);
+    assert.equal(exported.code, 0, exported.out);
+
+    // The corpus grows, which is the ordinary case: one more turn typed into a
+    // session that was already read and approved.
+    appendTurn(root, second, corpus.cwd, 'PROSE-TYPED-AFTER-THE-LAST-READ');
+
+    const refused = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(refused.code, 1, `an unread session must refuse the export: ${refused.out}`);
+    assert.match(refused.out, /semantic pass/, 'the refusal names what has not happened');
+    assert.ok(refused.out.includes(second), `the refusal must name the session: ${refused.out}`);
+    assert.ok(!fs.readdirSync(out).some((f) => f.endsWith('.zip') && fs.statSync(path.join(out, f)).mtimeMs > Date.now()), 'no new archive');
+
+    // And only that session goes back in front of a reader. This is the whole
+    // economic argument: on the live corpus the first read is 915 KB of prose
+    // and the second is the handful of sessions that changed.
+    const candidates = fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8');
+    assert.ok(candidates.includes('PROSE-TYPED-AFTER-THE-LAST-READ'), 'the changed session must be shown');
+    assert.ok(
+      !candidates.includes('KEEP-THIS-STRING-FORM-PROMPT'),
+      'a session whose content has not changed was put in front of the reader again',
+    );
+    assert.match(candidates, /1 session[^\n]*not in this file/, 'the header must say what was left out and why');
+    assert.ok(
+      candidates.length < primed.candidateBytes,
+      `the second read (${candidates.length} B) is not smaller than the first (${primed.candidateBytes} B)`,
+    );
+  }],
+
+  // F129 — a dictionary that cannot be read must refuse, the way loadUserDeny
+  // refuses. Continuing with no dictionary is how a person ships an export
+  // they believed was covered: the entity list would silently be empty and the
+  // per-session gate would report every session as never read, which reads as
+  // a corpus problem rather than as a broken file.
+  //
+  // A MISSING dictionary is the opposite case and is ordinary: it means this
+  // is the first run.
+  ['F129', 'an unreadable dictionary refuses and names the line; a missing one is an ordinary first run', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    fs.mkdirSync(saltDir, { recursive: true });
+
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(scan.code, 0, scan.out);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+
+    // Missing: the run refuses for want of an entity list, which is the FIRST
+    // RUN refusal and names the candidates file, not the dictionary.
+    const missing = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(missing.code, 1, missing.out);
+    assert.doesNotMatch(missing.out, /dictionary/i, `a missing dictionary is not an error: ${missing.out}`);
+
+    // Malformed: a missing comma between two entries, hand-counted to line 4.
+    // Fabricated names; the SHAPE is two well-formed entries with the
+    // separator between them gone, which is what hand-editing produces.
+    const dictFile = path.join(saltDir, DICTIONARY_FILENAME);
+    fs.writeFileSync(
+      dictFile,
+      [
+        '{',
+        '  "entities": [',
+        '    {"kind": "person", "spellings": ["Grace Hopper"]}',
+        '    {"kind": "person", "spellings": ["Ada Lovelace"]}',
+        '  ]',
+        '}',
+      ].join(NL),
+      'utf8',
+    );
+    const broken = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(broken.code, 1, broken.out);
+    assert.match(broken.out, /line 4/, `the refusal must name the line: ${broken.out}`);
+    assert.match(broken.out, /entities\.json/, 'and the file');
+
+    // A well-formed file whose entries are not is the same refusal, addressed
+    // by entry rather than by line, because an index is what a person edits.
+    fs.writeFileSync(
+      dictFile,
+      JSON.stringify({ entities: [{ kind: 'person', spellings: ['Grace Hopper'] }, { kind: 'person' }] }, null, 2),
+      'utf8',
+    );
+    const noSpellings = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(noSpellings.code, 1, noSpellings.out);
+    assert.match(noSpellings.out, /entities\[1\]/, `the refusal must name the entry: ${noSpellings.out}`);
+  }],
+
+  // F130 — every uuid in the candidates file is already a pseudonym, and
+  // declaring one made the export refuse against deident's own output (the
+  // reason stripMintedSpellings exists). A dictionary turns that from a
+  // one-run mistake into a permanent one, so the stripped list is what gets
+  // remembered, using the same function rather than a second copy of the rule.
+  ['F130', 'a minted uuid declared as a spelling is never written into the dictionary', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(scan.code, 0, scan.out);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+
+    const first = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ], CORPUS_USER_ENV);
+    assert.equal(first.code, 0, first.out);
+
+    // A uuid deident minted, taken from its own output. The run is
+    // deterministic (cli-ux §11), so the same value is minted again below.
+    const entries = readZipFile(path.join(out, fs.readdirSync(out).find((f) => f.endsWith('.zip'))));
+    const minted = entries.map((e) => e.data).join('').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
+    assert.ok(minted !== null, 'the archive should carry rewritten uuids to take one from');
+
+    const declared = path.join(root, 'with-uuid.json');
+    fs.writeFileSync(
+      declared,
+      JSON.stringify({
+        entities: [
+          { kind: 'person', spellings: ['Ada Wang'], confidence: 'high' },
+          { kind: 'secret', spellings: [minted[0]], confidence: 'low' },
+        ],
+      }),
+      'utf8',
+    );
+    const second = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', declared,
+    ], CORPUS_USER_ENV);
+    assert.equal(second.code, 0, second.out);
+
+    const dict = JSON.parse(fs.readFileSync(path.join(saltDir, DICTIONARY_FILENAME), 'utf8'));
+    const remembered = JSON.stringify(dict.entities);
+    assert.ok(!remembered.includes(minted[0]), `a minted uuid was remembered as a spelling: ${remembered}`);
+  }],
+
+  // F131 — the record is a memory of what a person decided, and a person is
+  // allowed to change their mind about what counts as an identity. Without a
+  // way to ignore the record, the only route back to the whole corpus is
+  // deleting a file whose path they would have to be told.
+  ['F131', '--full ignores the record and puts the whole corpus in front of a reader again', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    writeLongPromptSession(root, corpus.cwd, 'PROSE-FROM-THE-SESSION-ALREADY-READ');
+
+    const scan = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(scan.code, 0, scan.out);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    const exported = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ], CORPUS_USER_ENV);
+    assert.equal(exported.code, 0, exported.out);
+
+    // Everything is covered, so a bare re-run exports with no reading at all.
+    const quiet = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(quiet.code, 0, quiet.out);
+
+    const full = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--full'], CORPUS_USER_ENV);
+    assert.equal(full.code, 1, `--full re-reads, so it refuses until the reader answers: ${full.out}`);
+    const candidates = fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8');
+    assert.ok(candidates.includes('PROSE-FROM-THE-SESSION-ALREADY-READ'), 'a covered session must be shown again');
+    assert.ok(candidates.includes('KEEP-THIS-STRING-FORM-PROMPT'), 'and so must the other one');
+    assert.doesNotMatch(candidates, /not in this file/, 'nothing is omitted under --full');
+
+    // Combining it with an entity list is refused at the flag: --full says
+    // "show me everything again" and --entities says "here is my answer", so
+    // a run carrying both would read the answer and then refuse to use it.
+    const both = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--full',
+      '--entities', path.join(root, 'ents.json'),
+    ], CORPUS_USER_ENV);
+    assert.equal(both.code, 2, `--full with --entities is a usage error: ${both.out}`);
   }],
 ];
 
