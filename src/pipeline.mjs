@@ -93,7 +93,7 @@ export async function runScan(flags, env) {
   const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
 
   const model = buildReviewModel(
-    decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe),
+    decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe, reviewProblems),
     // Both remembered and local, for the same reason the tiers are: a person
     // should not answer the same question twice. Scanning into a fresh
     // directory used to render every session as `keep` while the salt
@@ -151,7 +151,7 @@ export async function runReview(flags, env) {
   const saved = { byKey: remembered.workspaces, byName: readReview(reviewPath, lenient) };
   const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
   const model = buildReviewModel(
-    decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe),
+    decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe, problems),
     nowStamp(),
     new Set([...remembered.sessionDrops, ...readSessionDrops(reviewPath, lenient).drops]),
   );
@@ -1231,9 +1231,16 @@ function classify(loaded, saved, flags, probe = makeRemoteProbe()) {
  *   - occurrences are not counted here for the same reason. `export --preview`
  *     counts them.
  */
-function scanEntities(corpus, env, loaded, saltDir, probe) {
+function scanEntities(corpus, env, loaded, saltDir, probe, warnings = []) {
   const cwds = [...allCorpusCwds(loaded)];
   const seeded = seedEntities(env, corpus, { cwds, repoDirs: cwds.slice(0, 200), probeRemote: probe, texts: [] });
+  // The seed warnings were dropped on the floor here, on the two commands a
+  // person runs FIRST. `export` renders them; scan and review did not, so an
+  // environment that could not read the OS username or the git identity said
+  // nothing at all, and the gap is an ABSENCE in the entity list, which is
+  // exactly the shape nobody notices. Only export gets to refuse, so here they
+  // join the review problems the caller already prints.
+  for (const w of seeded.warnings) warnings.push(w);
   const salt = readSalt(saltDir);
   // No salt yet means no export has run. scan and review write nothing but
   // review.md (cli-ux §1), so they must not mint one just to print a token.

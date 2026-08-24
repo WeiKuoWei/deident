@@ -25,6 +25,7 @@ import {
   sweepMcpNames,
   sweepIdNumbers,
   sweepPlatformIds,
+  osUsername,
   projectShaped,
   basenameOf,
   buildEntities,
@@ -112,11 +113,15 @@ const ENTRY = fileURLToPath(new URL('../deident.mjs', import.meta.url));
  * refusals go to stderr, so a harness that reads stdout alone cannot see the
  * difference between "warned and carried on" and "said nothing".
  */
-function runCli(args) {
+function runCli(args, env = null) {
   const r = spawnSync(process.execPath, [ENTRY, ...args], {
     encoding: 'utf8',
     timeout: 120_000,
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Merged, never replaced: a bare env on Windows loses SystemRoot and the
+    // child cannot start at all, which reads as a failing assertion rather
+    // than a broken harness.
+    env: env === null ? process.env : { ...process.env, ...env },
   });
   return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
@@ -4012,6 +4017,80 @@ const FIXTURES = [
     // One-character and two-character parts are not proposed: a two-letter
     // needle with no boundary rule is the bare-tilde bug in another costume.
     assert.equal(uncoveredNameParts([{ kind: 'person', spellings: ['Al Bo'] }], ['Al Bo, then Bo, then Al']).length, 0);
+  }],
+
+  // F110 - the username guard guarded nothing, and the seed that goes missing
+  // is the one §F3 exists for.
+  //
+  // seed.mjs read the username as `os.userInfo?.().username`. Optional chaining
+  // guards a null RESULT; os.userInfo() THROWS. Reproduced against the shipped
+  // code with the throw Node raises when there is no passwd entry:
+  //
+  //     Error: uv_os_get_passwd returned ENOENT
+  //         at seedEntities (src/entities/seed.mjs:36:61)
+  //
+  // That is BRIEF §2's failed delivery: a traceback instead of deident's own
+  // refusal shape, in a container with no passwd entry, on a locked-down CI
+  // runner, and on some managed Windows profiles.
+  //
+  // Degrading is not enough on its own. The username is a tier-0 seed and §F3
+  // measured 296 BARE occurrences in the `ls -l` owner column that no path
+  // substitution ever fires on, so an unreadable username is a live leak
+  // vector going unseeded. It is warned about, the way a missing home
+  // directory already is, and never swallowed.
+  ['F110', 'an environment with no passwd entry cannot read a username, and says so instead of throwing', () => {
+    const passwdless = () => {
+      throw Object.assign(new Error('uv_os_get_passwd returned ENOENT'), {
+        code: 'ENOENT',
+        syscall: 'uv_os_get_passwd',
+      });
+    };
+
+    // The seam: injected rather than monkey-patched onto node:os, for the
+    // reason probeCaseFolding takes an injected stat - the fixture has to
+    // state both answers on a machine that only has one of them.
+    assert.equal(osUsername({}, passwdless), null, 'a throw means "no username was readable"');
+    assert.equal(osUsername({ USERNAME: 'devuser' }, passwdless), 'devuser', 'the environment answers first');
+    assert.equal(osUsername({ USER: 'devuser' }, passwdless), 'devuser');
+
+    // Blank is not a name. Present-but-empty is exactly the state a stripped
+    // container image ships, and '' as an entity spelling matches everywhere.
+    assert.equal(osUsername({ USERNAME: '   ', USER: '' }, passwdless), null);
+    assert.equal(osUsername({}, () => ({ username: '' })), null);
+    assert.equal(osUsername({}, () => null), null, 'a null RESULT, which is what the old guard covered');
+    assert.equal(osUsername({}, () => ({ username: 'ci-runner' })), 'ci-runner');
+
+    // End to end: seedEntities does not throw, seeds no username, and the
+    // warning naming the gap reaches the caller.
+    const seeded = seedEntities({ HOME: '/home/nobody' }, { workspaceDirs: [] }, { userInfo: passwdless });
+    assert.ok(
+      seeded.warnings.some((w) => w.includes('OS username')),
+      `expected a warning naming the OS username, got ${JSON.stringify(seeded.warnings)}`,
+    );
+    assert.equal(
+      seeded.entities.filter((e) => e.source === 'os username (bare)').length,
+      0,
+      'nothing is invented to stand in for the username',
+    );
+
+    // ...and it has somewhere to arrive. `export` rendered seeded.warnings;
+    // scan and review threw them away, which is the shape that makes a lost
+    // seed invisible: what a person sees is an entity list with one fewer row.
+    // Driven here with the settings-file warning because it is the one seed
+    // warning an env alone can provoke - os.userInfo cannot be broken from
+    // outside the process - and it travels the same array.
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    writeCorpus(root);
+    const scan = runCli(
+      ['scan', '--root', root, '--out', out, '--salt-dir', path.join(root, 'salt')],
+      { HOME: root, USERPROFILE: root, CLAUDE_CONFIG_DIR: path.join(root, 'nothing-here') },
+    );
+    assert.equal(scan.code, 0);
+    assert.ok(
+      scan.out.includes('MCP server names were not seeded'),
+      `scan swallowed its seed warnings:\n${scan.out}`,
+    );
   }],
 ];
 
