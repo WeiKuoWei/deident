@@ -20,10 +20,11 @@ import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
 // other, which is how a leak was reported as `known-entity residue: 0`.
 import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold, foldLower } from '../substitute/engine.mjs';
 
-const WORD_RE = /[A-Za-z0-9_]/;
-function isWordChar(ch) {
-  return ch !== undefined && WORD_RE.test(ch);
-}
+// This file used to keep its own copy of WORD_RE and isWordChar. They were
+// dead, and they were dead wrong in the same way the substituter's were, which
+// is the shape the header above records: two copies of the boundary rule agreed
+// with each other and a leak was reported as `known-entity residue: 0`. The
+// rule is imported, never re-implemented, so there is nothing here to drift.
 
 const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
 

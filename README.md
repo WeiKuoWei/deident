@@ -323,7 +323,10 @@ into that file rather than the first 400 characters of each, which closes a
 loss inside the prose. It does not widen what counts as prose.
 
 **A name touching a letter or a digit is left alone.** The boundary rule is
-`(?<![A-Za-z0-9])X(?![A-Za-z0-9])`, with two exceptions: an underscore is a
+`(?<!\w)X(?!\w)` where `\w` is every letter and digit in any script except the
+ones written without spaces between words (Chinese, Japanese, Korean, Thai and
+the rest, which have no boundary to test and are flagged in the manifest
+instead), with two exceptions: an underscore is a
 token boundary for spellings of five characters or more, and a camel-case hump
 always is. That is what makes `mcp__<server>__tool`, `project_<org>_notes.md`
 and `<Org>AI` real matches while keeping `ray` inside `array` a correct

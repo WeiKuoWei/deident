@@ -3384,7 +3384,11 @@ const FIXTURES = [
       absorbedSpans: 2, cjkSpans: 5, embedded: 0, unknownTypes: [], countOnly: { sessions: 0, workspaces: 0 },
     }));
     assert.match(printed, /2 replacements merged two overlapping entities/);
-    assert.match(printed, /5 CJK entity occurrences replaced/);
+    // The label said "CJK" while the flag was set for every non-Latin script,
+    // so a Cyrillic or Hebrew replacement was reported under the wrong writing
+    // system and the wrong reason. F145 is the fixture for that; this one
+    // pins that the count still reaches the manifest.
+    assert.match(printed, /5 entity occurrences in a script written without spaces/);
   }],
 
   // F91 — the second half of F83: a deny-listed path quoted in PROSE.
@@ -6129,6 +6133,75 @@ const FIXTURES = [
     // A one-codepoint Han spelling still has no parts, and BRIEF §4.5 row 3 is
     // why: it has no boundary rule and over-matches inside a longer word.
     assert.deepEqual(uncoveredNameParts([{ kind: 'person', spellings: ['林'] }], ['林先生來了']), []);
+  }],
+
+  // F145 - `isWordChar` was /[A-Za-z0-9_]/ and `isCjkOnly` was "no ASCII letter
+  // or digit", so every alphabetic script except Latin got needsLeft false,
+  // needsRight false, and the treatment reserved for scripts that genuinely
+  // have no word boundaries. Verified by running the engine before this
+  // fixture:
+  //
+  //   Роман  in "Он читал романы весь день"  became "…PERSON_01ы весь день"
+  //   דוד    in "דודה שלי" (my aunt)          became "PERSON_03ה שלי"
+  //   Νίκος  in "Νίκοςαβγ"                    became "PERSON_02αβγ"
+  //
+  // and every one of those spans came back cjk: true, so the terminal reported
+  // them as CJK as well.
+  //
+  // That is BRIEF §4.5's `小明` inside `小明天` failure, "corrupted a sentence
+  // naming nobody with every gate green", reproduced in scripts where the
+  // writing system does not force it. For Han and Kana there is no boundary to
+  // test and running unguarded while flagging is the only honest option. Greek,
+  // Cyrillic, Hebrew and Arabic put spaces between words: the rule works
+  // perfectly for them the moment the character class stops being ASCII.
+  ['F145', 'a space-delimited non-Latin script gets the ordinary boundary rule, and is not reported as CJK', () => {
+    // Fabricated. SHAPE: one entity per script, each sitting inside a longer
+    // ordinary word of that script, which is what makes the missing boundary
+    // rule a corruption rather than a miss.
+    //   Роман  a Cyrillic given name inside the common noun `романы` (novels)
+    //   Νίκος  a Greek given name with more Greek letters glued after it
+    //   דוד    a Hebrew given name inside `דודה` (aunt)
+    const table = buildTable([
+      { id: 'P1', kind: 'person', tier: 0, pseudonym: 'PERSON_01', spellings: ['Роман'] },
+      { id: 'P2', kind: 'person', tier: 0, pseudonym: 'PERSON_02', spellings: ['Νίκος'] },
+      { id: 'P3', kind: 'person', tier: 0, pseudonym: 'PERSON_03', spellings: ['דוד'] },
+    ]);
+    for (const [inside, why] of [
+      ['Он читал романы весь день', 'Cyrillic'],
+      ['Νίκοςαβγ', 'Greek'],
+      ['דודה שלי', 'Hebrew'],
+    ]) {
+      assert.equal(substituteString(inside, table).out, inside, `${why}: a sentence naming nobody was corrupted`);
+    }
+
+    // And the rule still MATCHES when the neighbour really is a boundary, or
+    // this would be a fix that turns a corruption into a leak.
+    for (const [bounded, want] of [
+      ['Роман прислал отчёт', 'PERSON_01 прислал отчёт'],
+      ['ο Νίκος ήρθε', 'ο PERSON_02 ήρθε'],
+      ['דוד שלח', 'PERSON_03 שלח'],
+    ]) {
+      assert.equal(substituteString(bounded, table).out, want, `a bounded occurrence stopped matching: ${bounded}`);
+    }
+
+    // The flag, which is the report label. A space-delimited script now has a
+    // boundary rule, so calling its replacements unproven CJK was false twice
+    // over.
+    assert.equal(substituteString('Роман прислал отчёт', table).spans[0].cjk, false);
+    assert.equal(isCjkOnly('Роман'), false);
+    assert.equal(isCjkOnly('Νίκος'), false);
+    assert.equal(isCjkOnly('דוד'), false);
+
+    // Scripts that really are written without spaces are untouched: no
+    // boundary to test, so they run unguarded and are flagged, which is what
+    // BRIEF §4.5 asks for and what F01 to F03 pin.
+    for (const spaceless of ['王大明', 'ひらがな', 'カタカナ', '한국말', 'ภาษาไทย']) {
+      assert.equal(isCjkOnly(spaceless), true, `${spaceless} lost its flag`);
+    }
+    const han = buildTable([{ id: 'P4', kind: 'person', tier: 0, pseudonym: 'PERSON_04', spellings: ['小明'] }]);
+    const overmatch = substituteString('小明天要下雨', han);
+    assert.equal(overmatch.out, 'PERSON_04天要下雨', 'the CJK over-match is a known limit, not something to silently fix here');
+    assert.equal(overmatch.spans[0].cjk, true, 'and it must still be flagged');
   }],
 ];
 

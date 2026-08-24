@@ -13,12 +13,27 @@
 // `\b` in the file to drift back to.
 
 import { pseudonymGuardPattern } from '../entities/pseudonym.mjs';
-import { isCjkOnly } from '../entities/variants.mjs';
+import { isCjkOnly, SPACELESS_RE } from '../entities/variants.mjs';
 
-const WORD_RE = /[A-Za-z0-9_]/;
+// Every letter and digit, in any script, minus the scripts that are written
+// without spaces between words.
+//
+// It was /[A-Za-z0-9_]/, which granted the boundary rule to Latin and withheld
+// it from every other alphabet. Measured by running this engine: `Роман` inside
+// the common noun `романы` became `PERSON_01ы`, `דוד` inside `דודה` (aunt)
+// became `PERSON_03ה`, and `Νίκος` swallowed the Greek letters after it. That is
+// §4.5's `小明` inside `小明天` failure, "corrupted a sentence naming nobody with
+// every gate green", in scripts where the writing system does not force it.
+//
+// Han and Kana stay OUTSIDE the word class, via SPACELESS_RE, so needsLeft and
+// needsRight remain false for them and nothing about that path moves. Combining
+// marks (\p{M}: Hebrew niqqud, Arabic diacritics) are deliberately left out,
+// which keeps today's lax behaviour for them: that is the match-more direction,
+// not the leak direction.
+const WORD_RE = /[\p{L}\p{N}_]/u;
 
 function isWordChar(ch) {
-  return ch !== undefined && WORD_RE.test(ch);
+  return ch !== undefined && WORD_RE.test(ch) && !SPACELESS_RE.test(ch);
 }
 
 // Two characters classes that ARE word characters under §4.5's rule but are

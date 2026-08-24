@@ -389,8 +389,14 @@ export function renderManifest(m) {
   }
   if (m.cjkSpans > 0) {
     // BRIEF §4.5 asks for length >= 2 AND a flag. This is the flag.
-    say(`    ${n(m.cjkSpans)} CJK entity occurrences replaced: the boundary rule cannot`);
-    say('      prove they were not inside a longer CJK word');
+    //
+    // It said "CJK" while the flag was set for every non-Latin script, so a
+    // Cyrillic or Hebrew replacement was reported under a label that named the
+    // wrong writing system and the wrong reason. The count is now genuinely
+    // spaceless-script only, so it says which scripts and why.
+    say(`    ${n(m.cjkSpans)} entity occurrences in a script written without spaces (Chinese,`);
+    say('      Japanese, Korean, Thai and the rest): there is no word boundary to test,');
+    say('      so the rule cannot prove they were not inside a longer word');
   }
   if (m.emptiedSessions > 0) {
     // A session that retained nothing used to vanish with no counter at all, so
