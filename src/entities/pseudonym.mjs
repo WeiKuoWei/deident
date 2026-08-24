@@ -357,7 +357,14 @@ export function namespaceRefusal(hits, namespace, total = null, fileList = null)
     `${count} input line${count === 1 ? ' already contains' : 's already contain'} a token in the pseudonym namespace`,
     {
       why: [
-        hits.length > 0 ? `for example ${hits[0].token}${where}` : `across${where === '' ? ' your session logs' : where.slice(1)}`,
+        // Two sentences, not one with a hole in it. Composing this from
+        // fragments produced "across in 1 file" on a real run, which is the
+        // sort of line that makes a reader stop trusting the rest of the page.
+        hits.length > 0
+          ? `for example ${hits[0].token}${where}`
+          : where === ''
+            ? 'in your session logs'
+            : where.replace(/^, /, ''),
         '',
         'If deident minted its own tokens into a corpus that already contains',
         'tokens of the same shape, the residual scan could not tell the two apart',

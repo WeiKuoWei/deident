@@ -4158,6 +4158,11 @@ const FIXTURES = [
     assert.match(err.reason, /7 input lines/);
     assert.equal(err.remedies[0].command, 'deident export --namespace ABZ');
     assert.match(err.why.join(' '), /2 files/, 'the file count must come from the counter, not the sample');
+    // And it reads as a sentence. Composing the line from fragments produced
+    // "across in 1 file" on a real run: correct, informative, and the sort of
+    // line that makes a reader stop trusting the rest of the page.
+    assert.doesNotMatch(err.why[0], /across in/, 'the empty-sample line is not English');
+    assert.doesNotMatch(err.why[0], /\s\s/, 'a fragment was joined with a hole in it');
     assert.ok(!err.why.join(' ').includes('undefined'));
 
     // With a sample, it still leads with a real token: that is what tells a
