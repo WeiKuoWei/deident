@@ -77,21 +77,26 @@ export const EXAMPLES_PER_REPORT = 5;
  * bytes, against the 915 KB docs/cli-ux.md §11b budgets for the stage. So a cap
  * stays.
  *
- * The value is taken from the measured post-retention distribution rather than
- * guessed. Over the twelve largest sessions, 17,466 prose chunks: p50 62
- * characters, p90 236, p95 404, p99 1,562, longest 10,045. At 20,000 the cap
- * fires on nothing that corpus contains, which is the point: it bounds the
- * pathological single chunk BRIEF measured at 938,529 characters (a pasted
- * document, a dumped log) without touching prose anybody wrote.
+ * The value is above ordinary prose by a wide margin, measured rather than
+ * guessed. Over the twelve largest sessions, 17,466 post-retention prose
+ * chunks: p50 62 characters, p90 236, p95 404, p99 1,562, longest 10,045. So
+ * what 20,000 reaches is the tail, not a turn anybody typed: the pathological
+ * chunk BRIEF measured at 938,529 characters is a pasted document or a dumped
+ * log, and its first 20,000 characters are as much of it as a reader needs to
+ * name what is in it.
+ *
+ * It is NOT true that it fires on nothing. That was inferred from the slice
+ * above and the whole corpus disagrees: shipped, the same run writes
+ * 11,684,461 bytes and reports 1,336,271 characters omitted, 10.3% of the
+ * uncapped prose. Every one of those characters is counted and stated, in the
+ * file, in the report and in --json. A silent cap is what made the old one a
+ * disclosure; a stated one is a trade the reader can see.
  *
  * Most of the growth is the dedupe change, not the cap, and that half is not
  * restorable: the old key was a chunk's first 80 characters and it discarded
  * 1,590 chunks (10,443,749 characters) that were not identical to the chunk
  * that claimed the key. No cap value brings this file near 915 KB without
  * reinstating exactly that silent loss.
- *
- * Whatever this cap does drop is counted and printed, in the file and in the
- * report. A silent cap is what made the old one a disclosure.
  */
 export const CANDIDATE_CHUNK_CHARS = 20_000;
 

@@ -135,9 +135,10 @@ A 35x difference for the stage that decides whether a session ships at all is
 worth a command.
 
 That 915 KB predates the candidates file carrying whole prose chunks, which was
-measured over the whole depth-0 corpus at **4.40x** the old size (2,957,659
-bytes to 13,026,553). The 35x argument only gets stronger; the number to budget
-against is the larger one.
+measured over the whole depth-0 corpus at **3.95x** the old size (2,957,659
+bytes to 11,684,461, with 1,336,271 characters cut by the per-chunk limit and
+reported). The 35x argument only gets stronger; the number to budget against is
+the larger one.
 
 The same measurement decided the shape: **0 of those 205 sessions carry an
 `ai-title` record.** Titles are not available. The first user prompt is the

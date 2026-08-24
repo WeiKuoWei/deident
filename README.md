@@ -56,10 +56,15 @@ That 915 KB was measured while the candidates file truncated every prose chunk
 at 400 characters and deduplicated on the first 80 of each. It no longer does
 either, because both losses were silent and neither was counted. Measured over
 the whole depth-0 corpus with the same workspace decisions before and after,
-the change multiplies stage 3 by **4.40** (2,957,659 bytes to 13,026,553), so
-budget stage 3 near 4 MB and about 1M tokens on a 205-session corpus. Stage 2
-got cheaper relative to it by exactly the same factor, so the argument for
+the change multiplies stage 3 by **3.95** (2,957,659 bytes to 11,684,461), so
+budget stage 3 near 3.5 MB and about 900k tokens on a 205-session corpus.
+Stage 2 got cheaper relative to it by the same factor, so the argument for
 running it is now much stronger than 35x.
+
+A per-chunk limit of 20,000 characters remains, which on that corpus cut
+1,336,271 characters, 10.3% of the prose. **That number is printed** beside the
+file path, written into the file itself and carried as `candidates.omittedChars`
+in `--json`, because a reader handed a short file has to be told it is short.
 
 ### The funnel has a memory
 
