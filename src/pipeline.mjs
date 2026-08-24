@@ -311,11 +311,20 @@ export async function runExport(flags, env) {
   //      there.
   const retainedFiles = new Set(retained.records.map((r) => r.file.path));
   const scopedHits = namespaceHits.filter((h) => retainedFiles.has(h.file));
+  //     `namespaceHits` is capped at EXAMPLES_PER_REPORT; `namespaceHitFiles`
+  //     counts every one. Filtering both to the retained set can leave the
+  //     sample empty while the counter is positive, so the file list comes
+  //     from the counter and the sample is only ever an example.
   let scopedHitCount = 0;
+  const scopedHitFiles = [];
   for (const [file, count] of loaded.namespaceHitFiles ?? []) {
-    if (retainedFiles.has(file)) scopedHitCount += count;
+    if (!retainedFiles.has(file)) continue;
+    scopedHitCount += count;
+    scopedHitFiles.push(file);
   }
-  if (scopedHitCount > 0) throw namespaceRefusal(scopedHits, flags.namespace, scopedHitCount);
+  if (scopedHitCount > 0) {
+    throw namespaceRefusal(scopedHits, flags.namespace, scopedHitCount, scopedHitFiles);
+  }
 
   //  8  seed entities from PRE-substitution values (PLAN §2). Run seeding
   //     after substitution and these values are already pseudonyms: seeding

@@ -54,6 +54,7 @@ import { resolveRoot } from './corpus/root.mjs';
 import { setCommand, renderRefusal, renderReadError, renderManifest, captureOutput } from './cli/report.mjs';
 import {
   namespaceCollisions,
+  namespaceRefusal,
   assignPseudonyms,
   pseudonymPattern,
   pseudonymGuardPattern,
@@ -3872,6 +3873,34 @@ const FIXTURES = [
     const skill = fs.readFileSync(path.join(repo, 'skills', 'deident', 'SKILL.md'), 'utf8');
     const front = skill.slice(0, skill.indexOf('---', 4));
     assert.match(front, /Claude Code/, 'the skill description does not name the agent it reads');
+  }],
+
+  ['F107', 'the namespace refusal survives an empty sample, because that is the normal case', () => {
+    // The scan keeps the first EXAMPLES_PER_REPORT collisions but counts every
+    // one per file. The export filters BOTH to the retained files, so a sample
+    // that filled up on dropped files filters to nothing while the counter
+    // still says 7. Measured on a live corpus that already contained tokens
+    // from an earlier export: this threw on hits[0] and the refusal became
+    // "internal error, please report this" -- the one refusal in the tool whose
+    // remedy is a single flag, replaced by the one message that has no remedy.
+    const err = namespaceRefusal([], 'AB', 7, ['a.jsonl', 'b.jsonl']);
+    assert.match(err.reason, /7 input lines/);
+    assert.equal(err.remedies[0].command, 'deident export --namespace ABZ');
+    assert.match(err.why.join(' '), /2 files/, 'the file count must come from the counter, not the sample');
+    assert.ok(!err.why.join(' ').includes('undefined'));
+
+    // With a sample, it still leads with a real token: that is what tells a
+    // reader the collision is with THIS namespace and not a coincidence.
+    const sampled = namespaceRefusal(
+      [{ file: 'a.jsonl', line: 3, token: 'AB_PERSON_7' }], 'AB', 7, ['a.jsonl'],
+    );
+    assert.match(sampled.why[0], /AB_PERSON_7/);
+    assert.match(sampled.why[0], /1 file/);
+
+    // Negative control: the old code path. Reading hits[0] unguarded is what
+    // broke, so the fixture fails if anything reintroduces the assumption.
+    assert.doesNotThrow(() => namespaceRefusal([], null, 1));
+    assert.doesNotThrow(() => namespaceRefusal([], 'AB', null));
   }],
 ];
 

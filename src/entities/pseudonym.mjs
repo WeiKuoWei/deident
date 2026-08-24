@@ -331,16 +331,33 @@ export function namespaceCollisions(lines, namespace = null) {
   return Object.freeze(hits);
 }
 
-export function namespaceRefusal(hits, namespace, total = null) {
-  const files = [...new Set(hits.map((h) => h.file))];
+/**
+ * @param hits a BOUNDED sample of collisions, and possibly empty
+ * @param namespace the one that collided
+ * @param total how many lines actually matched, when that is known
+ * @param fileList every file that matched, when that is known separately
+ *
+ * `hits` being empty while `total` is positive is not a contradiction, it is
+ * the normal case at the second call site. The scan keeps only the first
+ * EXAMPLES_PER_REPORT hits but counts every one per file, and the export then
+ * filters both down to the RETAINED files. If the sample filled up on files
+ * that were later dropped, the sample filters to nothing while the counter
+ * still says 7. Measured 2026-08-24 on a live corpus that already contained
+ * tokens from an earlier export: the refusal itself crashed on `hits[0]`, and
+ * the person got "internal error, please report this" instead of the one-word
+ * fix. A refusal path is the last place that may assume its inputs are rich.
+ */
+export function namespaceRefusal(hits, namespace, total = null, fileList = null) {
+  const files = fileList === null ? [...new Set(hits.map((h) => h.file))] : [...new Set(fileList)];
   const suggestion = namespace ? `${namespace}Z` : 'X';
   // `hits` is a bounded sample; `total` is how many lines actually matched.
   const count = total === null ? hits.length : total;
+  const where = files.length === 0 ? '' : `, in ${files.length} file${files.length === 1 ? '' : 's'}`;
   return new RefusalError(
     `${count} input line${count === 1 ? ' already contains' : 's already contain'} a token in the pseudonym namespace`,
     {
       why: [
-        `for example ${hits[0].token}, in ${files.length} file${files.length === 1 ? '' : 's'}`,
+        hits.length > 0 ? `for example ${hits[0].token}${where}` : `across${where === '' ? ' your session logs' : where.slice(1)}`,
         '',
         'If deident minted its own tokens into a corpus that already contains',
         'tokens of the same shape, the residual scan could not tell the two apart',
