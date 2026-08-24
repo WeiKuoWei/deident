@@ -71,7 +71,7 @@ export function expandVariants(spelling, opts = {}) {
   // The domain/URL spelling of a multi-word name.
   //
   // Measured on a real export: `accountant = X_ORG_1684551
-  // https://www.evansma…ory.com` — 15 occurrences of the pseudonym and the
+  // https://www.norbrookvan…ory.com` — 15 occurrences of the pseudonym and the
   // plaintext identity of the same org on one line. A pseudonym whose original
   // appears in the same sentence has done nothing. The squashed form is what a
   // company writes as its domain and as its handle, and at eight characters or
@@ -177,7 +177,7 @@ const MIN_SQUASHED_LENGTH = 8;
 const MIN_BASE64_LENGTH = 10;
 
 /**
- * `Acme Advisory` -> `evansmayadvisory`, the form that becomes a domain,
+ * `Norbrook Vance Advisory` -> `norbrookvanceadvisory`, the form that becomes a domain,
  * a handle or a slug. Null when the spelling is one word, a path, or too short
  * for the squashed form to be distinctive.
  */

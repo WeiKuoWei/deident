@@ -227,7 +227,7 @@ function writeCorpus(root, { unknownType = false } = {}) {
 
   fs.writeFileSync(
     path.join(root, 'ents.json'),
-    JSON.stringify({ entities: [{ kind: 'person', spellings: ['Ada Wang'], confidence: 'high' }] }),
+    JSON.stringify({ entities: [{ kind: 'person', spellings: ['Nora Lund'], confidence: 'high' }] }),
     'utf8',
   );
   return { cwd, denied, private: PRIVATE };
@@ -806,10 +806,10 @@ const FIXTURES = [
 
     // A legitimate tier-1 entity is still applied through the guard.
     const g2 = buildTable(
-      [entity('T2', 'person', 'Ada', 'PERSON_98', { tier: 1 })],
+      [entity('T2', 'person', 'Nora', 'PERSON_98', { tier: 1 })],
       { forbidInside: pseudonymPattern(null) },
     );
-    assert.equal(substituteString('PERSON_7 met Ada', g2).out, 'PERSON_7 met PERSON_98');
+    assert.equal(substituteString('PERSON_7 met Nora', g2).out, 'PERSON_7 met PERSON_98');
   }],
 
   // F23 — I10 idempotence, and I11: a failed run leaves nothing behind.
@@ -892,7 +892,7 @@ const FIXTURES = [
   // `info`, `support` and `admin`; the guard is that the handle must contain
   // the OS username, which is what makes it demonstrably the uploader's own.
   ['F69', "the uploader's own email handle is an entity, other people's are not", () => {
-    const texts = ['write to devuser@gitroll.io or legal@catalyte.ai, cc support@deel.com'];
+    const texts = ['write to devuser@gitroll.io or legal@kestrelis.ai, cc support@northsky-hr.com'];
     const seeded = seedEntities(
       { USERNAME: 'devuser' },
       { files: [] },
@@ -905,8 +905,8 @@ const FIXTURES = [
       assert.ok(!canonicals.includes(other), `${other} must not become an entity`);
     }
     // The full addresses still are, per §F1/§F2.
-    assert.ok(canonicals.includes('legal@catalyte.ai'));
-    assert.ok(canonicals.includes('support@deel.com'));
+    assert.ok(canonicals.includes('legal@kestrelis.ai'));
+    assert.ok(canonicals.includes('support@northsky-hr.com'));
   }],
 
   // F70 — §F4 required MCP server names to be entities. seed.mjs read them from
@@ -934,11 +934,11 @@ const FIXTURES = [
 
   ['F27', 'the email sweep is precise and finds third-party addresses (§F1, §F7)', () => {
     const found = sweepEmails([
-      'cc legal@catalyte.ai and ray@evansmayadvisory.com about it',
+      'cc legal@kestrelis.ai and dana@norbrookvanceadvisory.com about it',
       'not an email: a@b, foo@, @bar.com, M1019757',
     ]);
-    assert.ok(found.includes('legal@catalyte.ai'));
-    assert.ok(found.includes('ray@evansmayadvisory.com'));
+    assert.ok(found.includes('legal@kestrelis.ai'));
+    assert.ok(found.includes('dana@norbrookvanceadvisory.com'));
     // §F7: a passport-shaped regex matched M1019757, a thermal-paste part
     // number. An email regex cannot.
     assert.equal(found.filter((e) => e.includes('M1019757')).length, 0);
@@ -1010,11 +1010,11 @@ const FIXTURES = [
     assert.throws(() => readEntities(write('nosp.json', '{"entities":[{"kind":"person"}]}')), RefusalError);
     assert.throws(() => readEntities(path.join(dir, 'missing.json')), RefusalError);
 
-    const good = readEntities(write('ok.json', '{"entities":[{"kind":"person","spellings":["Ada Wang","Ada"],"confidence":"high"}]}'));
+    const good = readEntities(write('ok.json', '{"entities":[{"kind":"person","spellings":["Nora Lund","Nora"],"confidence":"high"}]}'));
     assert.equal(good.ran, true);
     assert.equal(good.entities.length, 1);
     assert.equal(good.entities[0].tier, 1);
-    assert.ok(good.entities[0].spellings.includes('Ada Wang'));
+    assert.ok(good.entities[0].spellings.includes('Nora Lund'));
     // A bare array is accepted too.
     assert.equal(readEntities(write('arr.json', '[{"kind":"org","spellings":["Acme"]}]')).entities.length, 1);
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1201,7 +1201,7 @@ const FIXTURES = [
     assert.equal(substituteString('array index', r).out, 'array index');
     assert.equal(substituteString('Jakeson', t).out, 'Jakeson', 'a lowercase continuation is still embedded');
     // A camel-case hump IS a token boundary, though: `JakeJoin` is two words in
-    // any reading, and this is the shape that shipped `CatalyteAI` x187.
+    // any reading, and this is the shape that shipped `KestrelisAI` x187.
     assert.equal(substituteString('JakeJoin', t).out, 'PERSON_1Join');
     // An escaped backslash means the `n` really is a letter. Asserted with a
     // lowercase entity, so the camel-hump rule cannot mask the escape rule:
@@ -1575,21 +1575,21 @@ const FIXTURES = [
   // two agree, which made I4 untested by construction: whatever the substituter
   // declined to replace, the scan declined to report. §4.5 row 4 justifies not
   // FAILING on `ray` inside `array`. It does not justify putting
-  // `mcp__playwright-headless__` and `CatalyteAI` in the same bucket as `array`.
+  // `mcp__playwright-headless__` and `KestrelisAI` in the same bucket as `array`.
   ['F50', 'a separator or a camel hump is a token boundary, an ordinary letter is not', () => {
     const t = buildTable([
       entity('M1', 'machine', 'playwright-headless', 'MACHINE_1'),
-      entity('O1', 'org', 'Catalyte', 'ORG_1'),
-      entity('P1', 'person', 'Ada', 'PERSON_1'),
+      entity('O1', 'org', 'Kestrelis', 'ORG_1'),
+      entity('P1', 'person', 'Nora', 'PERSON_1'),
       entity('O2', 'org', 'gitroll', 'ORG_2'),
       entity('P2', 'person', 'ray', 'PERSON_2'),
     ]);
     const leaks = [
       // The whole §F4 MCP class: the log form is always mcp__NAME__tool.
       ['mcp__playwright-headless__browser_navigate', 'mcp__MACHINE_1__browser_navigate'],
-      ['project_gitroll_site_hk_us.md', 'project_ORG_2_site_hk_us.md'],
-      ['CatalyteAI funds payroll', 'ORG_1AI funds payroll'],
-      ['MeetingAda和Jacob', 'MeetingPERSON_1和Jacob'],
+      ['project_gitroll_site_migration.md', 'project_ORG_2_site_migration.md'],
+      ['KestrelisAI funds payroll', 'ORG_1AI funds payroll'],
+      ['MeetingNora和Ivan', 'MeetingPERSON_1和Ivan'],
     ];
     for (const [before, after] of leaks) assert.equal(substituteString(before, t).out, after, before);
 
@@ -1600,7 +1600,7 @@ const FIXTURES = [
     }
 
     // And the residual scan agrees, because it reads the same two predicates.
-    const scan = residualScan('mcp__playwright-headless__x and CatalyteAI', t, new Set());
+    const scan = residualScan('mcp__playwright-headless__x and KestrelisAI', t, new Set());
     assert.equal(scan.entityCount, 2, 'both must be reported as residue, not counted as embedded');
     assert.equal(residualScan('an array index', t, new Set()).entityCount, 0);
   }],
@@ -1621,7 +1621,7 @@ const FIXTURES = [
       entity('P2', 'person', 'ray', 'PERSON_2'),
     ]);
     for (const [before, after] of [
-      ['GitRoll x CatalyteAI Exchange', 'ORG_1 x CatalyteAI Exchange'],
+      ['GitRoll x KestrelisAI Exchange', 'ORG_1 x KestrelisAI Exchange'],
       ['the GITROLL repo', 'the ORG_1 repo'],
       ['gitroll', 'ORG_1'],
       ['RENATA delacroix', 'PERSON_1 delacroix'],
@@ -2074,7 +2074,7 @@ const FIXTURES = [
     );
     fs.writeFileSync(
       path.join(empty, 'ents.json'),
-      JSON.stringify({ entities: [{ kind: 'person', spellings: ['Ada Wang'], confidence: 'high' }] }),
+      JSON.stringify({ entities: [{ kind: 'person', spellings: ['Nora Lund'], confidence: 'high' }] }),
       'utf8',
     );
     runCli(['scan', '--root', empty, '--out', emptyOut, '--salt-dir', path.join(empty, 'salt')]);
@@ -2128,11 +2128,11 @@ const FIXTURES = [
   // --out defaults to the working directory, so the file lands next to the zip.
   ['F64', 'the preview shows what leaves, not a map back to who it was', () => {
     const table = buildTable([
-      entity('P1', 'person', 'Ada Wang', 'PERSON_1'),
+      entity('P1', 'person', 'Nora Lund', 'PERSON_1'),
       entity('P2', 'person', 'devuser', 'PERSON_2'),
       entity('O1', 'org', 'Acme Advisory', 'ORG_1'),
     ]);
-    const before = 'devuser: call with Ada Wang about the Acme Advisory invoice';
+    const before = 'devuser: call with Nora Lund about the Acme Advisory invoice';
     const r = substituteString(before, table);
 
     const text = renderPreview({
@@ -2140,14 +2140,14 @@ const FIXTURES = [
       strings: [{ path: 'x', before, after: r.out, spans: r.spans }],
       table,
       entities: [
-        { id: 'P1', kind: 'person', pseudonym: 'PERSON_1', spellings: ['Ada Wang'], confidence: 'high', source: 'semantic pass', rejected: null, canonical: 'Ada Wang' },
+        { id: 'P1', kind: 'person', pseudonym: 'PERSON_1', spellings: ['Nora Lund'], confidence: 'high', source: 'semantic pass', rejected: null, canonical: 'Nora Lund' },
         { id: 'O1', kind: 'org', pseudonym: 'ORG_1', spellings: ['Acme Advisory'], confidence: 'high', source: 'semantic pass', rejected: null, canonical: 'Acme Advisory' },
       ],
       manifest: { sessions: 1, workspaces: 1, userMessages: 1, zeros: [] },
       checks: [],
     });
 
-    for (const spelling of ['Ada Wang', 'Acme Advisory', 'devuser']) {
+    for (const spelling of ['Nora Lund', 'Acme Advisory', 'devuser']) {
       assert.ok(!text.includes(spelling), `${spelling} must not appear beside its pseudonym`);
     }
     // The excerpt is still there, in exported form, or the preview shows nothing.
@@ -2319,7 +2319,7 @@ const FIXTURES = [
     const real = checkSemanticPass({
       ran: true,
       source: '--entities e.json',
-      entities: [{ id: 'T1', canonical: 'Ada Wang', spellings: ['Ada Wang'], rejected: null }],
+      entities: [{ id: 'T1', canonical: 'Nora Lund', spellings: ['Nora Lund'], rejected: null }],
     });
     assert.equal(real.ok, true);
     // The count in the report is the USABLE count, and it says so when the two
@@ -2328,7 +2328,7 @@ const FIXTURES = [
       ran: true,
       source: '--entities e.json',
       entities: [
-        { id: 'T1', canonical: 'Ada Wang', spellings: ['Ada Wang'], rejected: null },
+        { id: 'T1', canonical: 'Nora Lund', spellings: ['Nora Lund'], rejected: null },
         { id: 'T2', canonical: 'a', spellings: [], rejected: 'too short' },
       ],
     });
@@ -5177,7 +5177,7 @@ const FIXTURES = [
     // a string nobody wrote is a row nobody can act on.
     assert.deepEqual(
       dict.entities.map((e) => e.spellings),
-      [['Ada Wang']],
+      [['Nora Lund']],
       `the declared spelling was not remembered as written: ${JSON.stringify(dict.entities)}`,
     );
 
@@ -5193,7 +5193,7 @@ const FIXTURES = [
     const entries = readZipFile(path.join(out, zips[0]));
     assert.ok(!entries.some((e) => e.name.includes(DICTIONARY_FILENAME)), 'the dictionary is an archive entry');
     const bytes = entries.map((e) => `${e.name}${NL}${e.data}`).join(NL);
-    assert.ok(!bytes.includes('Ada Wang'), 'the remembered spelling must not be in the archive');
+    assert.ok(!bytes.includes('Nora Lund'), 'the remembered spelling must not be in the archive');
     assert.ok(!bytes.includes('_note'), 'the dictionary body must not be in the archive');
     const repo = fileURLToPath(new URL('..', import.meta.url));
     assert.ok(!fs.existsSync(path.join(repo, DICTIONARY_FILENAME)), 'the dictionary was written into the repository');
@@ -5400,7 +5400,7 @@ const FIXTURES = [
       declared,
       JSON.stringify({
         entities: [
-          { kind: 'person', spellings: ['Ada Wang'], confidence: 'high' },
+          { kind: 'person', spellings: ['Nora Lund'], confidence: 'high' },
           // Two spellings, and that is the case the second strip exists for.
           // An entity whose ONLY spelling is a minted uuid is dropped whole by
           // the first strip and never reaches the merge; one that also carries

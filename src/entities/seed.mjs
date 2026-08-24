@@ -162,14 +162,17 @@ export function seedEntities(env, corpus, opts = {}) {
   // --- Emails found in the retained text itself.
   //
   // §F1 measured 230 distinct emails across a 90-file sample, 228 of them NOT
-  // the user: legal@catalyte.ai, evansmayadvisory.com, deel.com, nowcfo.com,
-  // fearless.com. §F2 says third parties never consented and are
-  // force-replaced with no opt-out. §F1 also says the thing that makes this
-  // tractable: "Emails have a regex. Names do not."
+  // the user. The domains below are fabricated stand-ins for the real
+  // counterparties; the shape they carry is the only thing under discussion,
+  // which is that a third-party domain looks exactly like the uploader's own:
+  // legal@kestrelis.ai, norbrookvanceadvisory.com, northsky-hr.com,
+  // ledgerpost.com, ironvale.com. §F2 says third parties never consented and
+  // are force-replaced with no opt-out. §F1 also says the thing that makes
+  // this tractable: "Emails have a regex. Names do not."
   //
   // This is not in BRIEF §7.3's seed list, and without it the tool leaks. The
   // measured case on this corpus: `devuser@gitroll.io` and
-  // `devuser@example.net` have no tier-0 source at all — git config carries
+  // `devuser@brightfern.ai` have no tier-0 source at all — git config carries
   // only the personal address — so the local part survived tier 0 in 46
   // places. An email regex is also precisely the shape §F7 asks for: it
   // cannot match a thermal-paste part number.

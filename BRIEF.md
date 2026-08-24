@@ -18,7 +18,7 @@ Two consumers, in order:
 
 1. **Now (this week).** The 2026-08-19 Mid Sync-up action item: the whole team
    exports recent session logs, filters anything private, zips them, and hands
-   them to Ada Wang to re-run the team's AI fluency scoring. Seven people,
+   them to Nora Lund to re-run the team's AI fluency scoring. Seven people,
    internal, one time.
 2. **Later.** Ticket 110 + 114: replace EntireIO with an upload tool that has a
    redaction mechanism, for Fellowship apprentices and eventually enterprise
@@ -163,8 +163,8 @@ classified "embedded" and shipped verbatim while the gate read `known-entity
 residue 0 ok`. They were `mcp__playwright-headless__browser_navigate` and every
 other MCP server name in the corpus (the log form is always `mcp__NAME__tool`,
 so the §F4 MCP entity class had a 100% miss rate and was inert by
-construction), `project_gitroll_site_hk_us_entity_rollback.md`, `dm-derek-cpa`,
-`CatalyteAI` x187 and `MeetingAda和Jacob` x8. Row 4 above justifies not
+construction), `project_gitroll_site_migration.md`, `dm-vance-cpa`,
+`KestrelisAI` x187 and `MeetingNora和Ivan` x8. Row 4 above justifies not
 FAILING on `ray` inside `array`; it does not justify one bucket for both.
 
 The rule is therefore: `_` is a token boundary for a spelling of five
@@ -293,8 +293,8 @@ a person's own added token is excluded by default and requires a typed confirmat
 The residual scan searches for **known** entities. A third-party name that the
 seed sources never knew about and the semantic pass missed is, by construction,
 undetectable by it. Measured: 230 distinct emails across a 90-file sample, **228
-of them not the user** (`legal@catalyte.ai`, `evansmayadvisory.com`,
-`deel.com`, `nowcfo.com`, `fearless.com`). Emails have a regex. **Names do not.**
+of them not the user** (`legal@kestrelis.ai`, `norbrookvanceadvisory.com`,
+`northsky-hr.com`, `ledgerpost.com`, `ironvale.com`). Emails have a regex. **Names do not.**
 
 Required:
 - The indicator must read **`known-entity residue: 0`**, never a bare green
@@ -475,10 +475,10 @@ Test data is Ray's own real mixed zh/en sessions, not synthetic fixtures.
 |---|---|
 | Browser review UI | the first uploader who is not on the team |
 | Plaintext reversible map | an uploader who does not retain the original files |
-| `boundary_signals` annotation | Ada reports a real granularity failure with an example |
+| `boundary_signals` annotation | Nora reports a real granularity failure with an example |
 | manifest + merge script | the platform has merge logic that consumes it |
 | Any non-Claude-Code adapter | see §8 |
-| subagent/workflow tree | Ada asks for orchestration evidence and says the parent session's tool_use records are insufficient |
+| subagent/workflow tree | Nora asks for orchestration evidence and says the parent session's tool_use records are insufficient |
 
 ## 8. Adapter research — do this from vendor sources, not from this machine
 

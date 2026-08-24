@@ -199,7 +199,7 @@ Read it and write `deident-entities.json` beside it:
 {
   "generated": "<ISO timestamp>",
   "entities": [
-    { "kind": "person", "spellings": ["Ada Lovelace", "AdaLovelace", "Ada"], "confidence": "high" },
+    { "kind": "person", "spellings": ["Ada Lovelace", "AdaLovelace", "Nora"], "confidence": "high" },
     { "kind": "org",    "spellings": ["Acme Advisory"],                      "confidence": "low" }
   ]
 }

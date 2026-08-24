@@ -171,7 +171,7 @@ deident makes no network calls, so the pass is a **file contract**:
    {
      "generated": "2026-08-22T06:20:00Z",
      "entities": [
-       {"kind": "person", "spellings": ["Ada Wang", "AdaWang", "Ada"], "confidence": "high"},
+       {"kind": "person", "spellings": ["Nora Lund", "NoraLund", "Nora"], "confidence": "high"},
        {"kind": "org",    "spellings": ["Acme Advisory"],                  "confidence": "low"}
      ]
    }
@@ -182,8 +182,8 @@ deident makes no network calls, so the pass is a **file contract**:
    individually in the review and are never collapsed into a count.
 
    List every spelling you actually see, including run-together forms that turn
-   up in filenames and handles. The boundary rule treats `Ada Wang` and
-   `AdaWang` as different strings and will not find the second from the first.
+   up in filenames and handles. The boundary rule treats `Nora Lund` and
+   `NoraLund` as different strings and will not find the second from the first.
 3. `export --entities deident-entities.json`.
 
 An agent can do step 2 for you. What it needs to know is one document shipped in

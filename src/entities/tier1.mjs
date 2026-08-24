@@ -59,7 +59,7 @@ const HEADER = `# deident tier-1 candidates
 #   {
 #     "generated": "<ISO timestamp>",
 #     "entities": [
-#       {"kind": "person", "spellings": ["Ada Wang", "Ada"], "confidence": "high"},
+#       {"kind": "person", "spellings": ["Nora Lund", "Nora"], "confidence": "high"},
 #       {"kind": "org",    "spellings": ["Acme Advisory"],    "confidence": "high"}
 #     ]
 #   }

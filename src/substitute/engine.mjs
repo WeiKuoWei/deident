@@ -32,8 +32,8 @@ function isWordChar(ch) {
 //     corpus. The log format is always `mcp__NAME__tool`, so `_` on both sides
 //     made the whole §F4 MCP entity class inert — a 100% miss rate on a control
 //     the manifest simultaneously claimed was not implemented.
-//   project_gitroll_site_hk_us_entity_rollback.md, dm-derek-cpa
-//   CatalyteAI x187, AdaWang x3, MeetingAda和Jacob x8
+//   project_gitroll_site_migration.md, dm-vance-cpa
+//   KestrelisAI x187, NoraLund x3, MeetingNora和Ivan x8
 //
 // So: an underscore is a boundary for a spelling long enough that an accidental
 // match is not the likelier reading, and a camel-case hump is a boundary
