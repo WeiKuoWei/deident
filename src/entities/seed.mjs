@@ -323,9 +323,55 @@ const SECRET_RE = new RegExp(
     // that misses one of three.
     'trig_[A-Za-z0-9]{20,}',
     'AIza[0-9A-Za-z_-]{30,}',
+    // Added because a re-measurement ran ten live-credential shapes through
+    // this sweep and got ten empty arrays. Each of these is the one line the
+    // comment above promises; none of them is a heuristic.
+    'sk-proj-[A-Za-z0-9_-]{20,}',
+    '[sr]k_(?:live|test)_[A-Za-z0-9]{20,}',
+    'npm_[A-Za-z0-9]{36}',
+    'glpat-[A-Za-z0-9_-]{20,}',
+    'xapp-[0-9]-[A-Za-z0-9-]{20,}',
+    'hf_[A-Za-z0-9]{30,}',
+    'dop_v1_[a-f0-9]{60,}',
+    'dckr_pat_[A-Za-z0-9_-]{20,}',
+    'SG[.][A-Za-z0-9_-]{20,}[.][A-Za-z0-9_-]{20,}',
   ].join('|'),
   'g',
 );
+
+// The class rule the vendor list above cannot be.
+//
+// Enumerating prefixes stays reactive forever: it covers the tools the author
+// personally uses, and every other live key ships verbatim while the manifest
+// prints `0 secrets  0 replaced` two lines above the limits block. Nothing
+// downstream recovers it. residual.mjs scans for KNOWN entity spellings only,
+// so a token this sweep never saw is invisible to it by construction, and
+// tier1.mjs excludes tool output from the semantic pass, which is where all
+// three of the measured leaks were.
+//
+// Same posture as ID_NUMBER_RE and BEARER_RE: the words beside the value are
+// the evidence. A label naming a credential, then a 16+ character value with
+// no space in it. The vendor list stays for keys that arrive with no label at
+// all, such as a bare AKIA in a URL.
+const LABELLED_SECRET_RE =
+  /(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)["' ]*[:=][ ]*["']?([A-Za-z0-9_.~+/=-]{16,})/gi;
+
+// A URL that carries its password in the authority. Vendor-independent, and
+// README named it by hand as a shape nothing swept.
+//
+// A scheme is required, so `git@host:owner/repo` is not a match, and the
+// password run excludes `/`, so `https://host:8080/path` cannot reach the `@`
+// that this needs.
+const URL_PASSWORD_RE = /[a-z][a-z0-9+.-]*:[/][/][^\s/@:]+:([^\s/@]{6,})@/gi;
+
+// A labelled value that NAMES a credential rather than being one.
+//
+// The dominant shape a wide label pattern hits in source and config is an
+// environment lookup or the variable holding it, and substituting one of those
+// replaces an ordinary identifier everywhere it occurs, which is §F7's
+// over-reporting with a wide blast radius. Same kind of cheap post-filter as
+// ID_NUMBER_MIN_DIGITS and DATE_SHAPED_RE, and for the same reason.
+const SECRET_REFERENCE_RE = /^(?:process[.]env|os[.]environ|import[.]meta|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$)/;
 
 // A token presented after `Bearer ` in an Authorization header is a credential
 // whatever vendor minted it.
@@ -431,12 +477,14 @@ export function sweepMcpNames(texts) {
 /** Distinct credential-shaped strings in `texts`. */
 export function sweepSecrets(texts) {
   const found = new Set();
-  const sweep = (text, re, group) => {
+  const sweep = (text, re, group, reject = null) => {
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(text)) !== null) {
       const value = group === 0 ? m[0] : m[group];
-      if (typeof value === 'string' && value.length > 0) found.add(value);
+      if (typeof value === 'string' && value.length > 0 && (reject === null || !reject.test(value))) {
+        found.add(value);
+      }
       if (found.size > 1000) return true;
     }
     return false;
@@ -447,6 +495,8 @@ export function sweepSecrets(texts) {
     if (/earer/.test(text) && sweep(text, BEARER_RE, 1)) break;
     if (text.includes('eyJ') && sweep(text, JWT_RE, 0)) break;
     if (text.includes('X-Amz-') && sweep(text, AWS_SIGV4_RE, 1)) break;
+    if (/key|token|pass|secret/i.test(text) && sweep(text, LABELLED_SECRET_RE, 1, SECRET_REFERENCE_RE)) break;
+    if (text.includes('://') && sweep(text, URL_PASSWORD_RE, 1)) break;
   }
   return [...found];
 }

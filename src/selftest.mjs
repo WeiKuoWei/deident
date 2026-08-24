@@ -5896,6 +5896,78 @@ const FIXTURES = [
       setUserDeny({});
     }
   }],
+
+  // F141 - SECRET_RE is a list of the vendor prefixes the author personally
+  // uses, so a live key from any other vendor ships verbatim while the manifest
+  // prints `0 secrets  0 replaced` two lines above the limits block. Nothing
+  // downstream recovers it: residual.mjs scans only for KNOWN entity spellings
+  // plus unknown UUIDs, so a token the sweep never saw is invisible to it by
+  // construction, and the semantic pass never reads tool output at all
+  // (tier1.mjs excludes it), which is where all three of the measured leaks
+  // were.
+  //
+  // Reproduced against the shipped sweepSecrets before this fixture: eleven
+  // live-credential shapes, eleven empty arrays.
+  //
+  // The fix is the class rather than the vendor. The words beside the value
+  // are the evidence, exactly as in ID_NUMBER_RE and BEARER_RE, so a vendor
+  // nobody has invented yet is covered the moment its key is written down
+  // beside the word `api_key`.
+  ['F141', 'a credential is swept by the words beside it, not only by a vendor prefix the list happens to carry', () => {
+    // Fabricated. Every value is synthetic; what each one preserves is its
+    // SHAPE, which is the only thing the pattern reads.
+    const cases = [
+      // a vendor prefix the list did not have, reached through its label
+      ['OPENAI_API_KEY=sk-proj-REDACTED_Qv7mL2', 'sk-proj-REDACTED_Qv7mL2'],
+      // a payment-provider live key, reached by the prefix alone
+      ['STRIPE=sk_live_REDACTED_9dHm2Q', 'sk_live_REDACTED_9dHm2Q'],
+      // a package-registry automation token
+      ['npm_REDACTED_7bKq3Z', 'npm_REDACTED_7bKq3Z'],
+      // a source-forge personal access token
+      ['glpat-REDACTED_4Nq8Wz', 'glpat-REDACTED_4Nq8Wz'],
+      // a model-hub token
+      ['hf_Zb4Kq9Wm2Tv7Rn5Ly8Hs3Jc6Xp1Fd0Gg', 'hf_Zb4Kq9Wm2Tv7Rn5Ly8Hs3Jc6Xp1Fd0Gg'],
+      // a chat-platform app-level token
+      ['xapp-1-A01BCDEF-Qv7mL2xTb9RnKd4WpZs6Hy', 'xapp-1-A01BCDEF-Qv7mL2xTb9RnKd4WpZs6Hy'],
+      // the class rule with no vendor prefix at all: a label naming a
+      // credential, then a 16+ character value with no space in it
+      ['  api_key: "x7Kq2mZp9RvT4nWb8dLc"', 'x7Kq2mZp9RvT4nWb8dLc'],
+      ['client_secret=Hq3Vt8Nm2Rb6Yw9Ls4Zx', 'Hq3Vt8Nm2Rb6Yw9Ls4Zx'],
+      // a database URL carrying its password inline, which README named as a
+      // gap by hand
+      ['postgres://app:Tr0ub4dor3xtra@db.internal:5432/prod', 'Tr0ub4dor3xtra'],
+    ];
+    for (const [text, want] of cases) {
+      assert.ok(
+        sweepSecrets([text]).includes(want),
+        `shipped verbatim with the manifest printing 0 secrets: ${text}`,
+      );
+    }
+
+    // §F7 precision, in the direction that matters for a pattern this wide: a
+    // labelled value that NAMES a credential is not one, and substituting it
+    // would replace an ordinary identifier everywhere it occurs.
+    for (const text of [
+      'api_key: process.env.OPENAI_API_KEY',
+      'const secret_key = OPENAI_ADMIN_TOKEN',
+      'password: <redacted>',
+    ]) {
+      assert.deepEqual(sweepSecrets([text]), [], `over-swept an identifier: ${text}`);
+    }
+
+    // A private key body is not a value to substitute, it is a block to drop.
+    // It almost always arrives as tool output, which routes through
+    // deniedReason, so it belongs on the content deny-list rather than in the
+    // entity sweep. Fabricated: the header and footer are the shape; the
+    // middle is not key material.
+    const pem = [
+      '-----BEGIN OPENSSH PRIVATE KEY-----',
+      'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAAB',
+      '-----END OPENSSH PRIVATE KEY-----',
+    ].join(NL);
+    assert.equal(deniedReason(pem), '-----BEGIN OPENSSH PRIVATE KEY-----');
+    assert.equal(deniedReason('we discussed rotating the deploy key'), null);
+  }],
 ];
 
 export function selftest() {

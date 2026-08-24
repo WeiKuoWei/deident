@@ -128,6 +128,12 @@ export const DENIED_CONTENT = Object.freeze([
   /[.][a-z0-9-]{2,24}-private[/\\]/i,
   // Filenames that are a credential or an identity record by convention.
   /(credentials|profile)[.]json/i,
+  // A private key body. Not a value to substitute: half a key is still a key,
+  // and the whole block goes as a count. It belongs here rather than in the
+  // entity sweep because a PEM almost always arrives as tool output, which
+  // routes through deniedReason, and the semantic pass never reads tool output
+  // at all. The header is what the reason line ships, and it names no secret.
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
 ]);
 
 /** Per-person additions, read from beside the salt. Never in the repository. */
