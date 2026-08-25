@@ -6814,6 +6814,45 @@ const FIXTURES = [
     assert.equal(named[1], plugin.name, 'SKILL.md frontmatter name and plugin.json name have drifted');
   }],
 
+  // F167 - both manifests said `"license": "MIT"` and no LICENSE file existed,
+  // through 191 commits and a release audit that only caught it by looking.
+  //
+  // An MIT claim with no licence text grants nothing: a company-owned repository
+  // with no LICENSE defaults to all rights reserved, so the manifests were
+  // advertising a permission the repository did not give. Nothing failed, because
+  // no harness reads the field for anything but display.
+  //
+  // The three strings that have to agree are the two manifests' `license` and the
+  // first line of the LICENSE file, plus the owner named in the copyright line.
+  // Getting the copyright holder wrong is the hardest thing here to change after
+  // publication, which is why it is pinned to the manifests rather than assumed.
+  ['F167', 'a manifest that claims a licence has the licence text beside it, naming the same owner', () => {
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const readJson = (...p) => JSON.parse(fs.readFileSync(path.join(repo, ...p), 'utf8'));
+    const plugin = readJson('.claude-plugin', 'plugin.json');
+    const market = readJson('.claude-plugin', 'marketplace.json');
+
+    const claimed = plugin.license;
+    assert.ok(claimed, 'plugin.json no longer claims a licence');
+    assert.equal(market.plugins[0].license, claimed, 'the two manifests claim different licences');
+
+    const licenseFile = path.join(repo, 'LICENSE');
+    assert.ok(fs.existsSync(licenseFile), `both manifests claim ${claimed} and there is no LICENSE file`);
+    const text = fs.readFileSync(licenseFile, 'utf8');
+
+    // "MIT" has to be the licence's own name on the first line, not a word
+    // somewhere in the body, or a file saying "this is not MIT" would pass.
+    assert.ok(text.split('\n')[0].includes(claimed), `LICENSE does not open by naming ${claimed}`);
+
+    // The owner in the copyright line is the manifests' owner. A LICENSE naming
+    // somebody else is worse than none: it is a false assignment on the record.
+    const owner = market.owner.name;
+    const copyright = text.match(/^Copyright \(c\) (\d{4}) (.+)$/m);
+    assert.ok(copyright, 'LICENSE has no `Copyright (c) <year> <holder>` line');
+    assert.equal(copyright[2], owner, `LICENSE names ${copyright[2]}, the manifests name ${owner}`);
+    assert.ok(Number(copyright[1]) >= 2026, 'the copyright year predates the repository');
+  }],
+
   ['F153', 'review --entity refuses a pseudonym the corpus never minted, rather than reporting none', () => {
     const root = tmpdir();
     const out = path.join(root, 'out');
