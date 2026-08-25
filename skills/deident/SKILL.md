@@ -381,6 +381,18 @@ What stays out:
 Set `"confidence": "low"` whenever you are guessing. Low-confidence entries are
 listed individually for the person rather than collapsed into a count.
 
+### The session you are running from will refuse
+
+The corpus includes the session you are working in right now, and reading it
+appends to it, so its content hash changes and the coverage gate refuses it.
+Measured on a real run: the gate refused twice for that one session, once after
+each read, and nothing the reader does can settle it.
+
+Mark it `drop` in `review.md`. It is the session in which the export was
+built rather than a sample of the work, so dropping it costs the recipient
+nothing. Do not reach for `--full`: that re-offers the whole corpus and does
+not fix this one session, which will change again while the reader is reading.
+
 ## 5. Export
 
 ```
