@@ -517,7 +517,7 @@ preview before you send the zip.
 
 **Case-insensitive matching is withheld from a few spellings, on purpose.**
 Spellings of four characters or more match in any casing, which is what catches
-`GitRoll` when the seeded spelling is `gitroll`. The exception is a spelling
+`Northwind` when the seeded spelling is `northwind`. The exception is a spelling
 whose case change alters its **length**: Turkish dotted capital I lowercases to
 two code units, German sharp s uppercases to two. The matcher computes its span
 from the spelling's length, so folding those would consume the wrong span and

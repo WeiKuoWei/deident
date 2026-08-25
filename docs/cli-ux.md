@@ -59,7 +59,7 @@ reviewed by a second person; a file can.
 # Tiers: exclude | count-only | redact | open
 
 ## workspaces
-redact       gitroll                   61 sessions   northwind-co/ledger (private)
+redact       northwind                   61 sessions   northwind-co/ledger (private)
 redact       billing-recon-ui          22 sessions   northwind-co/... (private)
 open         note-vault                 9 sessions   no remote  ← consider redact
 exclude      private-archive                  4 sessions   deny-list matched: "private"
@@ -68,9 +68,9 @@ exclude      <home>                    47 sessions   no remote, outside projects
 unclassified passport-map               6 sessions   NEW since last export
 
 ## sessions worth a second look
-drop   2026-08-14  gitroll   "幫我看一下這個月薪水怎麼算"      cwd touched \private
-keep   2026-08-15  gitroll   "把 passport 的 hero section 重做"
-keep   2026-08-16  gitroll   "這個 residual scan 要怎麼寫"
+drop   2026-08-14  northwind   "幫我看一下這個月薪水怎麼算"      cwd touched \private
+keep   2026-08-15  northwind   "把 passport 的 hero section 重做"
+keep   2026-08-16  northwind   "這個 residual scan 要怎麼寫"
 
 ## entities to be replaced  (47)
 PERSON_03   ← 3 spellings, 988 occurrences   confidence: high   (seeded from git config)
@@ -291,7 +291,7 @@ $ deident review --entity PERSON_11
   PERSON_11   person   "Grace Hopper"
   4 occurrences, 3 sessions:
 
-    2026-08-14  gitroll            55555555-5555-4555-8555-555555555511
+    2026-08-14  northwind            55555555-5555-4555-8555-555555555511
         turn    47   ...跟 Grace Hopper 約了 call...
         turn    51   ...Grace Hopper 說他下週...
 
@@ -570,7 +570,7 @@ permanently red gate.
 The second block claims only what the sweep knows, and the difference is not
 pedantry. Two entities can cover the same text, and then one of them matches
 nothing while the identity is replaced perfectly well under the other's
-pseudonym. `GitRoll` and `gitroll` declared as two entities do it, which is
+pseudonym. `Northwind` and `northwind` declared as two entities do it, which is
 reachable long before any Han fold, because matching is case-insensitive and
 only one entry can win an offset. The sweep breaks at the first matching entry
 by design, so it never learns that a loser would also have matched. So the block

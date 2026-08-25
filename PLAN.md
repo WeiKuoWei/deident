@@ -255,8 +255,8 @@ that same output of step 10.** This is the constraint most easily got wrong, so,
   Re-running from raw is wrong for two separate reasons. **(a) Longest-match resolution
   changes.** The mask algorithm resolves overlaps by decoded length, so adding tier-1
   spellings to the table changes which entity wins at a given offset — the measured
-  collisions are real (`gitroll` vs `gitroll-agentic`, `devuser` vs `devuser` vs
-  `devuser@gitroll.io`). A merged single pass can therefore emit different output than the
+  collisions are real (`northwind` vs `northwind-agentic`, `devuser` vs `devuser` vs
+  `devuser@northwind.example`). A merged single pass can therefore emit different output than the
   two-pass sequence, which means `review.md` — the thing the human approved — no longer
   describes the artifact being shipped. **The reviewed artifact must be the shipped
   artifact.** **(b) Tier-1 candidates are observations about cleaned text.** A candidate
@@ -453,14 +453,14 @@ content. Each fixture exists because it catches one specific bug.
 | F03 | `林先生` with entity `林` | A one-character CJK entity over-matching inside a longer word. Asserts the length >= 2 rule rejects it and flags it for review instead of substituting (§4.5 row 3). |
 | F04 | `array index` with entity `ray` | The correct **non**-match (§4.5 row 4). Catches the over-eager substring substituter someone reaches for after seeing F03 fail. |
 | F05 | An `ls -l` line: `-rw-r--r-- 1 devuser 197609    929 ...` | §F3. Bare username outside any path, where longest-prefix path substitution never fires. It asserted nothing at all about the UID beside it, and the real pipeline shipped 786 copies of it; F57 now seeds the UID from that column and asserts it is replaced. |
-| F06 | `gitroll` and `gitroll-agentic` in one string | §4.6 prefix collision: a short entity eating the prefix of a longer one. Requires sort-by-length-descending. |
-| F07 | `devuser`, `devuser` and `devuser@gitroll.io` in one string | §4.6 three-way nested collision plus the email form. Catches an interval mask that releases a region it already claimed. |
+| F06 | `northwind` and `northwind-agentic` in one string | §4.6 prefix collision: a short entity eating the prefix of a longer one. Requires sort-by-length-descending. |
+| F07 | `devuser`, `devuser` and `devuser@northwind.example` in one string | §4.6 three-way nested collision plus the email form. Catches an interval mask that releases a region it already claimed. |
 | F08 | Substitute then reverse over F01–F07 | I2. Catches any replacement that is not invertible, which is how ordering bugs actually surface. |
 | F09 | An `Edit` record: added 7, removed 7, net 0 | §4.2 / §4.3. Asserts `code_added_lines === 7`, not `0`. This is the 24.1%-of-edits case that manufactures a false "abandoned" session. |
 | F10 | An `Edit` record whose `toolUseResult` is a **string** (C6) | Asserts `code_added_lines === null`, not `0`, and no crash on the non-object form. |
 | F11 | A `Write` record with no `structuredPatch` | Asserts `null`, not `0` (§4.3: the two are different and `0` is the dangerous one). |
 | F12 | A line containing `PERSON_1` | I3. Asserts abort, then asserts `--namespace X` succeeds. This fires on the real corpus today (C4), so the test protects a path Sam will hit on his first run. |
-| F13 | One string carrying `C:\Users\devuser`, `C:/Users/devuser`, `/c/Users/devuser`, `C:\\Users\\devuser`, `%3Ddevuser%40gitroll.io`, and a backslash-u-escaped CJK name | §4.6 variant expansion. Catches a variant table that covers the common form and leaks the other five. |
+| F13 | One string carrying `C:\Users\devuser`, `C:/Users/devuser`, `/c/Users/devuser`, `C:\\Users\\devuser`, `%3Ddevuser%40northwind.example`, and a backslash-u-escaped CJK name | §4.6 variant expansion. Catches a variant table that covers the common form and leaks the other five. |
 | F14 | A file whose last line is a truncated JSON object | Exit 3 with the cli-ux §9 message shape, no stack trace (§9 definition of done). |
 | F15 | A record with `"type":"future-thing"` | I7. Asserts refusal, not a silent drop. |
 | F16 | A record with no `cwd`, following one that has one | §4.8. Asserts the effective cwd carries forward rather than defaulting to the workspace root. |

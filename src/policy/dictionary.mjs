@@ -161,7 +161,7 @@ function at(text, err) {
  *
  * The match is transitive within one call: an incoming entry that touches two
  * stored ones proves those two are also the same identity, so all three
- * collapse. Comparison is case-insensitive, because §4.5 measured `GitRoll`
+ * collapse. Comparison is case-insensitive, because §4.5 measured `Northwind`
  * surviving 1,804 times when a case variant was treated as a different string;
  * two dictionary rows for one org is that mistake one layer up. The original
  * casing of every spelling is kept, since that is what the substituter and the
@@ -239,7 +239,7 @@ function fold(s) {
 }
 
 /**
- * First-wins de-duplication on the EXACT string, so `GitRoll` and `gitroll`
+ * First-wins de-duplication on the EXACT string, so `Northwind` and `northwind`
  * both survive: they are one identity, and the substituter needs each written
  * form to match what is actually in the text (§4.5).
  */

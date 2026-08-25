@@ -130,8 +130,8 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
     for (const form of new Set([entry.spelling, jsonEscaped(entry.spelling)])) {
       if (form.length === 0) continue;
       // A case-insensitive entry is matched, and therefore scanned for, in any
-      // casing. Indexing it under one case only would let `GitRoll` through a
-      // scan whose table knows `gitroll` — the exact shape of the 1,804-
+      // casing. Indexing it under one case only would let `Northwind` through a
+      // scan whose table knows `northwind` — the exact shape of the 1,804-
       // occurrence leak this pairing exists to make impossible.
       // `second` is a one-character pre-check. residualScan is linear in the
       // number of spellings — measured over a fixed 12.6 MB string: 216 ms at

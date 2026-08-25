@@ -209,7 +209,7 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
   //
   // The PROSE is scanned, not the header. The header is deident's own text and
   // it names the tool: on the real corpus the tool's own name is a seeded
-  // entity (the repo is `gitroll-dev/deident`), so scanning the header refused
+  // entity (the repo is `northwind-co/deident`), so scanning the header refused
   // every export over deident's own boilerplate — §F7's cry-wolf failure
   // arriving as a gate that can never go green.
   //

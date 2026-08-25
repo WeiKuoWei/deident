@@ -127,9 +127,9 @@ One item, full width, blocking. Nothing else on screen.
 ```
   1 of 34 decisions            低信心 · 出現 4 次 · 3 個 session
 
-  …跟 <PERSON_11> 約了 call,他說 sprint 那邊…            08-14 gitroll turn 47
-  …<PERSON_11> 說他下週把 schema 交出來…                  08-14 gitroll turn 51
-  …照 <PERSON_11> 的講法應該是 rate limit…                08-16 gitroll turn 12
+  …跟 <PERSON_11> 約了 call,他說 sprint 那邊…            08-14 northwind turn 47
+  …<PERSON_11> 說他下週把 schema 交出來…                  08-14 northwind turn 51
+  …照 <PERSON_11> 的講法應該是 rate limit…                08-16 northwind turn 12
 
   模型覺得這是節日不是人,它不確定。預設先換掉。
 

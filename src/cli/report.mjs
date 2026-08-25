@@ -571,7 +571,7 @@ export function renderProbe({ hits, zeros }) {
     // Claims only what the sweep knows, and the difference is not pedantry.
     // Two entities can cover the same text, and then one matches nothing while
     // the identity is replaced under the other's pseudonym. Reachable long
-    // before the Han fold: `GitRoll` and `gitroll` declared separately do it,
+    // before the Han fold: `Northwind` and `northwind` declared separately do it,
     // because matching is case-insensitive and only one entry wins an offset.
     // The sweep breaks at the first matching entry by design, so it never
     // learns a loser would also have matched, and "this string is nowhere in

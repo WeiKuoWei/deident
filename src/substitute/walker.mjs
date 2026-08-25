@@ -34,7 +34,7 @@ export function substituteRecord(record, table) {
 // Substitution runs to a FIXPOINT, not once.
 //
 // A replacement changes the text around the next candidate, and the boundary
-// rule reads that text. Measured on a real export: `devusergitroll.onmicrosoft`
+// rule reads that text. Measured on a real export: `devusernorthwind.onmicrosoft`
 // held the username handle glued to the org name, so the handle was a correct
 // embedded non-match on the first pass — and once the org became `X_ORG_7252582`
 // the handle stood at a camel-case boundary in the output, plainly visible. The

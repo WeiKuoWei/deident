@@ -551,28 +551,28 @@ const FIXTURES = [
   }],
 
   // F06 — §4.6 prefix collision. Requires sort-by-length-descending.
-  ['F06', 'gitroll vs gitroll-agentic: prefix collision', () => {
+  ['F06', 'northwind vs northwind-agentic: prefix collision', () => {
     const t = buildTable([
-      entity('O1', 'org', 'gitroll', 'ORG_1'),
-      entity('O2', 'org', 'gitroll-agentic', 'ORG_2'),
+      entity('O1', 'org', 'northwind', 'ORG_1'),
+      entity('O2', 'org', 'northwind-agentic', 'ORG_2'),
     ]);
-    assert.equal(substituteString('gitroll and gitroll-agentic', t).out, 'ORG_1 and ORG_2');
-    assert.equal(substituteString('gitroll-agentic first', t).out, 'ORG_2 first');
+    assert.equal(substituteString('northwind and northwind-agentic', t).out, 'ORG_1 and ORG_2');
+    assert.equal(substituteString('northwind-agentic first', t).out, 'ORG_2 first');
   }],
 
   // F07 — §4.6 three-way nested collision plus the email form. Catches an
   // interval mask that releases a region it already claimed.
   //
   // SHAPE: three fabricated spellings forming a STRICT PREFIX CHAIN,
-  // nkoro < nkorox < nkorox42@gitroll.io. The nesting is the property under
+  // nkoro < nkorox < nkorox42@northwind.example. The nesting is the property under
   // test; collapsing any two of them to one string deletes the fixture.
-  ['F07', 'nkoro / nkorox / nkorox42@gitroll.io: nested collision', () => {
+  ['F07', 'nkoro / nkorox / nkorox42@northwind.example: nested collision', () => {
     const t = buildTable([
       entity('P1', 'person', 'nkoro', 'PERSON_1'),
       entity('P2', 'person', 'nkorox', 'PERSON_2'),
-      entity('P3', 'person', 'nkorox42@gitroll.io', 'PERSON_3'),
+      entity('P3', 'person', 'nkorox42@northwind.example', 'PERSON_3'),
     ]);
-    const s = 'nkoro, nkorox and nkorox42@gitroll.io walk in';
+    const s = 'nkoro, nkorox and nkorox42@northwind.example walk in';
     const r = substituteString(s, t);
     assert.equal(r.out, 'PERSON_1, PERSON_2 and PERSON_3 walk in');
     for (let i = 1; i < r.spans.length; i += 1) {
@@ -588,8 +588,8 @@ const FIXTURES = [
       entity('P2', 'person', 'Ivy', 'PERSON_2'),
       entity('P3', 'person', 'devuser', 'PERSON_3'),
       entity('P4', 'person', 'devuser', 'PERSON_4'),
-      entity('O1', 'org', 'gitroll', 'ORG_1'),
-      entity('O2', 'org', 'gitroll-agentic', 'ORG_2'),
+      entity('O1', 'org', 'northwind', 'ORG_1'),
+      entity('O2', 'org', 'northwind-agentic', 'ORG_2'),
     ];
     const t = buildTable(entities);
     const inputs = [
@@ -597,7 +597,7 @@ const FIXTURES = [
       'Ivy跟小語',
       'array index',
       '-rw-r--r-- 1 devuser 197609 929 x',
-      'gitroll and gitroll-agentic',
+      'northwind and northwind-agentic',
       'devuser devuser',
       `C:${BS}Users${BS}devuser${BS}projects`,
     ];
@@ -703,7 +703,7 @@ const FIXTURES = [
       assert.ok(variants.includes(form), `missing variant ${JSON.stringify(form)}`);
     }
     // URL-encoded, on the email rather than the path (§4.6's measured case).
-    assert.ok(expandVariants('devuser@gitroll.io').includes('devuser%40gitroll.io'));
+    assert.ok(expandVariants('devuser@northwind.example').includes('devuser%40northwind.example'));
     // Backslash-u-escaped CJK, as found inside embedded JSON.
     assert.equal(backslashUEscape('林大明'), `${BS}u6797${BS}u5927${BS}u660e`);
     assert.ok(expandVariants('林大明').includes(`${BS}u6797${BS}u5927${BS}u660e`));
@@ -711,7 +711,7 @@ const FIXTURES = [
     // All six forms in ONE string, all replaced.
     const t = buildTable([
       entity('W1', 'workspace', `C:${BS}Users${BS}devuser`, 'WORKSPACE_1'),
-      entity('P1', 'person', 'devuser@gitroll.io', 'PERSON_1'),
+      entity('P1', 'person', 'devuser@northwind.example', 'PERSON_1'),
       entity('P2', 'person', '林大明', 'PERSON_2'),
     ]);
     const s = [
@@ -719,7 +719,7 @@ const FIXTURES = [
       'C:/Users/devuser',
       '/c/Users/devuser',
       `C:${BS}${BS}Users${BS}${BS}devuser`,
-      'devuser%40gitroll.io',
+      'devuser%40northwind.example',
       `${BS}u6797${BS}u5927${BS}u660e`,
     ].join(' | ');
     const out = substituteString(s, t).out;
@@ -944,7 +944,7 @@ const FIXTURES = [
     assert.ok(buildZip([...entries].reverse()).equals(first), 'entry order must not matter');
 
     // Same salt and namespace produce the same pseudonyms.
-    const ents = [entity('P1', 'person', 'devuser', null), entity('O1', 'org', 'gitroll', null)];
+    const ents = [entity('P1', 'person', 'devuser', null), entity('O1', 'org', 'northwind', null)];
     const a = assignPseudonyms(ents, SALT, 'X').entities.map((e) => e.pseudonym);
     const b = assignPseudonyms([...ents].reverse(), SALT, 'X').entities.map((e) => e.pseudonym);
     assert.deepEqual(a, b, 'assignment must not depend on discovery order');
@@ -1016,7 +1016,7 @@ const FIXTURES = [
   // `info`, `support` and `admin`; the guard is that the handle must contain
   // the OS username, which is what makes it demonstrably the uploader's own.
   ['F69', "the uploader's own email handle is an entity, other people's are not", () => {
-    const texts = ['write to devuser@gitroll.io or legal@kestrelis.ai, cc support@northsky-hr.com'];
+    const texts = ['write to devuser@northwind.example or legal@kestrelis.ai, cc support@northsky-hr.com'];
     const seeded = seedEntities(
       { USERNAME: 'devuser' },
       { files: [] },
@@ -1094,7 +1094,7 @@ const FIXTURES = [
     const model = {
       generated: '2026-08-22 04:00',
       workspaces: [
-        { name: 'gitroll', cwd: 'C:/w/gitroll', sessionCount: 61, tier: 'redact', note: 'git remote g/g', denyToken: null },
+        { name: 'northwind', cwd: 'C:/w/northwind', sessionCount: 61, tier: 'redact', note: 'git remote g/g', denyToken: null },
         { name: 'private-archive', cwd: 'C:/w/private-archive', sessionCount: 4, tier: 'exclude', note: 'deny-list matched: "private"', denyToken: 'private' },
         // Fabricated. Shape: an unclassified row whose name is NOT a deny token
         // and is not one of the two decided rows above, so parseReview has
@@ -1109,7 +1109,7 @@ const FIXTURES = [
     };
     const text = renderReview(model);
     const back = parseReview(text);
-    assert.equal(back.gitroll, 'redact');
+    assert.equal(back.northwind, 'redact');
     assert.equal(back['private-archive'], 'exclude');
     assert.equal(back['passport-map'], undefined, 'unclassified must not become a decision');
     // §F6: low-confidence entities are individual rows, never a collapsed count.
@@ -1340,14 +1340,14 @@ const FIXTURES = [
     // email that follows it read as embedded. Measured on the real corpus in
     // 22 occurrences of one query string.
     const e = buildTable([
-      entity('P3', 'person', 'devuser@gitroll.io', 'PERSON_3'),
-      entity('O1', 'org', 'gitroll-dev', 'ORG_1'),
+      entity('P3', 'person', 'devuser@northwind.example', 'PERSON_3'),
+      entity('O1', 'org', 'northwind-co', 'ORG_1'),
     ]);
     assert.equal(
-      substituteString('authuser%3Ddevuser%40gitroll.io%23all', e).out,
+      substituteString('authuser%3Ddevuser%40northwind.example%23all', e).out,
       'authuser%3DPERSON_3%23all',
     );
-    assert.equal(substituteString('github.com%2Fgitroll-dev%2Fx', e).out, 'github.com%2FORG_1%2Fx');
+    assert.equal(substituteString('github.com%2Fnorthwind-co%2Fx', e).out, 'github.com%2FORG_1%2Fx');
   }],
 
   // ---- round 2. Four review findings against the shipped slice 1. -------
@@ -1359,7 +1359,7 @@ const FIXTURES = [
     const session = (p, cwds) => ({ file: { path: p, sessionId: p, bytes: 1 }, cwds });
     const groups = groupSessions(
       [
-        session('s1', [`C:${BS}Users${BS}u${BS}projects${BS}gitroll`]),
+        session('s1', [`C:${BS}Users${BS}u${BS}projects${BS}northwind`]),
         // Fabricated. Shape: a project directory with a generic subdirectory
         // below it, so the group name must come out `scripts` (the last
         // segment) and not the project. A single-segment path tests nothing.
@@ -1367,7 +1367,7 @@ const FIXTURES = [
       ],
       { homedir: `C:${BS}Users${BS}u` },
     );
-    assert.deepEqual(groups.map((g) => g.name), ['gitroll', 'scripts']);
+    assert.deepEqual(groups.map((g) => g.name), ['northwind', 'scripts']);
     for (const g of groups) {
       assert.ok(!g.name.includes('C--'), 'the slug must never reach a name');
       assert.ok(g.cwd.startsWith('C:'), 'and the full resolved cwd is carried as the reason');
@@ -1379,8 +1379,8 @@ const FIXTURES = [
       flaggedSessions: [],
       entities: [],
     });
-    assert.match(text, /^redact +gitroll +\d+ sessions/m);
-    assert.ok(text.includes(`C:${BS}Users${BS}u${BS}projects${BS}gitroll`), 'the row must name the real directory');
+    assert.match(text, /^redact +northwind +\d+ sessions/m);
+    assert.ok(text.includes(`C:${BS}Users${BS}u${BS}projects${BS}northwind`), 'the row must name the real directory');
     assert.ok(!text.includes('C--Users'), 'and never the slug');
     // Two sessions in one directory spelled two ways are ONE row (§4.8).
     // A separator is never a difference; a capital letter is one exactly where
@@ -1413,9 +1413,9 @@ const FIXTURES = [
       key: name, name, cwd: `C:/w/${name}`, normCwd: `c:/w/${name}`,
       sessionCount: 1, denyToken: null, unresolved: false, ...extra,
     });
-    const probe = (dir) => (dir === 'C:/w/gitroll' ? { raw: 'northwind-co/ledger' } : null);
+    const probe = (dir) => (dir === 'C:/w/northwind' ? { raw: 'northwind-co/ledger' } : null);
 
-    assert.equal(proposeTier(g('gitroll'), probe).tier, 'redact');
+    assert.equal(proposeTier(g('northwind'), probe).tier, 'redact');
     assert.equal(proposeTier(g('scratch'), probe).tier, 'exclude', 'no remote fails closed');
     // git missing from PATH is not the same fact as a directory without a
     // remote, and the reason the person reads has to say which one happened.
@@ -1429,13 +1429,13 @@ const FIXTURES = [
     // `open` is never proposed: repository visibility is not on disk and
     // BRIEF §2 forbids the network call that would answer it. Guessing it
     // wrong leaks, because `open` is the weaker tier (privacy-tiers §5).
-    const reason = proposeTier(g('gitroll'), probe).reason;
+    const reason = proposeTier(g('northwind'), probe).reason;
     assert.match(reason, /open/, 'the row must say the person decides that');
     assert.ok(!reason.includes(String.fromCharCode(0x2014)), 'no em dash in user-facing prose');
 
     // The census: one unclassified row out of five, not five out of five.
     const decisions = classifyWorkspaces(
-      [g('gitroll'), g('scratch'), g('private-archive', { denyToken: 'private' }), g('a'), g('b', { unresolved: true })],
+      [g('northwind'), g('scratch'), g('private-archive', { denyToken: 'private' }), g('a'), g('b', { unresolved: true })],
       {},
       { propose: (ws) => proposeTier(ws, probe) },
     );
@@ -1448,7 +1448,7 @@ const FIXTURES = [
     const dir = tmpdir();
     saveDecisions(dir, decisions);
     assert.deepEqual(loadSavedDecisions(dir).workspaces, {});
-    const answered = classifyWorkspaces([g('gitroll')], { gitroll: 'open' }, { propose: (ws) => proposeTier(ws, probe) });
+    const answered = classifyWorkspaces([g('northwind')], { northwind: 'open' }, { propose: (ws) => proposeTier(ws, probe) });
     assert.equal(answered[0].decided, true);
     saveDecisions(dir, answered, new Set(['aaaa-bbbb']));
     // Keyed by the workspace's normalised cwd, not by its display label: the
@@ -1475,8 +1475,8 @@ const FIXTURES = [
     const s = (p, cwds) => ({ file: { path: p, sessionId: p, bytes: 1 }, cwds });
     const groups = groupSessions(
       [
-        s('a', [home, `${home}/projects/gitroll`, `${home}/projects/gitroll`]),
-        s('b', [home, home, `${home}/projects/gitroll`]),
+        s('a', [home, `${home}/projects/northwind`, `${home}/projects/northwind`]),
+        s('b', [home, home, `${home}/projects/northwind`]),
         s('c', [home, home, home]),
         s('d', [null, null]),
       ],
@@ -1484,7 +1484,7 @@ const FIXTURES = [
     );
     assert.deepEqual(
       Object.fromEntries(groups.map((x) => [x.name, x.sessionCount])),
-      { [HOME_NAME]: 2, [UNKNOWN_NAME]: 1, gitroll: 1 },
+      { [HOME_NAME]: 2, [UNKNOWN_NAME]: 1, northwind: 1 },
     );
     const homeGroup = groups.find((x) => x.name === HOME_NAME);
     assert.equal(homeGroup.isHome, true);
@@ -1510,9 +1510,9 @@ const FIXTURES = [
     const index = (tiers) =>
       cwdTierIndex(
         classifyWorkspaces(
-          ['C:/Users/u', 'C:/Users/u/projects/gitroll'].map((cwd, i) => ({
+          ['C:/Users/u', 'C:/Users/u/projects/northwind'].map((cwd, i) => ({
             key: normalizeCwd(cwd),
-            name: i === 0 ? HOME_NAME : 'gitroll',
+            name: i === 0 ? HOME_NAME : 'northwind',
             cwd,
             normCwd: normalizeCwd(cwd),
             sessionCount: i === 0 ? 9 : 1,
@@ -1527,9 +1527,9 @@ const FIXTURES = [
     try {
       for (const folding of [true, false]) {
         setCaseFolding(folding);
-        const cwdTiers = index({ [HOME_NAME]: 'exclude', gitroll: 'redact' });
-        assert.equal(cwdTiers[0].name, 'gitroll', 'longest prefix first, or home swallows everything');
-        assert.equal(allowLine('C:/Users/u/projects/gitroll/src', { cwdTiers }).allow, true);
+        const cwdTiers = index({ [HOME_NAME]: 'exclude', northwind: 'redact' });
+        assert.equal(cwdTiers[0].name, 'northwind', 'longest prefix first, or home swallows everything');
+        assert.equal(allowLine('C:/Users/u/projects/northwind/src', { cwdTiers }).allow, true);
         const home = allowLine('C:/Users/u', { cwdTiers });
         assert.equal(home.allow, false);
         // Which row denied it, not merely that something did. Unmapped denies
@@ -1537,7 +1537,7 @@ const FIXTURES = [
         // this assertion passing.
         assert.match(home.reason, /"<home>"/, 'the home row is what denied it');
         assert.equal(
-          allowLine(`C:${BS}Users${BS}u${BS}projects${BS}gitroll`, { cwdTiers }).allow,
+          allowLine(`C:${BS}Users${BS}u${BS}projects${BS}northwind`, { cwdTiers }).allow,
           true,
           'a separator variant is the same directory',
         );
@@ -1546,7 +1546,7 @@ const FIXTURES = [
         // directory nobody classified, and an unclassified directory fails
         // closed rather than borrowing its neighbour's tier.
         assert.equal(
-          allowLine(`C:${BS}Users${BS}u${BS}Projects${BS}gitroll`, { cwdTiers }).allow,
+          allowLine(`C:${BS}Users${BS}u${BS}Projects${BS}northwind`, { cwdTiers }).allow,
           folding,
           `case variant under folding=${folding}`,
         );
@@ -1559,10 +1559,10 @@ const FIXTURES = [
     // which can never prefix-match a real cwd, so no workspace tier reached
     // any line at all.
     const slugIndex = [
-      { prefix: 'c:/users/u/.claude/projects/c--users-u-projects-gitroll', tier: 'exclude', name: 'x' },
+      { prefix: 'c:/users/u/.claude/projects/c--users-u-projects-northwind', tier: 'exclude', name: 'x' },
     ];
     assert.equal(
-      allowLine('C:/Users/u/projects/gitroll', { cwdTiers: slugIndex }).allow,
+      allowLine('C:/Users/u/projects/northwind', { cwdTiers: slugIndex }).allow,
       false,
       'an unmatched line fails closed rather than silently defaulting to allow',
     );
@@ -1707,13 +1707,13 @@ const FIXTURES = [
       entity('M1', 'machine', 'playwright-headless', 'MACHINE_1'),
       entity('O1', 'org', 'Kestrelis', 'ORG_1'),
       entity('P1', 'person', 'Nora', 'PERSON_1'),
-      entity('O2', 'org', 'gitroll', 'ORG_2'),
+      entity('O2', 'org', 'northwind', 'ORG_2'),
       entity('P2', 'person', 'ray', 'PERSON_2'),
     ]);
     const leaks = [
       // The whole §F4 MCP class: the log form is always mcp__NAME__tool.
       ['mcp__playwright-headless__browser_navigate', 'mcp__MACHINE_1__browser_navigate'],
-      ['project_gitroll_site_migration.md', 'project_ORG_2_site_migration.md'],
+      ['project_northwind_site_migration.md', 'project_ORG_2_site_migration.md'],
       ['KestrelisAI funds payroll', 'ORG_1AI funds payroll'],
       ['MeetingNora和Ivan', 'MeetingPERSON_1和Ivan'],
     ];
@@ -1732,13 +1732,13 @@ const FIXTURES = [
   }],
 
   // F51 — the org entity is seeded from the git remote `northwind-co/ledger`,
-  // i.e. lowercase, and the company writes itself `GitRoll` everywhere. That
+  // i.e. lowercase, and the company writes itself `Northwind` everywhere. That
   // spelling survived 1,804 times in a real export and the scan had no idea it
-  // existed. Enumerating lower/UPPER/Title does not help: `GitRoll` is none of
+  // existed. Enumerating lower/UPPER/Title does not help: `Northwind` is none of
   // them. F06 passes today only because both its fixtures are lowercase.
   ['F51', 'a non-path entity matches in any casing, and reversal restores the original', () => {
     const t = buildTable([
-      entity('O1', 'org', 'gitroll', 'ORG_1'),
+      entity('O1', 'org', 'northwind', 'ORG_1'),
       // SHAPE: a fabricated given name of FOUR CHARACTERS OR MORE, so it is
       // above CASE_INSENSITIVE_MIN and its all-caps spelling must still match.
       // A three-letter replacement falls under the floor and the row below
@@ -1747,9 +1747,9 @@ const FIXTURES = [
       entity('P2', 'person', 'ray', 'PERSON_2'),
     ]);
     for (const [before, after] of [
-      ['GitRoll x KestrelisAI Exchange', 'ORG_1 x KestrelisAI Exchange'],
-      ['the GITROLL repo', 'the ORG_1 repo'],
-      ['gitroll', 'ORG_1'],
+      ['Northwind x KestrelisAI Exchange', 'ORG_1 x KestrelisAI Exchange'],
+      ['the NORTHWIND repo', 'the ORG_1 repo'],
+      ['northwind', 'ORG_1'],
       ['RENATA delacroix', 'PERSON_1 delacroix'],
     ]) {
       assert.equal(substituteString(before, t).out, after, before);
@@ -1757,12 +1757,12 @@ const FIXTURES = [
 
     // I2 still holds: the span records the text that was there, not the
     // entity's own spelling, so reversal is exact.
-    const r = substituteString('GitRoll and gitroll', t);
-    assert.equal(reverseString(r.out, r.spans), 'GitRoll and gitroll');
+    const r = substituteString('Northwind and northwind', t);
+    assert.equal(reverseString(r.out, r.spans), 'Northwind and northwind');
 
     // The residual scan is matched to the substituter, or the pairing that
     // makes I4 meaningful would let the same 1,804 occurrences through.
-    assert.equal(residualScan('GitRoll here', t, new Set()).entityCount, 1);
+    assert.equal(residualScan('Northwind here', t, new Set()).entityCount, 1);
 
     // Precision floor: three characters is below the case-insensitive minimum,
     // so `Ray` at the start of a sentence is not swept up.
@@ -2011,7 +2011,7 @@ const FIXTURES = [
     assert.match(personal.reason, /personal data/);
 
     // Ordinary work still proposes redact, or the row becomes 29 questions.
-    assert.equal(proposeTier(group('gitroll'), () => remote('northwind-co/ledger')).tier, 'redact');
+    assert.equal(proposeTier(group('northwind'), () => remote('northwind-co/ledger')).tier, 'redact');
     // Whole segments only: a substring test would call these personal data.
     // Fabricated. Shape: an ordinary multi-segment work name whose every
     // segment is outside PERSONAL_TOKENS, so it must come back null.
@@ -2469,20 +2469,20 @@ const FIXTURES = [
 
   // F71 — a replacement changes the text the boundary rule reads.
   //
-  // Measured on a real export: `devuserGitRoll.onmicrosoft.com` glued the
+  // Measured on a real export: `devuserNorthwind.onmicrosoft.com` glued the
   // uploader's handle to the org name. Two things were wrong. The camel-hump
   // test asked the ENTRY's spelling whether it started a hump, and matching is
-  // case-insensitive, so the entry for `GitRoll` reads `gitroll` and answered
+  // case-insensitive, so the entry for `Northwind` reads `northwind` and answered
   // for a casing that is not the one in the file. And once a replacement lands,
   // the text around the next candidate is different — so the substituter and
   // the residual scan can legitimately disagree, which is a permanently red
   // gate rather than a bug in either.
   ['F71', 'the boundary reads the matched text, and substitution runs to a fixpoint', () => {
     const t = buildTable(
-      [entity('P1', 'person', 'devuser', 'X_PERSON_147'), entity('O1', 'org', 'gitroll', 'X_ORG_725')],
+      [entity('P1', 'person', 'devuser', 'X_PERSON_147'), entity('O1', 'org', 'northwind', 'X_ORG_725')],
       { namespace: 'X' },
     );
-    const before = 'mail devuserGitRoll.onmicrosoft.com here';
+    const before = 'mail devuserNorthwind.onmicrosoft.com here';
     const r = substituteRecord({ text: before }, t);
     assert.equal(r.record.text, 'mail X_PERSON_147X_ORG_725.onmicrosoft.com here');
     assert.ok(!r.record.text.includes('devuser'), 'the handle must not survive');
@@ -3009,9 +3009,9 @@ const FIXTURES = [
   // done nothing. Three forms reversed one without the salt, measured on a
   // real export:
   //   `accountant = X_ORG_1684551 https://www.norbroo…ory.com`   x15
-  //   `…authuser%3DX_PERSON_465285%2540gitroll.io`               (a doubly
+  //   `…authuser%3DX_PERSON_465285%2540northwind.example`               (a doubly
   //      percent-encoded @, so §4.6's single-%XX escape rule saw the digit `0`
-  //      and called `gitroll` embedded)
+  //      and called `northwind` embedded)
   //   `…mcgZGV2dXNlckBub3J0aHdpbmQuZXhhbXBsZQ%26…`, base64 of the work address   x30
   //
   // Spellings below are fabricated; the shapes are what the fixture needs.
@@ -3023,8 +3023,8 @@ const FIXTURES = [
       looseSpellings: looseVariants(canonical),
     });
     const t = buildTable([
-      withVariants('O1', 'org', 'gitroll', 'ORG_1'),
-      withVariants('P1', 'person', 'devuser@gitroll.io', 'PERSON_1'),
+      withVariants('O1', 'org', 'northwind', 'ORG_1'),
+      withVariants('P1', 'person', 'devuser@northwind.example', 'PERSON_1'),
       withVariants('O2', 'org', 'Norbrook Vance Advisory', 'ORG_2'),
     ]);
 
@@ -3034,15 +3034,15 @@ const FIXTURES = [
       false,
     );
     // A one-word name has no squashed form to confuse with an English word.
-    assert.equal(squashedForm('gitroll'), null);
+    assert.equal(squashedForm('northwind'), null);
     assert.equal(squashedForm('Norbrook Vance Advisory'), 'norbrookvanceadvisory');
 
     // (b) a doubly percent-encoded at-sign no longer hides the domain.
-    assert.equal(substituteString('authuser%3DX%2540gitroll.io', t).out, 'authuser%3DX%2540ORG_1.io');
+    assert.equal(substituteString('authuser%3DX%2540northwind.example', t).out, 'authuser%3DX%2540ORG_1.example');
 
     // (c) base64, at every one of the three alignments, and still reversible.
     for (const prefix of ['', 'x', 'xy']) {
-      const blob = `q${Buffer.from(`${prefix}devuser@gitroll.io&z`, 'utf8').toString('base64')}`;
+      const blob = `q${Buffer.from(`${prefix}devuser@northwind.example&z`, 'utf8').toString('base64')}`;
       const r = substituteString(blob, t);
       assert.equal(r.spans.length > 0, true, `alignment "${prefix}" was missed`);
       assert.equal(reverseString(r.out, r.spans), blob, 'reversal must still be exact');
@@ -3647,8 +3647,8 @@ const FIXTURES = [
     assert.equal(reverseString('from X_P_1 today', spans), 'from İstanbul today');
 
     // Latin is unchanged: this widens the gate, it does not move it.
-    const latin = buildTable([{ id: 'L1', kind: 'org', pseudonym: 'X_O_4', spellings: ['GitRoll'] }]);
-    assert.equal(substituteString('at gitroll and GITROLL', latin).out, 'at X_O_4 and X_O_4');
+    const latin = buildTable([{ id: 'L1', kind: 'org', pseudonym: 'X_O_4', spellings: ['Northwind'] }]);
+    assert.equal(substituteString('at northwind and NORTHWIND', latin).out, 'at X_O_4 and X_O_4');
     // And the short-spelling floor still applies, whatever the script.
     const short = buildTable([{ id: 'S1', kind: 'org', pseudonym: 'X_O_5', spellings: ['Ян'] }]);
     assert.equal(substituteString('ЯН здесь', short).out, 'ЯН здесь');
@@ -3693,7 +3693,7 @@ const FIXTURES = [
 
     // ASCII gains nothing and must not grow: NFC and NFD of pure ASCII are the
     // same string, and a duplicate needle is a wasted bucket entry per offset.
-    const ascii = expandVariants('GitRoll');
+    const ascii = expandVariants('Northwind');
     assert.equal(new Set(ascii).size, ascii.length, 'no duplicate forms');
   }],
   // F95 - a refusal tells a Mac user to run notepad.
@@ -5443,7 +5443,7 @@ const FIXTURES = [
     assert.equal(merged.added, 1, 'one identity was new');
 
     // Case is a spelling difference, not an identity difference. §4.5 measured
-    // `GitRoll` surviving 1,804 times because the case variant was treated as
+    // `Northwind` surviving 1,804 times because the case variant was treated as
     // a different string; two dictionary entries for one org is the same
     // mistake one layer up.
     const cased = mergeEntities(
@@ -7609,7 +7609,7 @@ const FIXTURES = [
     //
     // Two entities can cover the same text, and then one of them matches
     // nothing while the identity is replaced perfectly well under the other's
-    // pseudonym. Reachable long before the Han fold: `GitRoll` and `gitroll`
+    // pseudonym. Reachable long before the Han fold: `Northwind` and `northwind`
     // declared separately do it, because matching is case-insensitive and only
     // one entry can win an offset. The probe breaks at the first matching entry
     // by design, so it never learns that a loser would also have matched, and a
@@ -7619,11 +7619,11 @@ const FIXTURES = [
     // entity matched. The row below is the one that used to be reported as an
     // absence.
     const shadowed = buildTable([
-      entity('A1', 'org', 'GitRoll', 'ORG_A'),
-      entity('A2', 'org', 'gitroll', 'ORG_B'),
+      entity('A1', 'org', 'Northwind', 'ORG_A'),
+      entity('A2', 'org', 'northwind', 'ORG_B'),
     ]);
-    const shadowRows = probeOutliers(probeCounts(['we use GitRoll daily'], shadowed));
-    const loser = shadowRows.zeros.find((z) => z.spelling === 'gitroll');
+    const shadowRows = probeOutliers(probeCounts(['we use Northwind daily'], shadowed));
+    const loser = shadowRows.zeros.find((z) => z.spelling === 'northwind');
     assert.ok(loser, 'the shadowed entity has no row at all');
     assert.equal(loser.matchedAs, null, 'nothing of that entity matched, so there is nothing to name');
     const text = captureOutput(() => renderProbe(shadowRows));

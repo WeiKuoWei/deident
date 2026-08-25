@@ -170,7 +170,7 @@ export function seedEntities(env, corpus, opts = {}) {
   }
 
   // --- Project directory basenames, taken from real cwd values, never from a
-  // slug (§4.9). `gitroll` vs `gitroll-agentic` collide by design (§4.6) and
+  // slug (§4.9). `northwind` vs `northwind-agentic` collide by design (§4.6) and
   // the engine's longest-match rule is what resolves them.
   //
   // A basename is only seeded when it is project-shaped: it carries a hyphen,
@@ -214,7 +214,7 @@ export function seedEntities(env, corpus, opts = {}) {
   // this tractable: "Emails have a regex. Names do not."
   //
   // This is not in BRIEF §7.3's seed list, and without it the tool leaks. The
-  // measured case on this corpus: `devuser@gitroll.io` and
+  // measured case on this corpus: `devuser@northwind.example` and
   // `devuser@brightfern.ai` have no tier-0 source at all — git config carries
   // only the personal address — so the local part survived tier 0 in 46
   // places. An email regex is also precisely the shape §F7 asks for: it

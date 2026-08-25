@@ -4,7 +4,7 @@
 //   C:\Users\devuser   26,505     C:/Users/devuser    1,838
 //   /c/Users/devuser      306     C:\\Users\\devuser     94  (inside embedded JSON)
 //   case-variant only     7
-// plus URL-encoded (%3Ddevuser%40gitroll.io) and \uXXXX-escaped CJK inside
+// plus URL-encoded (%3Ddevuser%40northwind.example) and \uXXXX-escaped CJK inside
 // embedded JSON.
 //
 // Pure. No I/O. Every branch is covered by fixture F13.
@@ -66,7 +66,7 @@ export function expandVariants(spelling, opts = {}) {
   }
 
   // URL/percent encoding, for non-path spellings only. The measured case is
-  // `%3Ddevuser%40gitroll.io` — an email inside a URL query. Percent-encoding
+  // `%3Ddevuser%40northwind.example` — an email inside a URL query. Percent-encoding
   // every separator of every path root as well would multiply the needle set
   // twenty-fold for forms never observed, and §F7 says tune for precision.
   if (!looksLikePath(spelling)) {
@@ -76,7 +76,7 @@ export function expandVariants(spelling, opts = {}) {
       out.add(enc.replace(/%([0-9A-F]{2})/g, (m, h) => `%${h.toLowerCase()}`));
       // DOUBLE percent-encoding, which is what a URL that was itself put in a
       // query string looks like. Measured on a real export:
-      // `…authuser%3DX_PERSON_465285%2540gitroll.io` — `%2540` is an encoded
+      // `…authuser%3DX_PERSON_465285%2540northwind.example` — `%2540` is an encoded
       // `%40`, so the domain sat in plaintext beside the pseudonym of the
       // person whose address it is.
       const dbl = enc.replace(/%/g, '%25');

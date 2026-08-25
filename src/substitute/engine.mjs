@@ -2,8 +2,8 @@
 // mask. BRIEF §4.6.
 //
 // Sequential String.replaceAll per entity is order-dependent and can re-match
-// its own output; the measured prefix collisions (`gitroll` inside
-// `gitroll-agentic`, `devuser` inside `devuser` inside `devuser@gitroll.io`)
+// its own output; the measured prefix collisions (`northwind` inside
+// `northwind-agentic`, `devuser` inside `devuser` inside `devuser@northwind.example`)
 // make that a real bug, not a theoretical one.
 //
 // Boundary rule is `(?<![A-Za-z0-9_])X(?![A-Za-z0-9_])`, NEVER `\b`. BRIEF
@@ -47,7 +47,7 @@ function isWordChar(ch) {
 //     corpus. The log format is always `mcp__NAME__tool`, so `_` on both sides
 //     made the whole §F4 MCP entity class inert — a 100% miss rate on a control
 //     the manifest simultaneously claimed was not implemented.
-//   project_gitroll_site_migration.md, dm-vance-cpa
+//   project_northwind_site_migration.md, dm-vance-cpa
 //   KestrelisAI x187, NoraLund x3, MeetingNora和Ivan x8
 //
 // Those five strings are fabricated stand-ins and the counts are the real
@@ -82,7 +82,7 @@ export function leftBoundaryBlocks(s, at, entry) {
   const ch = s[at - 1];
   if (ch === undefined) return false;
   // The case of the MATCHED TEXT, not of the entry's spelling. Matching is
-  // case-insensitive, so the entry for `GitRoll` reads `gitroll` — and asking
+  // case-insensitive, so the entry for `Northwind` reads `northwind` — and asking
   // the spelling whether it starts a hump would answer for a casing that is not
   // the one in the file.
   if (isUpper(s[at]) && isLowerish(ch)) return false;
@@ -95,14 +95,14 @@ export function leftBoundaryBlocks(s, at, entry) {
 //
 // BRIEF §4.6 lists "case-variant only 7" as an observed form and PLAN §1 says
 // variants.mjs expands case variants. It did not, for anything but a path's
-// drive letter — so the org entity seeded from the git remote `gitroll-dev/
-// gitroll` was the lowercase spelling, the company writes itself `GitRoll`
-// everywhere, and `GitRoll` survived 1,804 times in a real export while the
+// drive letter — so the org entity seeded from the git remote `northwind-co/
+// northwind` was the lowercase spelling, the company writes itself `Northwind`
+// everywhere, and `Northwind` survived 1,804 times in a real export while the
 // scan had no idea it existed. Enumerating lower/UPPER/Title does not help:
-// `GitRoll` is none of them. Matching case-insensitively does.
+// `Northwind` is none of them. Matching case-insensitively does.
 //
-// §F7's precision argument does not apply here: matching `GitRoll` when
-// `gitroll` is a known entity cannot be a false positive.
+// §F7's precision argument does not apply here: matching `Northwind` when
+// `northwind` is a known entity cannot be a false positive.
 const CASE_INSENSITIVE_MIN = 4;
 
 /**
@@ -117,7 +117,7 @@ const CASE_INSENSITIVE_MIN = 4;
  * for no reason but the character class.
  *
  * The replacement asks the case map instead of the alphabet: a spelling folds if
- * it has a distinct case form at all. `gitroll` qualifies through its uppercase,
+ * it has a distinct case form at all. `northwind` qualifies through its uppercase,
  * which is why both directions are tested rather than just toLowerCase.
  *
  * The length condition is load-bearing and not a nicety. matchesAt computes its
@@ -206,8 +206,8 @@ export function rightBoundaryBlocks(s, end, entry) {
 // The tail of a JSON escape or a percent-encoding, at the end of the window.
 // `%25XX` is a DOUBLY percent-encoded byte, which is what a URL put inside
 // another URL's query string looks like. Measured on a real export:
-// `%2540gitroll.io` — the window ends in `540`, so the digit `0` made
-// `gitroll` look embedded and the domain shipped in plaintext beside the
+// `%2540northwind.example` — the window ends in `540`, so the digit `0` made
+// `northwind` look embedded and the domain shipped in plaintext beside the
 // pseudonym of the person whose address it is.
 const ESCAPE_TAIL_RE = /(?:\\(?:u[0-9a-fA-F]{4}|[bfnrtv])|%(?:25)?[0-9A-Fa-f]{2})$/;
 
@@ -241,7 +241,7 @@ export function leftIsWordChar(s, at) {
   if (m === null) return true;
   // A percent-encoding has no doubling rule: `%3D` is always three characters
   // and the `D` is never a letter of a word. §4.6 measured this form as
-  // `%3Ddevuser%40gitroll.io`, an email inside a URL query, and without this
+  // `%3Ddevuser%40northwind.example`, an email inside a URL query, and without this
   // the whole address was classified as embedded and left in the output.
   if (m[0][0] === '%') return false;
   let backslashes = 0;
@@ -442,7 +442,7 @@ export function substituteString(s, table, forbidOverride = undefined) {
         start: i,
         end,
         // The TEXT that was there, not the entry's spelling: a case-insensitive
-        // entry matches `GitRoll` while its spelling reads `gitroll`, and
+        // entry matches `Northwind` while its spelling reads `northwind`, and
         // reversal must restore what the log actually said.
         spelling: s.slice(i, end),
         pseudonym: replacement,

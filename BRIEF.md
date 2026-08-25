@@ -5,7 +5,7 @@ already made** or a **finding already verified**. Do not re-litigate; if you
 believe one is wrong, say so explicitly in your output with evidence rather than
 silently doing something else.
 
-Owner: the operator. Target repo: `gitroll-dev/deident` (private).
+Owner: the operator. Target repo: `northwind-co/deident` (private).
 
 ---
 
@@ -169,7 +169,7 @@ classified "embedded" and shipped verbatim while the gate read `known-entity
 residue 0 ok`. They were `mcp__playwright-headless__browser_navigate` and every
 other MCP server name in the corpus (the log form is always `mcp__NAME__tool`,
 so the §F4 MCP entity class had a 100% miss rate and was inert by
-construction), `project_gitroll_site_migration.md`, `dm-vance-cpa`,
+construction), `project_northwind_site_migration.md`, `dm-vance-cpa`,
 `KestrelisAI` x187 and `MeetingNora和Ivan` x8. Row 4 above justifies not
 FAILING on `ray` inside `array`; it does not justify one bucket for both.
 
@@ -182,9 +182,9 @@ holds. Fixture F50 pins both directions.
 **Second correction, same measurement.** "case-variant only 7" understated the
 case, because the variant table generated case variants only for a path's drive
 letter. The org entity is seeded from the git remote `northwind-co/ledger`, the
-company writes itself `GitRoll`, and `GitRoll` survived **1,804 times** in a
+company writes itself `Northwind`, and `Northwind` survived **1,804 times** in a
 real export with the scan unaware it existed. Enumerating lower/UPPER/Title does
-not help: `GitRoll` is none of them. Spellings of four characters or more are
+not help: `Northwind` is none of them. Spellings of four characters or more are
 matched case-insensitively, and the span records the text that was actually
 there so reversal stays exact. Fixture F51.
 
@@ -197,10 +197,10 @@ there so reversal stays exact. Fixture F51.
 - Path forms found **in already-decoded strings**: `C:\Users\devuser` 26,505;
   `C:/Users/devuser` 1,838; `/c/Users/devuser` 306; still-doubled
   `C:\\Users\\devuser` inside embedded JSON 94; case-variant only 7. Also present:
-  URL-encoded (`%3Ddevuser%40gitroll.io`) and `\uXXXX`-escaped CJK inside
+  URL-encoded (`%3Ddevuser%40northwind.example`) and `\uXXXX`-escaped CJK inside
   embedded JSON.
-- Real prefix collisions in the seed set: `gitroll` is a prefix of
-  `gitroll-agentic`; `devuser` is a prefix of `devuser` and `devuser@gitroll.io`
+- Real prefix collisions in the seed set: `northwind` is a prefix of
+  `northwind-agentic`; `devuser` is a prefix of `devuser` and `devuser@northwind.example`
   (4,511 substring occurrences in a 40-file sample).
 
 **Sort entities by decoded length descending, single left-to-right scan with an
