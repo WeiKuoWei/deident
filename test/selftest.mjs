@@ -14,8 +14,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
-import { expandVariants, looseVariants, squashedForm, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
-import { hanVariants, foldTable } from './entities/hanfold.mjs';
+import { expandVariants, looseVariants, squashedForm, isCjkOnly, backslashUEscape } from '../src/entities/variants.mjs';
+import { hanVariants, foldTable } from '../src/entities/hanfold.mjs';
 import {
   seedEntities,
   rejectReason,
@@ -30,17 +30,17 @@ import {
   projectShaped,
   basenameOf,
   buildEntities,
-} from './entities/seed.mjs';
-import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar } from './substitute/engine.mjs';
-import { probeCounts, probeOutliers } from './entities/probe.mjs';
-import { substituteRecord } from './substitute/walker.mjs';
-import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal, unverifiedRemainder } from './verify/checks.mjs';
-import { checkDeclaredValues } from './verify/declared.mjs';
-import { residualScan, startsInsideEscape, jsonEscaped } from './verify/residual.mjs';
-import { distillToolResult, retainToolUseResult, checkAddedLines } from './retain/toolresult.mjs';
-import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason } from './retain/records.mjs';
-import { resolveLineCwd, cwdChangeFrom } from './corpus/cwdtrack.mjs';
-import { allowLine } from './policy/linefilter.mjs';
+} from '../src/entities/seed.mjs';
+import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar } from '../src/substitute/engine.mjs';
+import { probeCounts, probeOutliers } from '../src/entities/probe.mjs';
+import { substituteRecord } from '../src/substitute/walker.mjs';
+import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal, unverifiedRemainder } from '../src/verify/checks.mjs';
+import { checkDeclaredValues } from '../src/verify/declared.mjs';
+import { residualScan, startsInsideEscape, jsonEscaped } from '../src/verify/residual.mjs';
+import { distillToolResult, retainToolUseResult, checkAddedLines } from '../src/retain/toolresult.mjs';
+import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason } from '../src/retain/records.mjs';
+import { resolveLineCwd, cwdChangeFrom } from '../src/corpus/cwdtrack.mjs';
+import { allowLine } from '../src/policy/linefilter.mjs';
 import {
   classifyWorkspaces,
   matchDenyToken,
@@ -51,16 +51,16 @@ import {
   orphanedDecisions,
   exportableTiers,
   nothingAdmittedRefusal,
-} from './policy/workspaces.mjs';
-import { recordRead, loadReads, countReads, readsPath } from './policy/reads.mjs';
-import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
-import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from './policy/signals.mjs';
-import { setUserDeny } from './policy/userdeny.mjs';
-import { limitLines } from './cli/limits.mjs';
-import { readSession } from './corpus/reader.mjs';
-import { probeCaseFolding, setCaseFolding, caseFolding, normalizeCwd } from './corpus/cwdtrack.mjs';
-import { uncoveredNameParts } from './entities/probe.mjs';
-import { resolveRoot } from './corpus/root.mjs';
+} from '../src/policy/workspaces.mjs';
+import { recordRead, loadReads, countReads, readsPath } from '../src/policy/reads.mjs';
+import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from '../src/policy/grouping.mjs';
+import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from '../src/policy/signals.mjs';
+import { setUserDeny } from '../src/policy/userdeny.mjs';
+import { limitLines } from '../src/cli/limits.mjs';
+import { readSession } from '../src/corpus/reader.mjs';
+import { probeCaseFolding, setCaseFolding, caseFolding, normalizeCwd } from '../src/corpus/cwdtrack.mjs';
+import { uncoveredNameParts } from '../src/entities/probe.mjs';
+import { resolveRoot } from '../src/corpus/root.mjs';
 import {
   setCommand,
   renderRefusal,
@@ -72,7 +72,7 @@ import {
   renderDeclaredResidue,
   renderTriageWritten,
   captureOutput,
-} from './cli/report.mjs';
+} from '../src/cli/report.mjs';
 import {
   namespaceCollisions,
   namespaceRefusal,
@@ -82,9 +82,9 @@ import {
   pseudonymScanPattern,
   loadOrCreateSalt,
   defaultSaltDir,
-} from './entities/pseudonym.mjs';
-import { buildZip, readZip, readZipFile, MAX_ENTRIES } from './output/zip.mjs';
-import { renderPreview } from './output/preview.mjs';
+} from '../src/entities/pseudonym.mjs';
+import { buildZip, readZip, readZipFile, MAX_ENTRIES } from '../src/output/zip.mjs';
+import { renderPreview } from '../src/output/preview.mjs';
 import {
   parseReview,
   parseSessionDrops,
@@ -93,15 +93,15 @@ import {
   renderReview,
   renderReviewHtml,
   SESSION_DECISIONS,
-} from './policy/reviewfile.mjs';
-import { readEntities, writeCandidates } from './entities/tier1.mjs';
-import { estimateTokens, roundEstimate, tokenCost } from './cli/tokens.mjs';
-import { CANDIDATE_CHUNK_CHARS } from './retain/constants.mjs';
-import { DICTIONARY_FILENAME, mergeEntities } from './policy/dictionary.mjs';
-import { parseCliArgs } from './cli/args.mjs';
-import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
-import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings } from './pipeline.mjs';
-import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
+} from '../src/policy/reviewfile.mjs';
+import { readEntities, writeCandidates } from '../src/entities/tier1.mjs';
+import { estimateTokens, roundEstimate, tokenCost } from '../src/cli/tokens.mjs';
+import { CANDIDATE_CHUNK_CHARS } from '../src/retain/constants.mjs';
+import { DICTIONARY_FILENAME, mergeEntities } from '../src/policy/dictionary.mjs';
+import { parseCliArgs } from '../src/cli/args.mjs';
+import { checkRuntime, REQUIRED_NODE } from '../src/cli/runtime.mjs';
+import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings } from '../src/pipeline.mjs';
+import { RefusalError, ReadError, UsageError } from '../src/cli/errors.mjs';
 
 // Both sides of every fold pair must be Han and nothing else. A pair that
 // slipped in a lookalike from another block would fold text nobody asked about.
@@ -4160,13 +4160,13 @@ const FIXTURES = [
   // which is portable by construction.
   ['F103', 'no refusal names a command that belongs to one harness', () => {
     const HARNESS_SHAPED = /(^|"|`|\s)\/[a-z][a-z0-9-]{2,}(\s|"|`|$)/;
-    const root = fileURLToPath(new URL('.', import.meta.url));
+    const root = fileURLToPath(new URL('../src/', import.meta.url));
     const offenders = [];
     const walk = (dir) => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, e.name);
         if (e.isDirectory()) { walk(p); continue; }
-        if (!e.name.endsWith('.mjs') || e.name === 'selftest.mjs') continue;
+        if (!e.name.endsWith('.mjs')) continue;
         const text = fs.readFileSync(p, 'utf8');
         for (const m of text.matchAll(/command:\s*(`[^`]*`|'[^']*')/g)) {
           const cmd = m[1].slice(1, -1);
@@ -4181,26 +4181,55 @@ const FIXTURES = [
     walk(root);
     assert.deepEqual(offenders, [], `harness-specific remedies: ${offenders.join('; ')}`);
 
-    // The operator contract ships in two places because harnesses disagree
-    // about where to look. They must not drift: a reader following the stale
-    // one is exactly how the entity-kind list fell 62 commits behind.
+    // AGENTS.md used to carry a second copy of the operator contract, and this
+    // fixture asserted the two bodies matched byte for byte. It caught one real
+    // drift, the entity-kind list 62 commits behind, which is the evidence that
+    // the duplication was the bug rather than the drift. So the copy is gone
+    // and AGENTS.md is a pointer.
+    //
+    // A pointer needs its own check, because a pointer to a file that moved is
+    // worse than a copy that is stale: it fails at the moment an agent is being
+    // told where the contract is. Three things, and the last is the one that
+    // rots quietly.
     const repo = fileURLToPath(new URL('..', import.meta.url));
-    const skill = fs.readFileSync(path.join(repo, 'skills', 'deident', 'SKILL.md'), 'utf8');
     const agents = fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8');
-    const bodyOf = (text) => text.slice(text.indexOf('# deident')).trim();
-    assert.equal(bodyOf(skill), bodyOf(agents), 'SKILL.md and AGENTS.md have drifted');
+
+    // 1. The pointer names a path, and 2. that path is there.
+    const CONTRACT = 'skills/deident/SKILL.md';
+    assert.ok(agents.includes(CONTRACT), `AGENTS.md no longer names ${CONTRACT}`);
+    const contractPath = path.join(repo, ...CONTRACT.split('/'));
+    assert.ok(fs.existsSync(contractPath), `AGENTS.md points at a file that is not there: ${CONTRACT}`);
+
+    // And the file it names has to BE the contract, not merely exist. These two
+    // headings are the halves an operator cannot work without: the flow, and
+    // the disclosure it has to put in front of the person.
+    const skill = fs.readFileSync(contractPath, 'utf8');
+    assert.match(skill, /^# deident$/m, 'the file AGENTS.md points at is not the operator contract');
+    assert.ok(
+      skill.includes('## What it does not protect against'),
+      'the contract AGENTS.md points at has lost its limits section',
+    );
+
+    // 3. AGENTS.md has not quietly become a copy again. SKILL.md's body is
+    // 27 KB, so anything past 4 KB here is somebody re-pasting a section of it,
+    // which is exactly how the duplication started.
+    const pointerBytes = Buffer.byteLength(agents, 'utf8');
+    assert.ok(
+      pointerBytes < 4096,
+      `AGENTS.md is ${pointerBytes} bytes: a pointer that size is a copy again`,
+    );
 
     // And the skill must not restate a constant it can read at runtime, which
     // is the drift that already happened once.
     assert.doesNotMatch(skill, /person \| org \| client \| workspace \| machine/);
 
-    // The frontmatter is the half the body comparison above cannot see, and it
-    // drifted there: SKILL.md's `description` listed two Chinese trigger
-    // phrases, AGENTS.md has no frontmatter and so listed none. Same contract,
+    // The frontmatter is the half the old body comparison could not see, and it
+    // drifted there too: SKILL.md's `description` listed two Chinese trigger
+    // phrases, AGENTS.md had no frontmatter and so listed none. Same contract,
     // different activation on the two harnesses, with the drift check green.
     //
-    // The fix is not to compare frontmatter, because AGENTS.md legitimately has
-    // none. It is that the description must carry no language-specific literal
+    // The fix was never to compare frontmatter. It is that the description must
+    // carry no language-specific literal
     // at all: a literal list serves exactly the languages someone remembered to
     // add, so "English plus the author's own language" is what it always
     // becomes. Non-ASCII in the description is that mistake, detectably.
@@ -7853,7 +7882,9 @@ const FIXTURES = [
   // all, so the instruction has to say the reader must be fresh.
   ['F178', 'the operator contract makes the cold read a step, and says the reader must be fresh', () => {
     const repo = fileURLToPath(new URL('..', import.meta.url));
-    for (const rel of [['skills', 'deident', 'SKILL.md'], ['AGENTS.md']]) {
+    // AGENTS.md is a pointer now, so the step lives in the skill alone and
+    // asserting it in two places would assert a copy back into existence.
+    for (const rel of [['skills', 'deident', 'SKILL.md']]) {
       const where = path.join(repo, ...rel);
       const text = fs.readFileSync(where, 'utf8');
       assert.match(text, /cold read/i, `${rel.join('/')} has no cold-read step`);
