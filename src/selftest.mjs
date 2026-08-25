@@ -15,6 +15,7 @@ import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 import { expandVariants, looseVariants, squashedForm, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
+import { hanVariants, foldTable } from './entities/hanfold.mjs';
 import {
   seedEntities,
   rejectReason,
@@ -61,6 +62,7 @@ import {
   renderRefusal,
   renderReadError,
   renderManifest,
+  renderProbe,
   renderCandidates,
   renderTriageWritten,
   captureOutput,
@@ -95,6 +97,9 @@ import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
 import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings } from './pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
 
+// Both sides of every fold pair must be Han and nothing else. A pair that
+// slipped in a lookalike from another block would fold text nobody asked about.
+const HAN_ONLY = /^\p{sc=Han}$/u;
 const BS = String.fromCharCode(92); // a single backslash, written without escapes
 const NL = String.fromCharCode(10);
 const SEP = String.fromCharCode(92); // a backslash, written this way so no escape layer can eat it
@@ -7418,6 +7423,168 @@ const FIXTURES = [
     );
     assert.equal(first.code, 0, first.out);
     assert.ok(!first.out.includes('known-values.json'), `a genuine first run was nagged:${NL}${first.out}`);
+  }],
+
+  // F164 - the Simplified and Traditional Han fold, in the substituter and in
+  // the residue scan at the same time.
+  //
+  // The root cause of a delivered leak. The first export's declared redaction
+  // strings were Traditional and the corpus wrote the same words in Simplified.
+  // The substituter did not match them and the residue scan did not find them,
+  // IN AGREEMENT, because both read `table.entries` and the entries carried one
+  // script. The residue assertion below is the whole fixture: a fold that
+  // reached only the substituter would leave the gate green over a known miss,
+  // which is worse than the state it replaced.
+  ['F164', 'a Traditional spelling matches its Simplified twin, and the residue scan looks for both', () => {
+    // `遠帆投資` is fabricated. Shape: a four-character Han org name in which
+    // every character has a distinct Simplified form, which is the shape a
+    // Taiwan-written company name has.
+    const t = buildTable([entity('O1', 'org', '遠帆投資', 'ORG_1')]);
+    assert.equal(substituteString('客戶是遠帆投資的顧問', t).out, '客戶是ORG_1的顧問', 'the declared script');
+    assert.equal(substituteString('客户是远帆投资的顾问', t).out, '客户是ORG_1的顾问', 'the other script');
+
+    // The gate, on text the substituter never touched. Before the fold this
+    // returned 0 over plaintext that names the org.
+    assert.equal(residualScan('客户是远帆投资的顾问', t).entityCount, 1, 'the residue scan is blind to the twin');
+
+    // And the twin as it arrives inside embedded JSON, which is the form a
+    // character-level matcher fold could never have seen: six ASCII characters
+    // per Han character. Written out by hand rather than by calling the
+    // escaper, so the fixture cannot agree with a broken escaper.
+    const escaped = `${BS}u8fdc${BS}u5e06${BS}u6295${BS}u8d44`;
+    assert.equal(residualScan(`{"text":"${escaped}"}`, t).entityCount, 1, 'the escaped twin is not scanned for');
+
+    // The reverse direction, because a corpus mixes the two: measured over the
+    // real corpus root, 5,751,541 Traditional-only characters beside 38,621
+    // Simplified-only ones.
+    const s = buildTable([entity('O2', 'org', '远帆投资', 'ORG_2')]);
+    assert.equal(substituteString('客戶是遠帆投資的', s).out, '客戶是ORG_2的', 'the fold is not one-directional');
+
+    // Reversal restores the script that was actually in the text. The span
+    // records `s.slice(at, end)`, not the entry's spelling, so the Simplified
+    // occurrence comes back Simplified.
+    const r = substituteString('客户是远帆投资的', t);
+    assert.equal(reverseString(r.out, r.spans), '客户是远帆投资的', 'reversal restored the wrong script');
+  }],
+
+  // F165 - the fold refuses the ambiguous pairs, because a redaction tool that
+  // corrupts text is worse than one that misses.
+  //
+  // Several Traditional characters collapse onto one Simplified character
+  // (發/髮 -> 发, 乾/幹 -> 干, 鐘/鍾 -> 钟) and several Simplified forms are
+  // themselves distinct Traditional characters (后, 只, 面, 余, 台). Folding
+  // those in reverse is a guess, and a guess mints a needle for a word the
+  // person never wrote.
+  ['F165', 'the Han fold is a function one way and a bijection the other, and never guesses', () => {
+    // 后 is the Simplified form of 後 AND a Traditional character meaning
+    // empress. Reversing it would turn a declared 王后 into the needle 王後.
+    assert.deepEqual(hanVariants('幕後'), ['幕后'], 'Traditional to Simplified is a function and must work');
+    assert.deepEqual(hanVariants('王后'), [], 'the reverse of an ambiguous character was guessed');
+    assert.deepEqual(hanVariants('頭髮'), ['头发'], '髮 folds forward');
+    assert.deepEqual(hanVariants('头发'), [], '发 has two Traditional preimages and must not fold back');
+    assert.deepEqual(hanVariants('臺北'), ['台北'], '臺 folds forward');
+    assert.deepEqual(hanVariants('台北'), [], '台 is its own Traditional character');
+
+    // Structural invariants of the table, pinned rather than its size. A wrong
+    // pair here is silent: the substitution stays reversible and the residue
+    // count stays zero, which is the failure direction the whole file exists
+    // for.
+    const { forward, back } = foldTable;
+    for (const [t, s] of forward) {
+      assert.equal(t.length, 1, `${t} is not one UTF-16 unit`);
+      // matchesAt measures its span as `at + entry.spelling.length`, so a fold
+      // that changed the unit count would consume the wrong span and reversal
+      // would restore the wrong text.
+      assert.equal(s.length, 1, `${s} is not one UTF-16 unit`);
+      assert.notEqual(t, s, `${t} folds onto itself`);
+      assert.ok(HAN_ONLY.test(t) && HAN_ONLY.test(s), `${t}${s} is not a Han pair`);
+      // No character is both a source and a target: that would make the fold
+      // order-dependent and a round trip lossy.
+      assert.ok(!forward.has(s), `${s} is both a Simplified target and a Traditional source`);
+    }
+    for (const [s, t] of back) assert.equal(forward.get(t), s, `${s} does not round trip through ${t}`);
+
+    // Nothing in the corpus is a spelling of length zero, and a fold that
+    // changed a length would be caught here rather than by a corrupted export.
+    for (const spelling of ['遠帆投資顧問', '张大明', '臺灣銀行']) {
+      for (const v of hanVariants(spelling)) assert.equal(v.length, spelling.length, `${spelling} -> ${v} changed length`);
+    }
+  }],
+
+  // F166 - a zero row that means something.
+  //
+  // The first export happened with declared strings that matched zero times and
+  // the zero row stopped nothing, because the row was one of hundreds. Measured
+  // against the shipped modules: one declared path expands to seven spellings
+  // and six of them match nothing, so the "matched nothing" block was a wall of
+  // escaping twins nobody typed and the one row that mattered sat inside it.
+  //
+  // Two classes now, and they are different animals: a spelling the person
+  // TYPED that matched nothing while another spelling of the same entity
+  // matched (they wrote a form this corpus does not use, which is the Export 1
+  // shape), and one where nothing of the entity matched anywhere (it is simply
+  // not here, which is what a passport number legitimately looks like).
+  ['F166', 'a declared spelling that matched nothing says which kind of nothing it is', () => {
+    // Fabricated. Shape: a Traditional org name declared over a corpus that
+    // writes Simplified, which is exactly what shipped.
+    const table = buildTable([
+      entity('O1', 'org', '遠帆投資', 'ORG_1'),
+      entity('S1', 'secret', 'K7719284', 'SECRET_1'),
+    ]);
+    const rows = probeCounts(['客户是远帆投资的顾问'], table);
+    const by = Object.fromEntries(rows.map((r) => [r.spelling, r]));
+    assert.equal(by['远帆投资'].count, 1, 'the twin is what actually matched');
+    assert.equal(by['遠帆投資'].count, 0, 'the declared form matched nothing');
+
+    const out = probeOutliers(rows);
+    const zeros = Object.fromEntries(out.zeros.map((z) => [z.spelling, z]));
+
+    // The declared form, with the spelling that matched in its place. Without
+    // this the reader is told a redaction did nothing and is given no way to
+    // tell that from a typo.
+    assert.ok(zeros['遠帆投資'], 'the declared spelling has no zero row');
+    assert.equal(zeros['遠帆投資'].matchedAs, '远帆投资', 'the row does not say what matched instead');
+
+    // The genuinely absent value: no spelling of that entity matched anything.
+    assert.ok(zeros.K7719284, 'a value that is simply not in the corpus has no row');
+    assert.equal(zeros.K7719284.matchedAs, null, 'a benign absence was reported as a near miss');
+
+    // And the noise class is gone. A spelling deident GENERATED that matched
+    // nothing, while the entity matched through another one, is the variant
+    // generator working, not a finding.
+    const paths = buildTable([entity('W1', 'workspace', `C:${BS}Users${BS}devuser`, 'WORKSPACE_1')]);
+    const pathRows = probeOutliers(probeCounts([`at C:${BS}Users${BS}devuser${BS}app`], paths));
+    assert.equal(pathRows.zeros.length, 0, `generated variants are still a wall: ${pathRows.zeros.map((z) => z.spelling).join(' ')}`);
+    assert.ok(paths.size > 1, 'the table really does carry generated variants');
+
+    // What the null class must NOT be allowed to claim.
+    //
+    // Two entities can cover the same text, and then one of them matches
+    // nothing while the identity is replaced perfectly well under the other's
+    // pseudonym. Reachable long before the Han fold: `GitRoll` and `gitroll`
+    // declared separately do it, because matching is case-insensitive and only
+    // one entry can win an offset. The probe breaks at the first matching entry
+    // by design, so it never learns that a loser would also have matched, and a
+    // row reading "this string is nowhere in the corpus" would be false.
+    //
+    // The wording therefore claims only what the sweep knows: nothing of THIS
+    // entity matched. The row below is the one that used to be reported as an
+    // absence.
+    const shadowed = buildTable([
+      entity('A1', 'org', 'GitRoll', 'ORG_A'),
+      entity('A2', 'org', 'gitroll', 'ORG_B'),
+    ]);
+    const shadowRows = probeOutliers(probeCounts(['we use GitRoll daily'], shadowed));
+    const loser = shadowRows.zeros.find((z) => z.spelling === 'gitroll');
+    assert.ok(loser, 'the shadowed entity has no row at all');
+    assert.equal(loser.matchedAs, null, 'nothing of that entity matched, so there is nothing to name');
+    const text = captureOutput(() => renderProbe(shadowRows));
+    assert.doesNotMatch(
+      text,
+      /is anywhere in the corpus|nowhere in the corpus/,
+      `the report claims an absence the probe cannot know:${NL}${text}`,
+    );
+    assert.match(text, /No other spelling of the same entity matched either/, `the report does not say what it actually checked:${NL}${text}`);
   }],
 ];
 

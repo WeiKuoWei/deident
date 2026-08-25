@@ -420,8 +420,21 @@ Also carry back:
   first. **Read the top rows.** A common word near the top is a false positive
   that every gate will pass. A workspace path or the user's own name at the top
   is expected.
-- `replacementCounts.zeros`: spellings that matched nothing, so they protected
-  nothing. Usually a typo in the entity list.
+- `replacementCounts.zeros`: spellings a person supplied that matched nothing.
+  Spellings deident generated are not in this list, so every row is one somebody
+  actually wrote. Read `matchedAs` on each row, because it splits them into two
+  different findings:
+  - `matchedAs` is a string. The entity WAS replaced, through a different
+    spelling. The person wrote a form this corpus does not use. Harmless for a
+    path typed with the other separator. **Not harmless for a name or a
+    company**, which is the shape a delivered leak had: the declared strings
+    were Traditional Chinese and the corpus wrote them in Simplified. Tell the
+    person which form this corpus uses, so the rest of their list matches it.
+  - `matchedAs` is `null`. Nothing of that entity matched, through any of its
+    spellings. Usually a typo in the entity list, sometimes a value that
+    genuinely never came up here. It does NOT mean the string is absent from the
+    corpus: if the same identity is also in the list as a separate entity, that
+    one may already be covering it. Not an error on its own.
 - `declaredValues`: every value from `known-values.json`, with what each one
   actually replaced. Not a subset and not a verdict. Two rows need the person:
   a count of zero, which is a value the corpus never contained or a typo in

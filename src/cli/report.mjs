@@ -534,11 +534,52 @@ export function renderProbe({ hits, zeros }) {
     warn(`      ${String(h.count).padStart(6)}  ${pad(h.kind, 9)} ${h.spelling.slice(0, 46)}`);
     if (h.excerpt) warn(`              ${h.excerpt.slice(0, 96)}`);
   }
-  if (zeros.length > 0) {
+  // Two classes, printed apart and labelled, because they are different
+  // animals and the first export sorted them together. A spelling that matched
+  // nothing while ANOTHER spelling of the same entity matched says the person
+  // wrote a form this corpus does not use, and that is the Export 1 shape: the
+  // declared strings were Traditional and the prose was Simplified. A spelling
+  // whose entity matched nothing anywhere says only that the value is not here,
+  // which is what an unused passport number looks like.
+  //
+  // Neither is a gate, and the near-miss class is the one that most invites
+  // being made one. It must not be: the same shape covers a path typed with the
+  // other separator, where the entity WAS replaced everywhere it occurs and
+  // nothing is wrong at all. No test orders those two, so a refusal would turn
+  // correct behaviour into a red gate, which is F7's failure and the reason
+  // renderProbe is a report in the first place. The row names the spelling that
+  // matched instead, and a reader tells them apart in a second.
+  const near = zeros.filter((z) => z.matchedAs);
+  const absent = zeros.filter((z) => !z.matchedAs);
+  if (near.length > 0) {
     warn('');
-    warn(`  ! ${n(zeros.length)} declared spelling${zeros.length === 1 ? '' : 's'} matched nothing, so ${zeros.length === 1 ? 'it protects' : 'they protect'} nothing:`);
-    for (const z of zeros.slice(0, 12)) warn(`      ${pad(z.kind, 9)} ${z.spelling.slice(0, 60)}`);
-    if (zeros.length > 12) warn(`      ... and ${n(zeros.length - 12)} more`);
+    warn(`  ! ${n(near.length)} spelling${near.length === 1 ? '' : 's'} you declared matched nothing, but the same entity matched`);
+    warn('    through a spelling deident generated. This corpus writes it the other way:');
+    for (const z of near.slice(0, 12)) {
+      warn(`      ${pad(z.kind, 9)} ${z.spelling.slice(0, 34)}   matched as   ${z.matchedAs.slice(0, 34)}`);
+    }
+    if (near.length > 12) warn(`      ... and ${n(near.length - 12)} more`);
+    warn('    Harmless for a path written with the other separator. Not harmless for a');
+    warn('    name or a company: anything else you declare in that form will be missed.');
+  }
+  if (absent.length > 0) {
+    warn('');
+    warn(`  ! ${n(absent.length)} declared spelling${absent.length === 1 ? '' : 's'} matched nothing, so ${absent.length === 1 ? 'it protected' : 'they protected'} nothing:`);
+    for (const z of absent.slice(0, 12)) warn(`      ${pad(z.kind, 9)} ${z.spelling.slice(0, 60)}`);
+    if (absent.length > 12) warn(`      ... and ${n(absent.length - 12)} more`);
+    warn('    No other spelling of the same entity matched either.');
+    // Claims only what the sweep knows, and the difference is not pedantry.
+    // Two entities can cover the same text, and then one matches nothing while
+    // the identity is replaced under the other's pseudonym. Reachable long
+    // before the Han fold: `GitRoll` and `gitroll` declared separately do it,
+    // because matching is case-insensitive and only one entry wins an offset.
+    // The sweep breaks at the first matching entry by design, so it never
+    // learns a loser would also have matched, and "this string is nowhere in
+    // the corpus" would be a false statement in the one block whose job is
+    // being believed.
+    warn('    Usually a typo in your list, or a value you have never typed here. If the');
+    warn('    same identity is also declared as a separate entity, that one may already');
+    warn('    be covering it.');
   }
   warn('');
 }

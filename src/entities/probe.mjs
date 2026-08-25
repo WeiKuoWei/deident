@@ -101,6 +101,8 @@ export function probeCounts(texts, table, sink = null) {
             pseudonym: entry.pseudonym,
             kind: entry.kind,
             spelling: entry.spelling,
+            declared: entry.declared !== false,
+            matchedAs: null,
             count: 0,
             excerpt: s.slice(Math.max(0, i - EXCERPT_CONTEXT), Math.min(s.length, end + EXCERPT_CONTEXT)).replace(/\s+/g, ' '),
           };
@@ -114,17 +116,43 @@ export function probeCounts(texts, table, sink = null) {
     }
   }
 
-  // A declared spelling that matched NOTHING is the other failure of the same
+  // A spelling that matched NOTHING is the other failure of the same
   // measurement, and it is reported for the same reason: a redaction string
-  // nobody typed correctly protects nothing, and today it is silent.
+  // nobody typed correctly protects nothing, and it used to be silent.
+  //
+  // But a zero row on a value that is IN this corpus is a different animal from
+  // a zero row on a value that simply is not there, and the first export shipped
+  // with both kinds sorted together. `matchedAs` is what separates them: the
+  // highest-counting spelling of the SAME entity that did match. When it is
+  // non-null the person wrote a form this corpus does not use, which is the
+  // Export 1 shape exactly: a Traditional name declared over Simplified prose.
+  // When it is null nothing of that entity is anywhere, which is what an
+  // unused passport number legitimately looks like.
+  //
+  // Every record in `counts` at this point came from the sweep above and so has
+  // a count of at least one, which is why the best-match scan can run before
+  // the zero rows are added rather than needing a second pass.
+  const bestPerEntity = new Map();
+  for (const rec of counts.values()) {
+    const prev = bestPerEntity.get(rec.entityId);
+    if (prev === undefined || rec.count > prev.count) bestPerEntity.set(rec.entityId, rec);
+  }
   for (const entry of table.entries) {
     if (counts.has(entry.spelling)) continue;
+    const instead = bestPerEntity.get(entry.entityId) ?? null;
     counts.set(entry.spelling, {
       entityId: entry.entityId,
       pseudonym: entry.pseudonym,
       kind: entry.kind,
       spelling: entry.spelling,
+      // Whether a person supplied this spelling or expandVariants generated it
+      // from one they did. See buildTable at `typed`.
+      declared: entry.declared !== false,
+      matchedAs: instead === null ? null : instead.spelling,
       count: 0,
+      // Deliberately blank rather than borrowing the excerpt of whatever DID
+      // match: this row's own spelling occurs nowhere, and an excerpt beside it
+      // would read as an occurrence of it.
       excerpt: '',
     });
   }
@@ -142,10 +170,20 @@ export function probeCounts(texts, table, sink = null) {
  * A spelling matched thousands of times is either the corpus's most important
  * entity or an ordinary word; a spelling matched zero times is a redaction that
  * did not happen. Both need a human. The middle is unremarkable by construction.
+ *
+ * A zero on a GENERATED spelling is neither, and it used to be most of the
+ * list. expandVariants turns one declared path into seven spellings, six of
+ * which are escaping twins that were never expected to occur, and every one of
+ * them earned a row saying it protected nothing. That is F7's cry-wolf failure
+ * arriving as a wall the one real row sits inside: the first export shipped
+ * with declared strings that matched zero times and the zero row stopped
+ * nothing. A twin that did not occur is the variant generator working, so it is
+ * not reported at all; what is reported is the spelling a person actually
+ * supplied.
  */
 export function probeOutliers(rows, { top = 15, includeZero = true } = {}) {
   const hits = rows.filter((r) => r.count > 0).slice(0, top);
-  const zeros = includeZero ? rows.filter((r) => r.count === 0) : [];
+  const zeros = includeZero ? rows.filter((r) => r.count === 0 && r.declared !== false) : [];
   return Object.freeze({ hits: Object.freeze(hits), zeros: Object.freeze(zeros) });
 }
 
