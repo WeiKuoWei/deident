@@ -3793,7 +3793,7 @@ const FIXTURES = [
   }],
   // F97 - the residue gate scans a string in memory, not the file that ships.
   //
-  // journey-and-pitfalls section 2.1 states it as a build instruction: "the
+  // Measured on the delivery run, and stated as a build instruction: "the
   // review step should physically read the output file." Three times in the
   // delivery run a reviewer was handed something that was not what shipped, and
   // each time the gap was where the leak lived. The gate at pipeline.mjs scans
@@ -3850,7 +3850,7 @@ const FIXTURES = [
   // Until now the last gate ran over `serialized.allBytes`, assembled in memory
   // alongside the entries. Everything downstream of that assembly - the deflate
   // path, the entry naming, the central directory, the rename from .part - was
-  // outside every check the tool has. journey-and-pitfalls section 2.1 is the
+  // outside every check the tool has. The delivery run is the
   // rule this closes, and it is stated there as a build instruction rather than
   // an aspiration: the review step should physically read the output file.
   //
@@ -3972,7 +3972,7 @@ const FIXTURES = [
   // decision that changed nothing, while defining `public` as the setting under
   // which the MOST sessions are held. The expected user publishes publicly, so
   // the design handed its main case the worst archive, and it did it with the
-  // one instrument journey-and-pitfalls section 1 measured as the expensive
+  // one instrument measured on this corpus as the expensive
   // mistake: whole-session removal took that funnel from 35 sessions to 17, and
   // block-level denial and value-level redaction took it back to 76.
   //
@@ -4327,7 +4327,7 @@ const FIXTURES = [
   // F106 - the tool reads one agent's logs and its own refusal did not say so.
   //
   // resolveCorpus enumerates <root>/projects/<dir>/*.jsonl at depth 0, which is
-  // Claude Code's layout. docs/adapters-research.md records Codex's as
+  // Claude Code's layout. Codex's layout was surveyed separately and records Codex's as
   // $CODEX_HOME/sessions/<YYYY>/<MM>/<DD>/rollout-*.jsonl, three levels deeper
   // and under a different directory name. So `--root ~/.codex` produces
   // `no session storage at ~/.codex/projects`, and the refusal then offers
@@ -6895,7 +6895,7 @@ const FIXTURES = [
 
   // F150 - the other half of §5. The transcript printed is the one that
   // SHIPPED, read back out of the archive, rather than a second rendering of
-  // the corpus that could disagree with it. journey-and-pitfalls 2.1: three
+  // the corpus that could disagree with it. Measured three
   // times on the delivery run a reviewer was handed something that was not what
   // shipped, and each time the gap was where the leak lived.
   ['F150', 'review --session prints the redacted transcript that is actually in the archive', () => {

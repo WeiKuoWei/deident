@@ -167,7 +167,7 @@ export function parseReview(text, opts = {}) {
  * classify every held row against a distinction that changed nothing, while
  * defining `public` as the setting that ships the FEWEST sessions. The expected
  * user publishes publicly, so the design gave its main case the worst archive,
- * using the instrument journey-and-pitfalls §1 measured as the expensive
+ * using the instrument measured on this corpus as the expensive
  * mistake: whole-session removal took that funnel from 35 to 17, and removing
  * parts of a session instead took it back to 76.
  *

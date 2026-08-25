@@ -311,7 +311,7 @@ Three properties, each load-bearing:
   the one command whose whole job is re-identification, so every answer ends
   with a paragraph saying the output is local and must not be sent.
 - **The transcript is read back out of the archive**, not re-rendered from the
-  corpus. journey-and-pitfalls 2.1: three times on the delivery run a reviewer
+  corpus. Measured three times on the delivery run: a reviewer
   was handed something that was not what shipped, and each time the gap was
   where the leak lived.
 - **Neither query reads the corpus, and neither can answer before an export.**

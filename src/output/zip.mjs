@@ -162,7 +162,7 @@ export function buildZip(entries) {
  * Read back what buildZip wrote.
  *
  * The reason this exists in the shipped source rather than only in a fixture:
- * journey-and-pitfalls section 2.1 records that three times in the delivery run
+ * Measured three times in the delivery run:
  * a reviewer was handed something that was not what shipped, and each time the
  * gap was where the leak lived. The residue gate scans a string assembled
  * BESIDE the entries, so a defect in the writer, the deflate path or the entry

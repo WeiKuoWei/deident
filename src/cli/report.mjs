@@ -818,7 +818,7 @@ function sayLocalOnly(source) {
  * One session as it actually shipped, read back out of the archive.
  *
  * Read from the zip rather than re-rendered from the corpus, for the reason
- * journey-and-pitfalls 2.1 gives: on the delivery run a reviewer was handed
+ * Measured on the delivery run: a reviewer was handed
  * something that was not what shipped three separate times, and each time the
  * gap was where the leak lived.
  */

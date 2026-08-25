@@ -1095,7 +1095,7 @@ export async function runExport(flags, env) {
     // assembled BESIDE the entries, so the deflate path, the entry naming, the
     // central directory and the rename from .part were outside all of them.
     //
-    // journey-and-pitfalls 2.1 states this as a build instruction rather than
+    // This is a build instruction rather than
     // an aspiration, because on the delivery run a reviewer was handed
     // something that was not what shipped three separate times, and each time
     // the gap was where the leak lived. The entry NAMES are scanned too: F38

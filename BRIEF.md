@@ -1,4 +1,9 @@
-# deident — engineering brief
+# deident: engineering brief
+
+> **The engineering brief.** This is a design record, not documentation.
+> Using the tool needs only `README.md` and `skills/deident/SKILL.md`. It is kept
+> because comments throughout `src/` cite its section numbers for the measurement
+> behind a decision.
 
 Authoritative handoff for the engineering squad. Everything below is a **decision
 already made** or a **finding already verified**. Do not re-litigate; if you

@@ -1,5 +1,10 @@
 # deident — Slice 1 implementation plan
 
+> **The implementation plan.** This is a design record, not documentation.
+> Using the tool needs only `README.md` and `skills/deident/SKILL.md`. It is kept
+> because comments throughout `src/` cite its section numbers for the measurement
+> behind a decision.
+
 Derived from `BRIEF.md`. Where this plan differs from BRIEF, §0 says so explicitly with
 the measurement behind it. Everything else in BRIEF is treated as settled.
 

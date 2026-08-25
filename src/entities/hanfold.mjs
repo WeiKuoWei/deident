@@ -210,7 +210,7 @@ const AMBIGUOUS_BACK = new Set([...FORWARD.values()].filter((s) => !BACK.has(s))
 export const foldTable = Object.freeze({ forward: FORWARD, back: BACK, ambiguousBack: AMBIGUOUS_BACK });
 
 // `\p{sc=Han}` cannot tell the two scripts apart, which is what
-// docs/architecture-decision.md M3 recorded. It is still the right gate for
+// was recorded when the architecture was decided. It is still the right gate for
 // "is there anything here to fold at all": a spelling with no Han in it skips
 // two Map walks.
 const HAN_RE = /\p{sc=Han}/u;

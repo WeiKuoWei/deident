@@ -46,7 +46,7 @@ the design handed its main case the worst archive, and privacy and usefulness we
 direct competition: the more careful the recipient claim, the fewer sessions shipped.
 
 They were only in competition because the axis removed whole sessions. That instrument is
-already measured in this repository, in journey-and-pitfalls §1:
+already measured on this corpus:
 
 | Step | Sessions |
 |---|---|

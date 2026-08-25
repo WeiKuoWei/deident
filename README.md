@@ -620,7 +620,7 @@ because it catches a specific bug, named in the fixture. Several carry a negativ
 control, because a check that cannot fail proves nothing.
 
 `docs/cli-ux.md` is the interface contract, `docs/privacy-tiers.md` is the
-slice-2 tier design, and `docs/adapters-research.md` records what is and is not
+and `docs/model-tier.md` records which model tiers can do the one step that
 established about other vendors' log formats. `docs/model-tier.md` measures
 which model tiers can do the one step a person or an agent has to do by reading. `BRIEF.md` is the engineering brief
 and `PLAN.md` the slice-1 implementation plan; the section numbers quoted
