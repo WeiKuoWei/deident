@@ -6102,13 +6102,13 @@ const FIXTURES = [
     // SHAPE, which is the only thing the pattern reads.
     const cases = [
       // a vendor prefix the list did not have, reached through its label
-      ['OPENAI_API_KEY=sk-proj-REDACTED_Qv7mL2', 'sk-proj-REDACTED_Qv7mL2'],
+      [`OPENAI_API_KEY=${'sk-proj-'}Qv7mL2xTb9RnKd4WpZs6Hy`, `${'sk-proj-'}Qv7mL2xTb9RnKd4WpZs6Hy`],
       // a payment-provider live key, reached by the prefix alone
-      ['STRIPE=sk_live_REDACTED_9dHm2Q', 'sk_live_REDACTED_9dHm2Q'],
+      [`STRIPE=${'sk_live_'}9dHm2QrTv4Xb7NpLz3Kw6Ys1`, `${'sk_live_'}9dHm2QrTv4Xb7NpLz3Kw6Ys1`],
       // a package-registry automation token
-      ['npm_REDACTED_7bKq3Z', 'npm_REDACTED_7bKq3Z'],
+      [`${'npm_'}7bKq3ZmR8vTn2Wd5Ly9Hs4Jc6Xp1Ff0Gg2Aa`, `${'npm_'}7bKq3ZmR8vTn2Wd5Ly9Hs4Jc6Xp1Ff0Gg2Aa`],
       // a source-forge personal access token
-      ['glpat-REDACTED_4Nq8Wz', 'glpat-REDACTED_4Nq8Wz'],
+      [`${'glpat-'}4Nq8Wz2Lm6Tv9Rb3Xy7K`, `${'glpat-'}4Nq8Wz2Lm6Tv9Rb3Xy7K`],
       // a model-hub token
       ['hf_Zb4Kq9Wm2Tv7Rn5Ly8Hs3Jc6Xp1Fd0Gg', 'hf_Zb4Kq9Wm2Tv7Rn5Ly8Hs3Jc6Xp1Fd0Gg'],
       // a chat-platform app-level token
