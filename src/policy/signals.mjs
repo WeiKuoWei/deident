@@ -9,9 +9,14 @@
 // guessed: "git remote is a public repository -> open". Repository visibility
 // is not on disk. A remote URL says nothing about who may read it, and BRIEF
 // §2 forbids the network call that would answer it. `open` is weaker than
-// `redact` (privacy-tiers §5), so guessing it wrong leaks. Every remote is
-// therefore proposed `redact`, and `open` stays a decision the person makes in
-// review.md. The row says so, rather than looking like nothing was tried.
+// `redact` (privacy-tiers §5), so guessing it wrong leaks.
+//
+// No proposal is exportable at all. `redact` and `open` are reached only by a
+// person typing one of them, and every proposal here is `exclude` or
+// `unclassified`. The reason is measured rather than cautious: `scan` writes
+// the proposal into column 1 of review.md, so a proposal read back is
+// indistinguishable from a decision, and two exports shipped on that with all
+// six gates green. See the remote branch below for the whole argument.
 
 import { execFileSync } from 'node:child_process';
 import { parseRemote } from '../entities/seed.mjs';
@@ -124,7 +129,27 @@ export function proposeTier(group, probeRemote) {
           `"${unreadable}": decide this one yourself, or add a token to denied.json beside your salt`,
       );
     }
-    return frozen('redact', `git remote ${remote.raw} (set "open" yourself if it is public)`);
+    // Default-deny, and this is the whole of it.
+    //
+    // This row used to read `redact`, and `scan` writes the proposal into
+    // column 1 of review.md, so reading the file back was indistinguishable
+    // from reading a tier the person had typed. `scan` then `export` therefore
+    // admitted every remote-bearing workspace on the machine with nobody
+    // agreeing to anything. Two exports shipped that way with all six gates
+    // green and both leaked, and neither leak was in a work repository.
+    //
+    // A remote is evidence that a directory is a repository. It is not evidence
+    // that its contents may be handed to someone, and this is the one branch
+    // where the difference is load-bearing: every other proposal is already
+    // `exclude` or `unclassified`. Making it `exclude` costs the person one
+    // typed word per workspace they actually want, and buys the manifest a
+    // sentence it could not previously make: whatever the tool still misses can
+    // only be missed inside a workspace that was named by hand.
+    //
+    // `admissible` is what stops that from becoming 31 questions. The row is
+    // still the candidate the census counts and the refusal lists; it is just
+    // not the answer.
+    return frozen('exclude', `git remote ${remote.raw}: type "redact" here to include it, or "open" if it is public`, true);
   }
   if (group.name === HOME_NAME) {
     // 129 sessions on the real corpus. They are not one piece of work and the
@@ -156,6 +181,11 @@ export function personalDataShape(name) {
   return null;
 }
 
-function frozen(tier, reason) {
-  return Object.freeze({ tier, reason });
+/**
+ * `admissible` marks a row a person would plausibly want to admit, so the
+ * census and the refusal can name it. It is never a tier and never an answer:
+ * only a typed decision reaches an exportable tier.
+ */
+function frozen(tier, reason, admissible = false) {
+  return Object.freeze({ tier, reason, admissible });
 }

@@ -135,6 +135,11 @@ export function classifyWorkspaces(groups, saved = {}, opts = {}) {
         denyToken,
         proposed: proposal.tier,
         decided,
+        // Carried through so the census and the refusal can name the rows a
+        // person would plausibly admit. It describes the SIGNAL, never the
+        // answer: a decided row keeps it, because it is still the row a git
+        // remote was read from.
+        admissible: proposal.admissible === true,
       }),
     );
   }
@@ -150,21 +155,80 @@ export function summarizeTiers(decisions) {
     const members = decisions.filter((d) => d.tier === tier);
     if (members.length === 0) continue;
     const denied = members.filter((d) => d.denyToken !== null && d.tier === 'exclude').length;
+    // Under default-deny the `exclude` row holds nearly the whole corpus on a
+    // first run, so a bare `exclude  31 workspaces` is the census saying
+    // nothing on the one screen that has to say what to do next. The rows
+    // carrying a git remote are the ones a person would plausibly admit, and
+    // counting them here is the difference between a number and a next step.
+    const admissible = tier === 'exclude' ? members.filter((d) => d.admissible).length : 0;
+    const notes = [];
+    if (admissible > 0) {
+      notes.push(`${admissible} ${admissible === 1 ? 'has' : 'have'} a git remote and ${admissible === 1 ? 'is' : 'are'} yours to admit`);
+    }
+    if (tier === 'exclude' && denied > 0) notes.push(`${denied} matched the deny-list`);
+    if (tier === UNCLASSIFIED) notes.push('excluded until you decide');
     rows.push(
       Object.freeze({
         tier,
         workspaces: members.length,
         sessions: members.reduce((a, d) => a + d.sessionCount, 0),
-        note:
-          tier === 'exclude' && denied > 0
-            ? `${denied} matched the deny-list`
-            : tier === UNCLASSIFIED
-              ? 'excluded until you decide'
-              : null,
+        note: notes.length > 0 ? notes.join(', ') : null,
       }),
     );
   }
   return Object.freeze(rows);
+}
+
+/**
+ * Refusal when nothing has been admitted, naming the rows that can be.
+ *
+ * The old text for this case was `Set tiers: deident scan  # then edit
+ * review.md`, which is the command the person had just run, and it named none
+ * of the 31 rows in the file it pointed at. Under default-deny this refusal is
+ * what every first run ends on, so it is the screen that has to carry the next
+ * action: the file, the column, the word, and the rows worth typing it on.
+ *
+ * Only the admissible rows are listed. A directory with no remote is excluded
+ * because no signal could argue for it, and offering it here would turn the
+ * one screen that has to be short into the 29 questions privacy-tiers §3 says
+ * nobody answers.
+ */
+export function nothingAdmittedRefusal(decisions, reviewPath) {
+  if (decisions.some((d) => d.tier === 'redact' || d.tier === 'open')) return null;
+  const candidates = decisions
+    .filter((d) => d.admissible === true)
+    .sort((a, b) => b.sessionCount - a.sessionCount);
+  const shown = candidates.slice(0, 8);
+  const why = [
+    'A proposed tier is not an admission. deident exports a workspace only after',
+    'you have named it yourself, so whatever it still misses can only be missed',
+    'inside a workspace you chose.',
+    '',
+  ];
+  if (shown.length === 0) {
+    why.push('No workspace here carries a git remote, so none of them is an obvious candidate.');
+  } else {
+    why.push(
+      `${candidates.length} workspace${candidates.length === 1 ? ' has' : 's have'} a git remote${
+        candidates.length > shown.length ? `, the largest ${shown.length} of them` : ''
+      }:`,
+      ...shown.map(
+        (d) => `  ${d.name.padEnd(26)} ${d.sessionCount} session${d.sessionCount === 1 ? '' : 's'}   ${d.cwd ?? ''}`.trimEnd(),
+      ),
+    );
+  }
+  // The path goes in `why` and not in a remedy label. renderRefusal pads every
+  // label to the width of the longest one, so an absolute Windows path there
+  // pushed the command 180 columns to the right of a terminal that is 80 wide,
+  // and the command is the half a person has to be able to read.
+  why.push('', `Column 1 of ${reviewPath} is the tier. Change "exclude" to "redact" on the rows you want.`);
+  return new RefusalError('no workspace has been admitted, so the export would be empty', {
+    why,
+    remedies: [
+      { label: 'Then export', command: 'deident export' },
+      { label: 'Or see the rows again', command: 'deident scan' },
+    ],
+  });
 }
 
 /** Refusal for unclassified workspaces. cli-ux §8, second example. */
@@ -229,16 +293,30 @@ export function loadSavedDecisions(saltDir) {
     // upgrade does not silently forget every decision on the machine.
     const raw = parsed.version === undefined ? parsed : (parsed.workspaces ?? {});
     const drops = Array.isArray(parsed.sessionDrops) ? parsed.sessionDrops.filter((v) => typeof v === 'string') : [];
+    const workspaces = normalizeSaved(raw);
     return Object.freeze({
-      workspaces: Object.freeze(normalizeSaved(raw)),
+      workspaces: Object.freeze(workspaces),
       sessionDrops: Object.freeze(new Set(drops)),
+      // Written before the entry gate existed, when `scan` put its own
+      // `redact` proposal into column 1 of review.md and reading it back was
+      // indistinguishable from reading an answer. So an exportable tier in a
+      // file this old may be a proposal nobody typed, and the export says so
+      // once rather than inheriting it silently: the whole value of the gate is
+      // the claim that every shipped session came from a workspace somebody
+      // chose, and a claim inherited from an ambiguous record is not that.
+      //
+      // Not reverted. Re-asking 14 rows on a real machine is the 29 questions
+      // privacy-tiers §3 measures as producing no answers, and overriding a
+      // person's recorded answer on a guess about how it was produced is worse
+      // than telling them what the record cannot distinguish.
+      legacy: (parsed.version ?? 1) < 3 && Object.keys(workspaces).length > 0,
     });
   } catch {
     return EMPTY_SAVED;
   }
 }
 
-const EMPTY_SAVED = Object.freeze({ workspaces: Object.freeze({}), sessionDrops: Object.freeze(new Set()) });
+const EMPTY_SAVED = Object.freeze({ workspaces: Object.freeze({}), sessionDrops: Object.freeze(new Set()), legacy: false });
 
 /**
  * Persist only what the person actually decided, never a bare proposal.
@@ -265,7 +343,7 @@ export function saveDecisions(saltDir, decisions, sessionDrops = new Set()) {
   // read, so a run with a different --out silently un-dropped every one of
   // them. privacy-tiers 4 level 3 calls this the last look; a last look that
   // does not persist is not one.
-  const body = { version: 2, workspaces, sessionDrops: [...sessionDrops].sort() };
+  const body = { version: 3, workspaces, sessionDrops: [...sessionDrops].sort() };
   fs.mkdirSync(saltDir, { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(body, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
   return file;

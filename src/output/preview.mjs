@@ -108,6 +108,29 @@ export function renderPreview(state) {
   push('== leaving this machine ==');
   push('');
   push(`    ${state.manifest.sessions} sessions from ${state.manifest.workspaces} workspaces`);
+  // The same two statements the terminal manifest makes, for the same reason
+  // the counters below are duplicated here: the preview is a trust surface and
+  // two trust surfaces that disagree about what left are one surface that is
+  // wrong. The entry-gate bound and the read count are the two lines a reader
+  // of this file most needs, because this file cannot show them either.
+  if (state.manifest.admitted) {
+    const a = state.manifest.admitted;
+    const admitted = `${a.workspaces} workspace${a.workspaces === 1 ? '' : 's'}`;
+    push(
+      a.notAdmitted > 0
+        ? `    every session here is from one of ${admitted} you admitted by name; ${a.notAdmitted} others contributed nothing`
+        : `    every session here is from the ${admitted} you admitted by name`,
+    );
+  }
+  if (state.manifest.read) {
+    const r = state.manifest.read;
+    push(`    ${r.read} of ${r.total} sessions were opened and read here, ${r.unread} are unverified`);
+    // Reading this file is not reading a session. It carries one 45-character
+    // window per entity class by construction (see excerptAt), so a preview
+    // that credited itself with a session read would be the exact number-where-
+    // no-check-ran that cli-ux §12b rules out.
+    if (r.read === 0) push('      reading this file does not change that: it shows windows, not sessions');
+  }
   push(`    ${state.manifest.userMessages} user messages`);
   for (const z of state.manifest.zeros) push(`    0 ${z.label.padEnd(18)} ${z.suppressed}`);
   // Counters, not zeros, the same distinction the terminal manifest makes, so
