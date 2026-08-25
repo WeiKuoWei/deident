@@ -291,7 +291,7 @@ $ deident review --entity PERSON_11
   PERSON_11   person   "Grace Hopper"
   4 occurrences, 3 sessions:
 
-    2026-08-14  gitroll            a3f91c04-6b2e-4d7a-9f10-2c5581bb8f21
+    2026-08-14  gitroll            55555555-5555-4555-8555-555555555511
         turn    47   ...跟 Grace Hopper 約了 call...
         turn    51   ...Grace Hopper 說他下週...
 
@@ -299,7 +299,7 @@ $ deident review --entity PERSON_11
 ```
 
 ```
-$ deident review --session a3f91c04-6b2e-4d7a-9f10-2c5581bb8f21
+$ deident review --session 55555555-5555-4555-8555-555555555511
   full redacted transcript of one session, to stdout
 ```
 

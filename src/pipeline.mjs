@@ -1799,7 +1799,7 @@ function extractProseBySession(sessions) {
  *
  * Entry NAMES are de-identified too, and are included in the bytes the
  * residual scan sees. The raw name would be
- * `sessions/C--Users-devuser/006033ea-...jsonl`: the slug carries the username
+ * `sessions/C--Users-devuser/d1e2f3a4-...jsonl`: the slug carries the username
  * and the filename is the real session uuid. Neither is inside any JSON body,
  * so a scan over record bytes alone would report `known-entity residue: 0`
  * over a zip whose directory listing names the user — the §F1 failure, one

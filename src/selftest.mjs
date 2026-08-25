@@ -982,7 +982,9 @@ const FIXTURES = [
     assert.equal(embedded.embedded, 1, 'and it is reported, not hidden');
 
     // §F5: a UUID that is not a rewritten one is a leak.
-    const uuid = '7594939e-0000-4000-8000-000000000000';
+    // Fabricated. Shape preserved: a well-formed v4 uuid that is not in the
+    // set of uuids this pass rewrote, which is what makes it a leak.
+    const uuid = 'cccccccc-0000-4000-8000-000000000000';
     assert.equal(residualScan(uuid, t, new Set()).uuidCount, 1);
     assert.equal(residualScan(uuid, t, new Set([uuid])).uuidCount, 0);
   }],
@@ -998,9 +1000,11 @@ const FIXTURES = [
 
   ['F26', 'UUIDs inside retained text are rewritten too (§F5, I5)', () => {
     const rw = (u) => (typeof u === 'string' ? `00000000-0000-4000-8000-${u.slice(-12)}` : null);
-    const rec = { text: 'see 006033ea-68cb-412e-bf13-7545b926308b for details', id: 'x' };
+    // Fabricated. Shape preserved: a well-formed v4 uuid sitting bare in prose,
+    // which is where a session id turns up when the model quotes a path back.
+    const rec = { text: 'see d1e2f3a4-5b6c-4d7e-8f90-1a2b3c4d5e6f for details', id: 'x' };
     const out = rewriteUuidsInRecord(rec, rw);
-    assert.ok(!out.text.includes('006033ea'), 'the uuid must not survive in prose');
+    assert.ok(!out.text.includes('d1e2f3a4'), 'the uuid must not survive in prose');
     assert.ok(out.text.includes('00000000-0000-4000-8000-'));
     assert.equal(out.id, 'x', 'non-uuid values are untouched');
   }],
@@ -1227,7 +1231,9 @@ const FIXTURES = [
       type: 'artifact-autoreact-ledger',
       v: 1,
       sessionId: 's',
-      accountUuid: '7594939e-0000-4000-8000-000000000000',
+      // Fabricated. Shape preserved: a well-formed v4 uuid, the same shape the
+      // real `accountUuid` on this record type carries.
+      accountUuid: 'bbbbbbbb-0000-4000-8000-000000000000',
       artifacts: {},
     };
     for (const rec of [monitor, ledger]) {
@@ -4457,13 +4463,16 @@ const FIXTURES = [
     // Dropping is safe in a way that nothing else here is. A minted uuid is
     // already a pseudonym, so removing it from the table protects nothing and
     // loses nothing; keeping it makes the export impossible.
-    const minted = new Set(['a6ca6f4b-8b3e-2ebe-0c07-f9e986ec09ce']);
+    // Both values fabricated. Shape preserved on the minted one: a uuid whose
+    // version and variant nibbles are hash output rather than v4, which is what
+    // tells a minted uuid apart from one that arrived in the corpus.
+    const minted = new Set(['e1e1e1e1-2b2b-3c3c-4d4d-5e5e5e5e5e5e']);
     const real = '11111111-2222-4333-8444-555555555555';
 
     const { entities, dropped } = stripMintedSpellings(
       [
-        { kind: 'secret', spellings: ['a6ca6f4b-8b3e-2ebe-0c07-f9e986ec09ce'], confidence: 'high' },
-        { kind: 'person', spellings: ['Ada Lovelace', 'a6ca6f4b-8b3e-2ebe-0c07-f9e986ec09ce'] },
+        { kind: 'secret', spellings: ['e1e1e1e1-2b2b-3c3c-4d4d-5e5e5e5e5e5e'], confidence: 'high' },
+        { kind: 'person', spellings: ['Ada Lovelace', 'e1e1e1e1-2b2b-3c3c-4d4d-5e5e5e5e5e5e'] },
         { kind: 'secret', spellings: [real], confidence: 'high' },
       ],
       minted,
@@ -4478,7 +4487,7 @@ const FIXTURES = [
     // Reported, never silent. The person wrote it down for a reason and is
     // owed the sentence explaining why it is not needed.
     assert.equal(dropped.length, 2);
-    assert.ok(dropped.every((d) => d.includes('a6ca6f4b')));
+    assert.ok(dropped.every((d) => d.includes('e1e1e1e1')));
 
     // Negative control: with nothing minted, nothing is touched, and the same
     // array comes back rather than a rebuilt one.
