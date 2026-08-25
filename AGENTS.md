@@ -102,32 +102,50 @@ normal.
 
 This is the step that matters and it is the one you must not do alone.
 
-A workspace tier is `exclude` or `redact`. A session row is `keep`, `drop` or
-`drop:audience`. The proposals are derived from signals the tool can read; the
-person corrects them.
+A workspace tier is `exclude` or `redact`. A session row is `keep` or `drop`.
+The proposals are derived from signals the tool can read; the person corrects
+them.
 
 **Present a decision list, not the data.** One line per held-back session with
 one line of reason. The person answers a list; they do not read transcripts.
 
-**`drop` versus `drop:audience` is the important distinction.**
+`drop` means held back, and it is the only way a session is held: someone
+else's identity documents, health, private messages, live credentials, or
+anything else the person will not send. Getting this wrong in the safe
+direction costs nothing; a row you cannot classify is a `drop`.
 
-- `drop` means held whatever the recipient knows. Someone else's identity
-  documents, health, private messages, live credentials. This is the floor and
-  no setting releases it.
-- `drop:audience` means held only because of who this is going for. Company
-  business, a role that identifies a colleague, the owner's own arrangements
-  that the employer already sees.
-
-Mark them differently as you go. Getting this wrong in the safe direction costs
-nothing; a row you cannot classify is a `drop`.
-
-**Ask the person who the archive is for**, and pass it in step 5:
-`teammate`, `company`, or `public`. Default is `public`, which releases nothing
-extra. This one answer moves every `drop:audience` row at once, which is why it
-is worth asking rather than adjudicating those rows one by one.
+**The audience does not move these rows.** Every kept session ships at every
+audience. Never hold a session back on the grounds that the archive is going
+out publicly: that is what substitution is for, and removing whole sessions is
+the measured way this tool used to lose most of its corpus.
 
 Write decisions back by editing `review.md` in place: column 1 of the
 `## workspaces` and `## sessions` sections.
+
+### Ask who will be able to read it
+
+One question, asked here and passed in step 5. It is about who can read the
+archive once they have it, not who it is addressed to.
+
+| Their answer | Pass |
+|---|---|
+| Anyone, I am publishing it, or I do not know where it ends up | `public` |
+| Only people who work where they work | `company` |
+| One named colleague on their own team | `teammate` |
+
+`public` is the default and it is the right answer for anyone with no employer,
+or exporting work that is their own. It costs prose quality and nothing else:
+their own company's name and product words get replaced along with everything
+else, so some sentences read `ORG_4471` where a reader would have read a word
+they know. It costs no sessions.
+
+**Say both of these before they answer.** Neither is fixed by any setting, and
+after the archive exists it is too late to weigh them:
+
+- Substitution replaces names, not roles. "The person who runs finance and
+  payroll" resolves to one human at a small company however it is spelled.
+- A published work log shows the domain they work in and the kind of client
+  they work for, whatever the names are replaced with.
 
 ## 3. Triage: cut the list before anything expensive reads it
 
@@ -285,9 +303,13 @@ What goes in the list:
 
 What stays out:
 
-- The user's own employer and its product vocabulary, when the recipient works
-  there too. Substituting words the reader already knows wrecks the prose and
-  hides nothing.
+- The user's own employer and its product vocabulary, at `--audience teammate`
+  or `company` only. Substituting words the reader already knows wrecks the
+  prose and hides nothing. **At `public` the employer goes IN**: declare its
+  written-out name, its products and its internal service names, because those
+  words alone say where the person works and what it sells. The candidates file
+  states which rule is in force for the run in its own header; follow the
+  header, not this line.
 - Generic technology and platforms mentioned as technology.
 - Ordinary words. **This is the one that has actually gone wrong**: a common
   noun was declared once and replaced 202 times across a corpus that had already
@@ -328,9 +350,13 @@ worth naming to the person:
 
 Also carry back:
 
-- `manifest.audience`, `manifest.heldByFloor`, `manifest.heldByAudience`. The
-  second number is the only one that moves if the person changes their mind
-  about the recipient.
+- `manifest.audience` and `manifest.heldByFloor`. The audience holds no
+  sessions back, so `heldByFloor` is the whole held count.
+- `manifest.audienceEntities`, the count of employer names that are in the table
+  because the declared audience is `public`. Zero at `teammate` and `company` by design.
+  Zero at `public` on a machine with no git remote is a GAP, not a clean bill:
+  the employer's written-out name has no tier-0 source, so only the entity list
+  from step 4 can carry it.
 - `replacementCounts.hits` — how many times each spelling was replaced, highest
   first. **Read the top rows.** A common word near the top is a false positive
   that every gate will pass. A workspace path or the user's own name at the top

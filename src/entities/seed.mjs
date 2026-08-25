@@ -114,13 +114,45 @@ export function seedEntities(env, corpus, opts = {}) {
   }
 
   // --- git remotes, for every workspace directory that is a checkout.
+  //
+  // `audience` is the declared recipient (audience-and-floor.md). It moves ONE
+  // thing here and it is the clause the operator contract used to enforce by
+  // hand: "the user's own employer and its product vocabulary stay out of the
+  // entity list WHEN THE RECIPIENT WORKS THERE TOO". Absent, `public`, which is
+  // the flag's own default: the two halves of the tool must not disagree about
+  // who the archive is for.
+  const audience = opts.audience ?? 'public';
+  // A Set, not a counter: buildEntities dedupes on (kind, canonical), so two
+  // remotes with the same repo name under different owners are one entity and
+  // a bare increment would report two.
+  const audienceNames = new Set();
   const remoteWords = new Set();
   // The probe is shared with the tier proposal when the caller has one: git
   // costs ~85 ms per spawn on this machine, and classify() had already asked
   // the same question of the same directories from a separate cache.
   for (const remote of gitRemotes(opts.repoDirs ?? [], warnings, opts.probeRemote ?? null)) {
     add('org', remote.host ? `${remote.owner}/${remote.repo}` : remote.raw, 'git remote');
+    // The owner is seeded at EVERY audience and is deliberately not on the
+    // axis. Tier 0 cannot tell an employer's own org from a client's org that
+    // the person has a checkout under, and the failure direction of guessing
+    // wrong is shipping a client's name to a stranger.
     if (remote.owner) add('org', remote.owner, 'git remote owner');
+    // The bare repo name is the product vocabulary: what the employer builds,
+    // written the way it is written in the prose. At `public` it identifies the
+    // employer to a reader who does not already know it; at `teammate` or
+    // `company` it is a word the reader uses daily, and substituting it wrecks
+    // the sentence while hiding nothing.
+    //
+    // Gated by projectShaped for the reason the project-basename seed below is:
+    // without it a repo called `dashboard`, `references` or `migration` becomes
+    // an entity and ordinary prose gets substituted, which is §F7's "a scan
+    // that cries wolf is the first thing switched off" arriving as
+    // over-substitution. The length floor is the basename seed's, for the same
+    // collision reason.
+    if (audience === 'public' && remote.repo && remote.repo.length >= 4 && projectShaped(remote.repo)) {
+      add('org', remote.repo, 'git repository name (declared audience: public)', 'low');
+      audienceNames.add(remote.repo);
+    }
     for (const word of `${remote.owner ?? ''} ${remote.repo ?? ''}`.split(/[^A-Za-z0-9]+/)) {
       if (word.length >= 4) remoteWords.add(word.toLowerCase());
     }
@@ -263,6 +295,11 @@ export function seedEntities(env, corpus, opts = {}) {
   return Object.freeze({
     entities: buildEntities(collected),
     warnings: Object.freeze(warnings),
+    // What the declared audience actually added, so the manifest can report a
+    // number that moves. The field it replaces was `heldByAudience`, which was
+    // 0 on every measured run because nothing ever wrote the decision it
+    // counted, and a zero printed where no check ran is §4.3's mistake.
+    audienceEntities: audienceNames.size,
   });
 }
 

@@ -635,6 +635,16 @@ export async function runExport(flags, env) {
   // Declared before anything is read, so an unknown value refuses at the flag
   // rather than after twenty minutes of work.
   const reviewSessions = readSessionDrops(reviewPath, { audience: flags.audience ?? 'public' });
+  // A row spelled the way review.md used to spell it. It is still held, and
+  // saying so is the difference between a silent migration and one the person
+  // can finish: the value is no longer offered, so nothing else will mention it.
+  if (reviewSessions.legacyAudienceRows > 0) {
+    report.renderWarning(
+      `${reviewSessions.legacyAudienceRows} row(s) in ${REVIEW_FILENAME} say drop:audience, which deident no longer ` +
+        'offers. They are held, the same as drop, and the decision is remembered. To rewrite the file in the ' +
+        'current shape: deident scan',
+    );
+  }
   const sessionDrops = new Set([...remembered.sessionDrops, ...reviewSessions.drops]);
   // A review file that lists sessions is a decision about THOSE sessions. Any
   // session written since it was generated appears in no row, and treating an
@@ -725,6 +735,10 @@ export async function runExport(flags, env) {
     // question: git costs ~85 ms per spawn and 200 workspaces paid it twice.
     probeRemote: probe,
     texts: collectRetainedStrings(retained.records),
+    // The whole of what the declared audience moves. It decides whether the
+    // employer's own product vocabulary is an identity or a word the reader
+    // uses daily; it does not decide which sessions ship.
+    audience: reviewSessions.audience,
   });
 
   //  9  pseudonyms
@@ -821,7 +835,11 @@ export async function runExport(flags, env) {
       // It is the one artifact intended to be read by an LLM, i.e. the one most
       // likely to leave the machine, and its own header states that the
       // username, paths, git identity and remotes have already been replaced.
-      { table: tier0Table, omitted, deferred },
+      // `audience` is here because this file is the instruction the reader
+      // writes the entity list against, and the rule it must state changes with
+      // the declared recipient. Kept in SKILL.md alone it reached them only if
+      // the operator had loaded the skill and remembered a conditional in it.
+      { table: tier0Table, omitted, deferred, audience: reviewSessions.audience },
     );
     // Written BEFORE the refusal, and it is memory rather than output: these
     // sessions have now been put in front of a reader, and cli-ux §10's "no
@@ -1005,7 +1023,7 @@ export async function runExport(flags, env) {
   if (unmatched.length > 0) {
     report.renderUnmatched(unmatched.map((e) => ({ id: e.id, kind: e.kind, canonical: e.canonical })));
   }
-  const manifest = buildManifest(retained, decisions, serialized, residue, entities, spanCaveats(allStrings), reviewSessions);
+  const manifest = buildManifest(retained, decisions, serialized, residue, entities, spanCaveats(allStrings), reviewSessions, seeded.audienceEntities);
   report.renderManifest(manifest);
 
   // 17  the only step that writes an output artifact
@@ -1848,7 +1866,7 @@ export function sanitizeEntryName(name) {
 }
 
 /** Step 16. */
-function buildManifest(retained, decisions, serialized, residue, entities, caveats = { absorbed: 0, cjk: 0 }, held = null) {
+function buildManifest(retained, decisions, serialized, residue, entities, caveats = { absorbed: 0, cjk: 0 }, held = null, audienceEntities = 0) {
   const s = retained.stats;
   const num = (v) => v.toLocaleString('en-US');
   const occurrencesOf = (kind) =>
@@ -1915,10 +1933,13 @@ function buildManifest(retained, decisions, serialized, residue, entities, cavea
     // Recorded even at the default, because an absent field reads as
     // "not considered" rather than as "public".
     audience: held?.audience ?? 'public',
-    // Counted apart: only the second changes if the person turns the knob, and
-    // a merged total hides the actionable half.
+    // Sessions are held by the floor and by nothing else.
     heldByFloor: held?.heldByFloor ?? 0,
-    heldByAudience: held?.heldByAudience ?? 0,
+    // What the declared audience did, which is a number that can be non-zero.
+    // Its predecessor `heldByAudience` was 0 on every measured run because
+    // nothing ever wrote the session decision it counted, so it reported a
+    // check that had not run as a check that had passed.
+    audienceEntities,
     countOnly: Object.freeze({
       sessions: decisions.filter((d) => d.tier === 'count-only').reduce((a, d) => a + d.sessionCount, 0),
       workspaces: decisions.filter((d) => d.tier === 'count-only').length,
