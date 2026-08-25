@@ -380,8 +380,12 @@ occurrences each value actually claimed:
           31  person    Aurelio Ferreira-Nkemdirim   (deident found this one too)
           12  secret    Flat 6B, 219 Marlowe Crescent, Ashford Bay
            4  account   pm-8842-31770
+           -  secret    Qi
 
-  ! 1 of them replaced nothing, so it protects nothing:
+  ! 2 of them replaced nothing, so they protect nothing:
+      secret    Qi
+        never substituted: shorter than 3 characters: too collision-prone to substitute safely
+        and not scanned for either, so this value may still be in the archive
       secret    1974-04-31
         no occurrence of this string is anywhere in the exported text
 ```
@@ -396,8 +400,18 @@ claim they made. Two of the rows are the ones nothing else prints:
   in the list; occasionally a value that genuinely never came up.
 - **`never substituted`**, which means the existing safety rules refuse to
   substitute it at any count: shorter than three characters, a single CJK
-  character, a bare filesystem root. Today that decision is visible only in
+  character, a bare filesystem root. Before this it was visible only in
   `export-map.txt`, which is read after the archive already exists.
+
+  Its count column is a dash and not a number, and that is the honest state
+  rather than a formatting choice. `buildTable` puts an entity with no
+  pseudonym in `flagged` and never in `entries`; `residualScan` sweeps
+  `entries`. So a rejected value is never substituted AND never scanned for.
+  Verified against the shipped modules: a declared two-character value
+  occurring twice in a corpus ships twice, while `known-entity residue: 0` and
+  `archive on disk ... ok` both pass. A `0` printed beside it would be a zero
+  where no check ran. See §12 on why this is the one place a seventh gate
+  would earn its keep.
 
 **A high count is reported and never refused.** `src/entities/probe.mjs`
 measured why no threshold works: on one corpus an ordinary noun counted 202, a
@@ -867,3 +881,40 @@ repository to remove. The operator contract does the equivalent portably: it
 tells the agent to ask whether such a file exists anywhere, and to ask the
 person directly when it does not.
 
+### 12b. Does a seventh check belong here?
+
+The six gates are all internal-consistency checks: round trip, substitution
+invariant, namespace, known-entity residue, semantic pass, on-disk rescan. Not
+one compares against an external oracle, so none of them can answer "was
+everything that should have been substituted, substituted". `known-values.json`
+is the tool's first oracle for one class of value, which makes the question live.
+
+**A seventh gate that re-scans the archive for the declared list would add
+nothing, and adding nothing is not neutral here.** Declared values are seeded as
+entities, so they are in the table `residualScan` is given, so checks 4 and 6
+already sweep the produced bytes for every one of them. A second pass over the
+same bytes with the same needles would read, in the report, as independent
+confirmation of a result it merely repeated. That is worse than no check.
+
+**There is exactly one gap, and it is narrow enough to name.** `buildTable`
+skips an entity whose `pseudonym` is null into `flagged` and never into
+`entries`, and `residualScan` sweeps `entries`. A declared value that
+`rejectReason` refuses (shorter than three characters, a single CJK character, a
+bare filesystem root) is therefore never substituted AND never scanned for.
+Verified against the shipped modules rather than reasoned about: a declared
+two-character value occurring twice in a corpus ships twice in plaintext, while
+`known-entity residue: 0 occurrences of 51 entity spellings` and `archive on
+disk ... ok` both pass.
+
+That is the only place a seventh check would earn its keep, and it is not the
+check the question proposed. It would be narrow: sweep the produced bytes for
+the declared values that were REJECTED, which are the only needles no existing
+scan carries, and which are already enumerated. Whether it should be a gate is a
+separate call, and probably no: the person declared a value the tool has told
+them it cannot safely substitute, so refusing the export would be refusing over
+a choice they made with the reason in front of them.
+
+What is here now is the smaller half of that: those rows print a dash rather
+than a count, and say in terms that the value was not substituted, was not
+scanned for, and may still be in the archive. A number would have been a lie in
+the one direction that matters.

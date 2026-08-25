@@ -7286,6 +7286,19 @@ const FIXTURES = [
     assert.match(r.out, /Qi/, 'a declared value that cannot be substituted is not reported');
     // And the reason it was not substituted, not just its absence.
     assert.match(r.out, /3 characters|too collision-prone/, 'the rejected value does not say why');
+
+    // A rejected value must NOT be given a replacement count, because the
+    // number would be a lie in the one direction that matters. Verified against
+    // the shipped modules: buildTable puts an entity with no pseudonym in
+    // `flagged` and never in `entries`, and residualScan sweeps `entries`, so
+    // a rejected value is not scanned for at all. Declaring a two-character
+    // value that occurs twice in the corpus ships it twice while
+    // `known-entity residue: 0` and `archive on disk ... ok` both pass. A row
+    // reading `0` next to it is BRIEF 4.3's zero printed where no check ran.
+    const qi = r.out.split(NL).find((l) => /\bQi\b/.test(l) && !/never substituted/.test(l));
+    assert.ok(qi !== undefined, `no row for the rejected value:${NL}${r.out}`);
+    assert.doesNotMatch(qi, /\d/, `the rejected value was given a count it cannot have: ${qi}`);
+    assert.match(r.out, /not scanned|no count/i, 'the report does not say the count is unavailable');
   }],
 
   // F160 - the source is worth nothing if the person cannot fill it in, and the

@@ -563,13 +563,23 @@ const DECLARED_SHOWN = 12;
 export function renderDeclared(rows) {
   if (machine !== null) { machineAdd({ declaredValues: rows }); return; }
   if (rows.length === 0) return;
-  const silent = rows.filter((r) => r.count === 0);
+  const silent = rows.filter((r) => r.count === 0 || r.rejected);
   warn('');
   warn(`  ${n(rows.length)} value${rows.length === 1 ? '' : 's'} you declared in known-values.json, and what each replaced.`);
   warn('  A high count on a value of yours is not an error: it is a word that is also');
   warn('  yours, and only you can tell those apart.');
   for (const r of rows.slice(0, DECLARED_SHOWN)) {
-    warn(`      ${String(r.count).padStart(6)}  ${pad(r.kind, 9)} ${r.value.slice(0, 46)}${r.alsoInferred ? '   (deident found this one too)' : ''}`);
+    // A rejected value gets no number, because every number available here
+    // would be a lie in the one direction that matters. buildTable puts an
+    // entity with no pseudonym in `flagged` and never in `entries`, and
+    // residualScan sweeps `entries`, so a rejected value is never substituted
+    // AND never scanned for. Verified against the shipped modules: a declared
+    // two-character value occurring twice in the corpus ships twice, while
+    // known-entity residue and the on-disk rescan both report ok. Printing `0`
+    // beside it is a zero where no check ran, which is the shape of failure
+    // BRIEF 4.3 names.
+    const count = r.rejected ? padLeft('-', 6) : String(r.count).padStart(6);
+    warn(`      ${count}  ${pad(r.kind, 9)} ${r.value.slice(0, 46)}${r.alsoInferred ? '   (deident found this one too)' : ''}`);
   }
   const hidden = rows.length - Math.min(rows.length, DECLARED_SHOWN);
   if (hidden > 0) warn(`      ... and ${n(hidden)} more, every one of them replaced at least once`);
@@ -582,7 +592,16 @@ export function renderDeclared(rows) {
       // problem: one is a value the corpus never contained, usually a typo in
       // the list; the other is a value deident will not substitute at any
       // count, which the person asked for and did not get.
-      warn(r.rejected ? `        never substituted: ${r.rejected}` : '        no occurrence of this string is anywhere in the exported text');
+      if (r.rejected) {
+        warn(`        never substituted: ${r.rejected}`);
+        // The sentence that makes the dash in the count column mean something.
+        // A value the substituter refused is also a value the residue scan
+        // never looks for, so "not scanned" is the whole state and the archive
+        // may well still carry it.
+        warn('        and not scanned for either, so this value may still be in the archive');
+      } else {
+        warn('        no occurrence of this string is anywhere in the exported text');
+      }
     }
   }
   warn('');
