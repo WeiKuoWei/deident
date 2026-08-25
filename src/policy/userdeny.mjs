@@ -83,17 +83,36 @@ export function userDenyPatterns() {
  * @returns {?string} one warning line, or null
  */
 export function missingDenyWarning(saltDir, defaultDir) {
-  if (typeof defaultDir !== 'string' || defaultDir.length === 0) return null;
-  if (path.resolve(saltDir) === path.resolve(defaultDir)) return null;
-  const here = path.join(saltDir, DENIED_USER_FILENAME);
-  if (fs.existsSync(here)) return null;
-  const fallback = path.join(defaultDir, DENIED_USER_FILENAME);
-  if (!fs.existsSync(fallback)) return null;
+  const found = missingFromSaltDir(saltDir, defaultDir, DENIED_USER_FILENAME);
+  if (found === null) return null;
+  const { here, fallback } = found;
   return (
     `${saltDir} has no ${DENIED_USER_FILENAME}, so none of your own deny rules are loaded, ` +
     `while ${fallback} has some. Directories you expect to be excluded will be offered for export ` +
     `and no check will say so. Copy it first: cp "${fallback}" "${here}"`
   );
+}
+
+/**
+ * The four tests behind every "this salt directory is missing a file the
+ * default one has" warning, in one place.
+ *
+ * Extracted when known-values.json arrived beside denied.json with the identical
+ * trap: the tests are the same for every private file that lives next to the
+ * salt, and only the sentence saying what it costs is per-file. Two copies of
+ * these four lines is two chances for one of them to stop firing.
+ *
+ * @returns {?{here: string, fallback: string}} the two paths, or null when
+ *   there is nothing to warn about
+ */
+export function missingFromSaltDir(saltDir, defaultDir, filename) {
+  if (typeof defaultDir !== 'string' || defaultDir.length === 0) return null;
+  if (path.resolve(saltDir) === path.resolve(defaultDir)) return null;
+  const here = path.join(saltDir, filename);
+  if (fs.existsSync(here)) return null;
+  const fallback = path.join(defaultDir, filename);
+  if (!fs.existsSync(fallback)) return null;
+  return Object.freeze({ here, fallback });
 }
 
 /**

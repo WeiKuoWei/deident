@@ -130,6 +130,27 @@ above it misses:
 Level 3 is what makes the whole thing safe to use: no classification scheme will
 be right the first time, so there has to be a last look.
 
+### 4b. Granularity is about what is EXCLUDED. It says nothing about what is FOUND
+
+The three levels above all answer "does this material leave". None of them
+answers "was everything that should have been substituted, substituted", and a
+value in a session that is kept at `redact` is protected only if some source
+named it.
+
+There were two such sources and both were inference: tier 0 from machine state,
+tier 1 from prose. A finished archive whose six checks were all green shipped 21
+identity fields in plaintext, in sessions that were correctly tiered and
+correctly kept. Nothing about the tiers was wrong. The values were simply never
+named.
+
+`~/.deident-private/known-values.json` is the third source and the only one that
+is not a guess: a list of literal strings the person declares are theirs, read at
+tier 0 and seeded as entities. It is orthogonal to the tiers, which is why it is
+here rather than in the list above: it does not change what leaves, it changes
+what is replaced in what leaves. `docs/cli-ux.md` §12 has the file shape, the
+refusal behaviour and the reason no path to anybody's personal-details file is
+hardcoded.
+
 ## 5. There is no strength dial, only an inclusion decision
 
 Worth stating because it is a natural thing to assume: "client work needs

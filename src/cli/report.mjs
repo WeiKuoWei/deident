@@ -534,6 +534,51 @@ export function renderProbe({ hits, zeros }) {
   warn('');
 }
 
+/** How many declared values are printed with a count before the tail is summarised. */
+const DECLARED_SHOWN = 12;
+
+/**
+ * The values the person declared as their own, and what each one replaced.
+ *
+ * Printed for every export that had a list, including the rows where the answer
+ * is "nothing", because those are the two ways a declaration silently does
+ * nothing: a value the corpus never contained, and a value the safety rules
+ * refuse to substitute. Both currently pass every gate.
+ *
+ * No verdict and no threshold. The person wrote this list by hand about
+ * themselves; if one of their own values turns out to be an ordinary word
+ * occurring five hundred times, that is a fact for them to act on and not a
+ * reason for the tool to argue with a deliberate declaration. renderProbe makes
+ * the same argument for the same measurement.
+ */
+export function renderDeclared(rows) {
+  if (machine !== null) { machineAdd({ declaredValues: rows }); return; }
+  if (rows.length === 0) return;
+  const silent = rows.filter((r) => r.count === 0);
+  warn('');
+  warn(`  ${n(rows.length)} value${rows.length === 1 ? '' : 's'} you declared in known-values.json, and what each replaced.`);
+  warn('  A high count on a value of yours is not an error: it is a word that is also');
+  warn('  yours, and only you can tell those apart.');
+  for (const r of rows.slice(0, DECLARED_SHOWN)) {
+    warn(`      ${String(r.count).padStart(6)}  ${pad(r.kind, 9)} ${r.value.slice(0, 46)}${r.alsoInferred ? '   (deident found this one too)' : ''}`);
+  }
+  const hidden = rows.length - Math.min(rows.length, DECLARED_SHOWN);
+  if (hidden > 0) warn(`      ... and ${n(hidden)} more, every one of them replaced at least once`);
+  if (silent.length > 0) {
+    warn('');
+    warn(`  ! ${n(silent.length)} of them replaced nothing, so ${silent.length === 1 ? 'it protects' : 'they protect'} nothing:`);
+    for (const r of silent) {
+      warn(`      ${pad(r.kind, 9)} ${r.value.slice(0, 60)}`);
+      // The two cases read the same on the row above and are not the same
+      // problem: one is a value the corpus never contained, usually a typo in
+      // the list; the other is a value deident will not substitute at any
+      // count, which the person asked for and did not get.
+      warn(r.rejected ? `        never substituted: ${r.rejected}` : '        no occurrence of this string is anywhere in the exported text');
+    }
+  }
+  warn('');
+}
+
 /**
  * Pieces of a declared spelling that still stand alone in the exported text.
  *

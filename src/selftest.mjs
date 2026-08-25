@@ -280,6 +280,58 @@ function writeLongPromptSession(root, cwd, text) {
   return LONG_SESSION_ID;
 }
 
+/**
+ * One session carrying the classes of value that leaked from a finished export
+ * with all six gates green: a document name ordering, a date of birth, a
+ * postal address and a payment-platform account id.
+ *
+ * Every value is FABRICATED. What each one preserves is the shape:
+ *   Aurelio Ferreira-Nkemdirim  a written-out name in a document ordering that
+ *                               appears in no git config, so tier 0 has no
+ *                               source for it at all
+ *   1974-11-03                  a bare ISO date, which DATE_SHAPED_RE
+ *                               deliberately excludes from the id-number sweep
+ *   Flat 6B, 219 Marlowe ...    an address as ONE comma-separated string, which
+ *                               is how a person writes one down
+ *   pm-8842-31770               a payment-platform account handle: vendor
+ *                               prefix, digits, matching no platform-id regex
+ */
+const DECLARED_VALUES = Object.freeze([
+  'Aurelio Ferreira-Nkemdirim',
+  '1974-11-03',
+  'Flat 6B, 219 Marlowe Crescent, Ashford Bay',
+  'pm-8842-31770',
+]);
+
+function writeDeclaredValueSession(root, cwd, sessionId = '66666666-6666-4666-8666-666666666666') {
+  const turn = (seq, text) => ({
+    type: 'user',
+    uuid: `00000000-0000-4000-8000-8000000000${String(seq).padStart(2, '0')}`,
+    sessionId,
+    timestamp: '2026-08-20T14:00:00.000Z',
+    cwd,
+    message: { role: 'user', content: [{ type: 'text', text }] },
+  });
+  const rows = [
+    turn(1, `filling the booking form: passport reads ${DECLARED_VALUES[0]}, born ${DECLARED_VALUES[1]}`),
+    turn(2, `address of record is ${DECLARED_VALUES[2]} and the payout account is ${DECLARED_VALUES[3]}`),
+  ];
+  fs.writeFileSync(
+    path.join(root, 'projects', 'ws', `${sessionId}.jsonl`),
+    rows.map((r) => JSON.stringify(r)).join(NL) + NL,
+    'utf8',
+  );
+  return sessionId;
+}
+
+/** Write a known-values.json into a salt directory that may not exist yet. */
+function writeKnownValues(saltDir, body) {
+  fs.mkdirSync(saltDir, { recursive: true });
+  const file = path.join(saltDir, 'known-values.json');
+  fs.writeFileSync(file, typeof body === 'string' ? body : JSON.stringify(body), 'utf8');
+  return file;
+}
+
 /** Total bytes of every session file under a fixture root. */
 function corpusBytes(root) {
   const dir = path.join(root, 'projects', 'ws');
@@ -7057,6 +7109,199 @@ const FIXTURES = [
       assert.notEqual(header, pub, `${inside}: the declared audience changed nothing the reader reads`);
       assert.match(header, /leave|out/i, `${inside}: the header does not say to leave it out`);
     }
+  }],
+
+  // F157..F160 - the third source of entities: values the person DECLARES.
+  //
+  // deident had two sources and both were inference. Tier 0 infers from machine
+  // state, tier 1 infers from prose. Neither can be TOLD "this exact string is
+  // mine", and a finished export with all six gates green shipped 21 identity
+  // fields in plaintext because of it: three name spellings used across visa
+  // documents, a date and place of birth, a household registration address in
+  // two languages, three country addresses, a driving licence address, two
+  // banks' address of record, a phone number and a payment-platform account id.
+  // Concentrated in two sessions, one of them a browser-automation session
+  // filling a booking form with passport data.
+  //
+  // Every one of those values was already enumerated in a file the owner
+  // maintained by hand, two directories away from the salt. The tool was
+  // performing semantic discovery to find a list that already existed.
+  //
+  // F157 - the source exists, and what it declares does not leave.
+  ['F157', 'a value declared in known-values.json is replaced, and the file itself never leaves', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    writeDeclaredValueSession(root, corpus.cwd);
+    const knownFile = writeKnownValues(saltDir, {
+      _note: 'fixture',
+      values: [
+        // The bare-string form, which is the one a person writing this file by
+        // hand will use, and the {kind, value} form beside it.
+        DECLARED_VALUES[1],
+        DECLARED_VALUES[2],
+        { kind: 'person', value: DECLARED_VALUES[0] },
+        { kind: 'account', value: DECLARED_VALUES[3] },
+      ],
+    });
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    const exported = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ], CORPUS_USER_ENV);
+    assert.equal(exported.code, 0, exported.out);
+
+    const zips = fs.readdirSync(out).filter((f) => f.endsWith('.zip'));
+    const entries = readZipFile(path.join(out, zips[0]));
+    const bytes = entries.map((e) => `${e.name}${NL}${e.data}`).join(NL);
+    for (const value of DECLARED_VALUES) {
+      assert.ok(!bytes.includes(value), `a declared value reached the archive: ${value}`);
+    }
+
+    // The list is as private as the salt. It must not be copied into the
+    // archive, and it must not be copied into --out either: --out is the
+    // directory a person hands around, and review.md already tells them so.
+    assert.ok(!entries.some((e) => e.name.includes('known-values')), 'the list was packed into the archive');
+    assert.ok(!bytes.includes('known-values'), 'the archive names the list');
+    assert.ok(!fs.existsSync(path.join(out, 'known-values.json')), 'the list was copied into --out');
+    assert.ok(fs.existsSync(knownFile), 'the list itself must survive the run');
+  }],
+
+  // F158 - the failure direction. Missing is ordinary and means the two
+  // inference tiers only. Malformed REFUSES, naming the row, because silently
+  // having none of the list is the exact failure this source exists to prevent:
+  // the tool would run with every gate green over a corpus it had been told
+  // nothing about, which is indistinguishable from the run that leaked.
+  ['F158', 'a malformed known-values.json refuses and names the row, rather than loading none of it', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+
+    // Absent is the normal case and says nothing.
+    const clean = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(clean.code, 0, clean.out);
+
+    for (const [body, expect] of [
+      ['{"values": [', /valid JSON/i],
+      [{ _note: 'no list at all' }, /values/],
+      [{ values: [DECLARED_VALUES[1], 42] }, /values\[1\]/],
+      [{ values: [{ value: DECLARED_VALUES[1], kind: 'passport' }] }, /values\[0\]/],
+      [{ values: ['   '] }, /values\[0\]/],
+    ]) {
+      writeKnownValues(saltDir, body);
+      const r = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+      assert.equal(r.code, 1, `this should have refused: ${JSON.stringify(body)}${NL}${r.out}`);
+      assert.match(r.out, expect, `the refusal does not name the problem: ${r.out}`);
+      assert.match(r.out, /known-values\.json/, 'the refusal does not name the file');
+    }
+
+    // An unknown kind names the kinds that ARE accepted, or the remedy is
+    // "guess again".
+    writeKnownValues(saltDir, { values: [{ value: DECLARED_VALUES[1], kind: 'passport' }] });
+    const kind = runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.match(kind.out, /person/, 'the refusal does not list the kinds it accepts');
+  }],
+
+  // F159 - what happens to a declared value that is three characters long, or
+  // is an ordinary word occurring hundreds of times.
+  //
+  // Refusing is wrong: the person declared it deliberately, and a source whose
+  // answer to a deliberate declaration is "no" is a source nobody fills in. But
+  // src/entities/probe.mjs measured the cost of the other direction on a
+  // delivered corpus: an ordinary noun that was a declared spelling replaced
+  // 202 occurrences of a common word, with the serialization invariant green,
+  // the substitution invariant green and known-entity residue at zero.
+  //
+  // So: every declared value is printed back with the number of times it was
+  // actually replaced, complete rather than top-N, and a value the existing
+  // safety rules refuse to substitute at all says so on its own row. No
+  // threshold, because probe.mjs measured that no threshold separates a noun
+  // from a name, and a value the person declared about themselves is exactly
+  // where a false alarm would teach them to stop reading.
+  ['F159', 'every declared value is reported with its replacement count, and a rejected one says so', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    writeDeclaredValueSession(root, corpus.cwd);
+    // `alpha` is the project directory writeCorpus builds, so it is already all
+    // over the corpus: an ordinary word the person has declared as theirs.
+    // `Qi` is two Latin characters, which rejectReason refuses to substitute.
+    writeKnownValues(saltDir, {
+      values: [DECLARED_VALUES[1], 'Qi', 'never-typed-anywhere-in-this-corpus'],
+    });
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    const r = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ], CORPUS_USER_ENV);
+    assert.equal(r.code, 0, `a declared value must never refuse the export: ${r.out}`);
+
+    const block = r.out.slice(r.out.indexOf('declared'));
+    assert.ok(block.length > 0, `nothing reported the declared values back:${NL}${r.out}`);
+    assert.match(r.out, new RegExp(DECLARED_VALUES[1]), 'a declared value that WAS replaced is not reported');
+    assert.match(r.out, /never-typed-anywhere-in-this-corpus/, 'a declared value that matched nothing is not reported');
+    assert.match(r.out, /Qi/, 'a declared value that cannot be substituted is not reported');
+    // And the reason it was not substituted, not just its absence.
+    assert.match(r.out, /3 characters|too collision-prone/, 'the rejected value does not say why');
+  }],
+
+  // F160 - the source is worth nothing if the person cannot fill it in, and the
+  // SKILL is where an agent learns to. Asserted against the shipped skill body
+  // rather than a copy here, and worded for someone whose equivalent file is
+  // somewhere else entirely or does not exist: hardcoding one person's path is
+  // the overfitting the per-person deny rules were moved out of the repo to
+  // remove.
+  ['F160', 'the operator contract tells an agent to build the declared list, without naming one machine', () => {
+    const skill = fs.readFileSync(new URL('../skills/deident/SKILL.md', import.meta.url), 'utf8');
+    assert.match(skill, /known-values\.json/, 'the skill never mentions the declared list');
+    assert.match(skill, /personal|identity|details/i, 'the skill does not say what goes in it');
+    // One person's convention must not be in a shipped file, in either copy.
+    for (const [name, text] of [['SKILL.md', skill], ['AGENTS.md', fs.readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8')]]) {
+      assert.ok(!text.includes('.identity-private'), `${name} hardcodes one machine's personal-details path`);
+    }
+  }],
+
+  // F163 - the salt directory that silently has none of the person's list.
+  //
+  // The same trap F152 exists for, on the file whose absence is now the more
+  // expensive one: a fresh --salt-dir is the documented way to run "as if for
+  // the first time", known-values.json lives IN the salt directory, so the
+  // fresh run declares nothing and every gate stays green over an export that
+  // was told nothing. Narrow on purpose, like F152: a genuine first run has no
+  // list anywhere and must not be nagged.
+  ['F163', 'a salt directory with no known-values.json is named when the default one has one', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const home = path.join(root, 'home');
+    const fresh = path.join(root, 'fresh-salt');
+    writeCorpus(root);
+    writeKnownValues(path.join(home, '.deident-private'), { values: [DECLARED_VALUES[1]] });
+
+    const env = { ...CORPUS_USER_ENV, HOME: home, USERPROFILE: home };
+    const r = runCli(['scan', '--root', root, '--out', out, '--salt-dir', fresh], env);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /known-values\.json/, `the warning was not printed:${NL}${r.out}`);
+    assert.match(r.out, /cp |copy/i, 'the warning does not say how to fix it');
+
+    // A machine with no list anywhere is a first run and gets no warning: a
+    // line on every first run of every install is F7's cry-wolf failure.
+    const bare = path.join(root, 'home-bare');
+    fs.mkdirSync(bare, { recursive: true });
+    const first = runCli(
+      ['scan', '--root', root, '--out', out, '--salt-dir', path.join(root, 'fresh-2')],
+      { ...CORPUS_USER_ENV, HOME: bare, USERPROFILE: bare },
+    );
+    assert.equal(first.code, 0, first.out);
+    assert.ok(!first.out.includes('known-values.json'), `a genuine first run was nagged:${NL}${first.out}`);
   }],
 ];
 

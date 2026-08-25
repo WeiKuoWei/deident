@@ -271,7 +271,7 @@ diff and keep, and a prompt sequence cannot be reviewed by a second person.
 | `--apply` | `triage` | Merge a verdicts file into `review.md` instead of writing the triage file. Needs `--verdicts`. |
 | `--verdicts <file>` | `triage` | The verdicts file to apply. `verdict` is `drop` or `unsure`; `keep` is refused, because a triage verdict may only ever move a session toward `drop`. |
 | `--out <path>` | all | Output directory. Default: the current directory. |
-| `--salt-dir <path>` | all | Override `~/.deident-private`. The salt, your saved tier decisions, the remembered entity dictionary, your own `denied.json` and the occurrence index all live here. Pointing this at an empty directory is how you start over completely, and **copy `denied.json` across first**: without it none of your own deny rules load, so a directory you expect to be excluded is proposed at `redact` with every check green. deident warns when the directory in use has no `denied.json` and the default one does. |
+| `--salt-dir <path>` | all | Override `~/.deident-private`. The salt, your saved tier decisions, the remembered entity dictionary, your own `denied.json`, your own `known-values.json` and the occurrence index all live here. Pointing this at an empty directory is how you start over completely, and **copy `denied.json` and `known-values.json` across first**: without the first, none of your own deny rules load and a directory you expect to be excluded is proposed at `redact` with every check green; without the second, every value you declared as your own goes back to being something a reader has to spot in the prose. deident warns when the directory in use is missing either one and the default one has it. |
 | `--html` | `review` | Write one self-contained `review.html`. Cannot be combined with `--entity` or `--session`. |
 | `--entity <ID>` | `review` | Print the occurrences of one entity. |
 | `--session <id>` | `review` | Print one full redacted transcript. |
@@ -352,6 +352,47 @@ step.
 
 A malformed entity list is refused, never silently treated as an empty one. An
 empty list would satisfy "the pass ran" while delivering nothing.
+
+## The one list deident cannot infer
+
+Everything above is inference. Tier 0 works out what it can from this machine,
+tier 1 asks a reader to work out the rest from your prose. Neither can be told
+"this exact string is mine", and a finished archive whose six checks were all
+green shipped 21 identity fields in plaintext because of it: document name
+spellings, a date and place of birth, six addresses, a phone number and a
+payment account id. Most of them came out of one browser-automation session that
+had been filling in a booking form.
+
+Write them down instead, at `~/.deident-private/known-values.json`:
+
+```json
+{
+  "_note": "Values that are mine. Local only. Never commit this, never share it.",
+  "values": [
+    "1974-11-03",
+    "Flat 6B, 219 Marlowe Crescent, Ashford Bay",
+    {"kind": "person", "value": "Aurelio Ferreira-Nkemdirim"},
+    {"kind": "account", "value": "pm-8842-31770"}
+  ]
+}
+```
+
+A bare string is enough; `kind` is optional and changes only which pseudonym the
+value gets. The file lives beside the salt, is never committed, and never reaches
+the archive or the output directory. No file is missing is the normal case and
+means the two inference tiers alone. A malformed one refuses the run and names
+the row, because an export that silently declared nothing is indistinguishable,
+in every check deident has, from the export that leaked.
+
+Every export prints the whole list back with the number of occurrences each
+value claimed. A count of zero means a typo in the list, or a value the corpus
+never contained. A high count means a value of yours that is also an ordinary
+word, which is a fact for you and never a refusal: deident will not argue with a
+deliberate declaration about your own data.
+
+deident does not read anybody's personal-details file and no path to one is
+hardcoded. If you keep one, the fastest thing you can do before an export is turn
+it into this file.
 
 ## Opt-in, never opt-out
 

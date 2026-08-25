@@ -55,6 +55,9 @@ Everything the tool remembers is in one directory, `~/.deident-private`, which
 - `workspaces.json`: the tier decisions, so scanning into a new working
   directory does not lose them.
 - `denied.json`: the person's OWN deny rules, on top of the shipped ones.
+- `known-values.json`: values the person has DECLARED are theirs. The one
+  source in the tool that is not a guess, and the one file you can help build.
+  See below.
 - `occurrences.json`: the occurrences the last export replaced. Read with
   `review --entity`, below.
 
@@ -65,20 +68,73 @@ lives in `--out` and belongs to one run.
 `--salt-dir` and a fresh `--out`. That discards the pseudonyms, the declared
 identities and the read-session record together, which is the point.
 
-**Copy `denied.json` into the fresh salt directory first.** It is the one file
-whose absence is silent and dangerous: without it none of the person's own deny
-rules load, so a directory they expect to be excluded is proposed at `redact`
-and offered for export, with every check green, and no check knows a rule was
-supposed to exist.
+**Copy `denied.json` and `known-values.json` into the fresh salt directory
+first.** They are the two files whose absence is silent and dangerous. Without
+`denied.json` none of the person's own deny rules load, so a directory they
+expect to be excluded is proposed at `redact` and offered for export, with every
+check green, and no check knows a rule was supposed to exist. Without
+`known-values.json` every value they declared as their own goes back to being
+something a reader has to spot in the prose.
 
 ```
-cp ~/.deident-private/denied.json <fresh-salt-dir>/
+cp ~/.deident-private/denied.json ~/.deident-private/known-values.json <fresh-salt-dir>/
 ```
 
-deident warns when the salt directory in use has no `denied.json` and the
-default one does. If you see that line, stop and copy the file; do not read past
-it. A machine with no `denied.json` anywhere is a genuine first run and gets no
+deident warns when the salt directory in use is missing either one and the
+default one has it. If you see that line, stop and copy the file; do not read
+past it. A machine with neither file anywhere is a genuine first run and gets no
 warning.
+
+### `known-values.json`: the one file you can help build
+
+Everything else deident knows is inferred. Tier 0 infers from the machine (the
+username, paths, git config, credential shapes) and tier 1 infers from the prose
+(whatever a reader can see). Neither can be TOLD "this exact string is mine".
+
+Measured on a finished export whose six checks were all green: 21 identity
+fields shipped in plaintext. Document name spellings, a date and place of birth,
+six addresses in two languages, a phone number, a payment account id. Most of
+them came out of one browser-automation session that had been filling a booking
+form, and every one of them was already written down in a personal-details file
+the same person maintained by hand.
+
+```json
+{
+  "_note": "Values that are mine. Local only. Never commit this, never share it.",
+  "values": [
+    "1974-11-03",
+    "Flat 6B, 219 Marlowe Crescent, Ashford Bay",
+    {"kind": "person", "value": "Aurelio Ferreira-Nkemdirim"},
+    {"kind": "account", "value": "pm-8842-31770"}
+  ]
+}
+```
+
+A bare string is enough. `kind` is optional and changes only which pseudonym the
+value gets. A missing file is normal and means the two inference tiers alone; a
+malformed one refuses the run and names the row.
+
+**Ask whether they already keep their own details in a file somewhere.** Many
+people do: a profile JSON they fill forms from, a notes page of passport and
+address details, an onboarding document, a form they have submitted before. It
+lives somewhere different on every machine, so ask where rather than guessing a
+path. If one exists, turning it into `known-values.json` is the single highest
+value thing you can do before an export, and it is one pass over one file.
+
+If they have no such file, ask them directly instead. Names as written on
+documents rather than as written in git config, dates of birth, addresses they
+have lived at, identity document numbers, account handles at the services these
+sessions touch. The list does not have to be complete to be worth having.
+
+Write it into `known-values.json` and stop there. Do not copy their
+personal-details file into the working directory, do not repeat its contents
+back in your own output, and do not put a value from it in any file but this
+one.
+
+After the export, the run prints every declared value back with the number of
+times it was replaced. A count of zero means a typo in the list or a value that
+is genuinely not in the corpus. A count in the hundreds means a word that is
+also theirs, which is a fact for them to act on and not an error.
 
 `--full` is a different question and a much smaller hammer: it re-reads the
 whole corpus for the semantic pass while keeping the salt and the declared
@@ -154,10 +210,6 @@ That writes `deident-triage.txt`: one block per session your review still
 proposes to keep, carrying the session id, its date, the workspace, and the
 first thing the person typed truncated to 300 characters. Nothing else, and only
 the head of each session file is read.
-
-Measured 2026-08-24 on a 205-session corpus: 23 KB, about 7k tokens, against
-915 KB and about 250k tokens for step 4. That 35x is the whole reason this step
-exists, and it is why it runs before step 4 rather than after.
 
 Read it and write `deident-triage.json` beside it:
 
@@ -360,6 +412,16 @@ Also carry back:
   is expected.
 - `replacementCounts.zeros`: spellings that matched nothing, so they protected
   nothing. Usually a typo in the entity list.
+- `declaredValues`: every value from `known-values.json`, with what each one
+  actually replaced. Not a subset and not a verdict. Two rows need the person:
+  a count of zero, which is a value the corpus never contained or a typo in
+  their list, and a value flagged `never substituted`, which is one they asked
+  for and did not get because it is too short or too collision-prone to
+  substitute safely. A high count is not an error. Report it and let them
+  decide: it is a value of theirs that is also an ordinary word, and only they
+  can tell those apart. **These rows carry the real values, not the pseudonyms.**
+  Treat them the way you treat `replacementCounts`: report the verdict, never
+  paste the rows into a ticket, a chat or a commit.
 
 **When a count looks wrong, drill into it rather than guessing.** Each hit row
 carries a `pseudonym`; pass it back:
