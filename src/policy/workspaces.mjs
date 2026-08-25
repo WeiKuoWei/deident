@@ -107,7 +107,7 @@ export function classifyWorkspaces(groups, saved = {}, opts = {}) {
       // A tier the person typed is a DECISION and is persisted, whether it
       // arrived from review.md this run or from workspaces.json two runs ago.
       // `decided` used to be set only when a saved decision already matched,
-      // so the first time somebody typed a tier it was never written down —
+      // so the first time somebody typed a tier it was never written down,
       // and `export` with a different --out than `scan` wrote to silently
       // applied the proposal instead. cwd: --out defaults to the current
       // directory, so `scan` / `cd elsewhere` / `export` reproduced it with no

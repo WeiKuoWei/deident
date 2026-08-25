@@ -60,7 +60,7 @@ let capturing = false;
 //
 // `deident scan | head -0` closes stdout while we are still writing. The EPIPE
 // arrives as an ASYNCHRONOUS 'error' event on the stdout socket, so it never
-// passes through main()'s try/catch — a synchronous try/catch cannot catch it,
+// passes through main()'s try/catch, a synchronous try/catch cannot catch it,
 // and Node's default handler turns it into a full V8 traceback. BRIEF §2: a
 // traceback on Sam's machine is a failed delivery.
 //
@@ -386,12 +386,12 @@ export function renderManifest(m) {
     // Records that carry no cwd of their own, in a session that at some point
     // worked inside a directory this export excludes. They cannot be attributed
     // to a turn, and §C3 kept these types precisely because they carry user
-    // text found nowhere else — which is what makes guessing them expensive.
+    // text found nowhere else, which is what makes guessing them expensive.
     // Reported rather than dropped quietly, because the cost is real.
     // Named by CLASS, not as one anonymous number. PLAN C2/C3 measure
     // queue-operation and last-prompt as carrying user text found nowhere else
     // 70.3% and 32.2% of the time, and the Framing axis is scored from exactly
-    // that text — so "3,784 records dropped" beside "5,821 user messages" read
+    // that text, so "3,784 records dropped" beside "5,821 user messages" read
     // as though the user prose was intact while two classes were at zero.
     const byType = (m.droppedCwdlessByType ?? []).map((t) => `${t.type} (${n(t.count)})`).join(', ');
     say(`    ${n(m.droppedCwdless)} records dropped: they replay text typed inside an excluded`);
@@ -399,7 +399,7 @@ export function renderManifest(m) {
   }
   if (m.absorbedSpans > 0) {
     // BRIEF §4.7(a) presents I2 as the invariant that catches overlap bugs. It
-    // does, at span level — and the spans are never persisted (§3 forbids a
+    // does, at span level, and the spans are never persisted (§3 forbids a
     // map file), so the only reversal path that exists cannot distinguish two
     // inputs that collapsed to the same output. Saying "all reversible" and
     // nothing else would let that pass as green.

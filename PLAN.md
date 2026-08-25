@@ -1,4 +1,4 @@
-# deident — Slice 1 implementation plan
+# deident, Slice 1 implementation plan
 
 > **The implementation plan.** This is a design record, not documentation.
 > Using the tool needs only `README.md` and `skills/deident/SKILL.md`. It is kept
@@ -19,7 +19,7 @@ Re-measured on **the full depth-0 corpus, 2026-08-22**: `~/.claude/projects/*/*.
 the session scratchpad, not committed. Nothing below reproduces log content beyond field
 names and counts.
 
-**C1 — §4.4 says "16 top-level record types". There are 19.**
+**C1, §4.4 says "16 top-level record types". There are 19.**
 Measured: `assistant` 42,969 · `user` 25,798 · `attachment` 18,671 · `last-prompt` 7,315 ·
 `mode` 7,141 · `permission-mode` 6,862 · `bridge-session` 6,763 · `ai-title` 6,753 ·
 `system` 5,546 · `file-history-snapshot` 2,141 · `queue-operation` 2,025 ·
@@ -33,21 +33,21 @@ Separately, §4.4's "safe to drop" list names things at **two different levels**
 `file-history-snapshot`. Every drop decision in that list is correct; the enumeration is
 just bigger than 16 and lives at two levels. §3 enumerates both.
 
-**C2 — §4.4's `queue-operation` measurement understates the case.**
+**C2, §4.4's `queue-operation` measurement understates the case.**
 BRIEF: 126 records, 42 (33%) appearing nowhere else. Full depth-0: **2,025 records, 1,486
 carrying `content`, of which 1,044 (70.3%)** do not appear in any `user` message or
 `attachment` in the same file (120-character prefix match). Decision unchanged, evidence
 stronger.
 
-**C3 — `last-prompt` is a fourth user-bearing type and BRIEF does not list it as one.**
+**C3, `last-prompt` is a fourth user-bearing type and BRIEF does not list it as one.**
 §4.8 mentions `last-prompt` only as a type that lacks `cwd`. Measured: **6,939 records
 carry non-empty `lastPrompt`, of which 2,236 (32.2%)** do not appear in any `user` message
 or `attachment` in the same file. Same class as `queue-operation`, same treatment. Some of
 it overlaps `queue-operation` content, so dedupe at export; do not drop the type.
 
-**C4 — §4.7(c) "currently 0 pre-existing `(PERSON|WORKSPACE|ORG|CLIENT)_(digits)`" is no
+**C4, §4.7(c) "currently 0 pre-existing `(PERSON|WORKSPACE|ORG|CLIENT)_(digits)`" is no
 longer true, and how it became untrue is the point.**
-Measured today: **23 matching lines, all 23 in one file** — the log of the Claude Code
+Measured today: **23 matching lines, all 23 in one file**, the log of the Claude Code
 session in which deident itself is being built, where the pattern appears inside quoted
 BRIEF and cli-ux text. The namespace collision check is therefore not a theoretical guard.
 It fires deterministically for **any uploader who has ever discussed this tool in a
@@ -55,23 +55,23 @@ session**, which will include all seven teammates the moment they read the READM
 **Consequence: the namespace-shift remedy must ship in slice 1, not be deferred.** An
 abort-only implementation cannot export the corpus of the people building it.
 
-**C5 — §4.6's serialization round-trip confirmed at full scale.**
+**C5, §4.6's serialization round-trip confirmed at full scale.**
 `stringify(parse(line)) === line` holds on **134,758 / 134,758** depth-0 lines, non-BMP
 included. Keep the per-line runtime assertion anyway; §4.6 already requires it.
 
-**C6 — `toolUseResult` is not always an object.** 20,569 object-valued, **1,303
+**C6, `toolUseResult` is not always an object.** 20,569 object-valued, **1,303
 string-valued**, 3,191 carrying `structuredPatch`. A `typeof` guard is required before any
 field access, and the string form must not be mistaken for "no result".
 
-**C7 — §4.10 confirmed.** 225 depth-0 files, matching BRIEF exactly. No drift.
+**C7, §4.10 confirmed.** 225 depth-0 files, matching BRIEF exactly. No drift.
 
-**C8 — the corpus cannot be held in memory, and the failure is unreportable.**
+**C8, the corpus cannot be held in memory, and the failure is unreportable.**
 Measured 2026-08-22 on the same 833 MB corpus: reading every file and retaining the raw
 text, the parsed value AND a second array of raw lines needed between 2.5 and 3.0 GB of
 old space, peaked at 2,895 MB working set, and aborted with
 `FATAL ERROR: Ineffective mark-compacts near heap limit` on a 1.78 GB corpus with the
 default heap. That is a process-level abort: the entry point's catch never runs, no
-refusal is printed, and nothing tells the user what happened — BRIEF §2's "it must not
+refusal is printed, and nothing tells the user what happened, BRIEF §2's "it must not
 throw when Sam runs it", failing in the one way no error handling can cover. The pipeline
 therefore surveys each file, reduces it to its per-line cwd values and a few counters, and
 releases it; the namespace check rides along as a per-line probe because it is the only
@@ -79,19 +79,19 @@ step that reads raw line text; the retention pass re-reads. Two reads of a file 
 the whole corpus resident at once is not. Same corpus now scans in 12 s under a 768 MB
 heap.
 
-**C9 — an empty `structuredPatch` is not a measured zero.** PLAN's first implementation
+**C9, an empty `structuredPatch` is not a measured zero.** PLAN's first implementation
 read it as "the edit produced no hunks, which is a known zero". The Write tool's real
 corpus shape is `{type:'create', filePath, content, structuredPatch: [], originalFile,
 userModified}`: a genuinely empty patch array plus the whole new file in `content`.
 Measured over all 225 depth-0 sessions: **838 such records carrying 83,211 true added
 lines**, every one emitted as `0`. Against the 26,459 added lines the tool counts from real
 patches that is **75.9% of every added line in the corpus**, destroyed as the one value
-BRIEF §4.3 calls dangerous — 11 sessions whose only code work is Write-creates exported a
+BRIEF §4.3 calls dangerous, 11 sessions whose only code work is Write-creates exported a
 session-wide `code_added_lines: 0`, and `distill.ts:137-139` reads
 `abandoned: s.code_added_lines === 0`. The count is in the same record; emit it, and emit
 `null` when the shape cannot be resolved.
 
-**C10 — `message.content` is a string as well as an array.** Measured: **3,323 `user`
+**C10, `message.content` is a string as well as an array.** Measured: **3,323 `user`
 records carry `message.content` as a plain string**, 2,871,417 characters of user-typed
 prompt text, none of them carrying a `toolUseResult`. All 3,323 were dropped whole, across
 207 of the 225 files, two of which then exported no user prose at all. I7 does not fire,
@@ -124,7 +124,7 @@ counts are targets; 800 is the hard ceiling.
 | `src/corpus/reader.mjs` | ~220 | `readSession(path)` | Read one file, split lines, `JSON.parse` each, assert `stringify(parse(line)) === line` per line (§4.6). Returns `{records[], badLines[], bytes}`. A bad line becomes a `ReadError` naming file and line number, never an escaping `SyntaxError`. |
 | `src/corpus/cwdtrack.mjs` | ~160 | `resolveLineCwd(records)` | The effective `cwd` per record index. Carries the previous known value forward across the 33% of lines that have none (§4.8), and applies `relocated.relocatedCwd` and `worktree-state.worktreePath` as cwd changes before those two types are dropped. |
 
-### Policy — what is allowed to be exported at all
+### Policy, what is allowed to be exported at all
 
 | File | Lines | Public function | Responsibility |
 |---|---:|---|---|
@@ -146,7 +146,7 @@ counts are targets; 800 is the hard ceiling.
 
 | File | Lines | Public function | Responsibility |
 |---|---:|---|---|
-| `src/substitute/engine.mjs` | ~280 | `buildTable(entities)`, `substituteString(s, table)`, `reverseString(s, table)` | The algorithm. Sort by decoded length descending, one left-to-right scan, an interval mask, and never re-scan a replaced region (§4.6). Boundary rule `(?<![A-Za-z0-9_])X(?![A-Za-z0-9_])`, **never `\b`** (§4.5); CJK spellings need length >= 2 and are flagged low-confidence. `reverseString` lives here because it must share the table — a reversal defined elsewhere drifts from the substituter it is meant to invert. |
+| `src/substitute/engine.mjs` | ~280 | `buildTable(entities)`, `substituteString(s, table)`, `reverseString(s, table)` | The algorithm. Sort by decoded length descending, one left-to-right scan, an interval mask, and never re-scan a replaced region (§4.6). Boundary rule `(?<![A-Za-z0-9_])X(?![A-Za-z0-9_])`, **never `\b`** (§4.5); CJK spellings need length >= 2 and are flagged low-confidence. `reverseString` lives here because it must share the table, a reversal defined elsewhere drifts from the substituter it is meant to invert. |
 | `src/substitute/walker.mjs` | ~180 | `substituteRecord(rec, table)` | Walk a parsed record immutably, applying `substituteString` to every retained string value **and to object keys that can carry a path**. Returns `{record, spans[]}`; `spans` feeds the substitution invariant. |
 
 ### Retention
@@ -154,7 +154,7 @@ counts are targets; 800 is the hard ceiling.
 | File | Lines | Public function | Responsibility |
 |---|---:|---|---|
 | `src/retain/constants.mjs` | ~70 | (named exports) | Every threshold, cap and toggle in one file, per §6's posture: `TOOL_RESULT_HEAD_BYTES`, `TOOL_RESULT_TAIL_BYTES`, `KEEP_THINKING_BLOCKS`, `TIMESTAMP_QUANTUM_MS`. No literal number appears anywhere else in the codebase. |
-| `src/retain/records.mjs` | ~340 | `retainRecord(rec, ctx)` | The §3 table as code: a field projection per top-level type and per `attachment` sub-type. An **unknown type is a refusal, not a silent drop** — that is the entire point of §4.4. Quantises timestamps to the minute (§F4). |
+| `src/retain/records.mjs` | ~340 | `retainRecord(rec, ctx)` | The §3 table as code: a field projection per top-level type and per `attachment` sub-type. An **unknown type is a refusal, not a silent drop**, that is the entire point of §4.4. Quantises timestamps to the minute (§F4). |
 | `src/retain/toolresult.mjs` | ~230 | `distillToolResult(rec)` | §4.1 / §4.2 / §4.3. Type-guard the string form (C6), compute added and removed counts from `structuredPatch`, emit `code_added_lines` as the **true added count** and `null` when unknown, **never `0`** for "could not tell". Then discard the patch body. Preserve `is_error` (§6 open question 1). |
 
 ### Verification and output
@@ -162,7 +162,7 @@ counts are targets; 800 is the hard ceiling.
 | File | Lines | Public function | Responsibility |
 |---|---:|---|---|
 | `src/verify/checks.mjs` | ~300 | `runAllChecks(state)` | The four gates: substitution invariant, serialization invariant, namespace collision, residual scan. Returns a report; **writes nothing, repairs nothing**. Any failure becomes a `RefusalError`. |
-| `src/verify/residual.mjs` | ~200 | `residualScan(bytes, entities)` | Scan the **final serialized bytes** for every entity spelling and variant, plus "any UUID that is not a known message or session uuid" (§F5). Reports `known-entity residue: N`, never "safe". Tuned for precision (§F7) — no passport-shaped or generic-ID regexes. |
+| `src/verify/residual.mjs` | ~200 | `residualScan(bytes, entities)` | Scan the **final serialized bytes** for every entity spelling and variant, plus "any UUID that is not a known message or session uuid" (§F5). Reports `known-entity residue: N`, never "safe". Tuned for precision (§F7), no passport-shaped or generic-ID regexes. |
 | `src/output/zip.mjs` | ~260 | `writeZip(entries, outPath)` | Minimal ZIP writer over `node:zlib.deflateRawSync`: local headers, central directory, EOCD, UTF-8 name flag, fixed DOS timestamp so cli-ux §11 idempotence holds. Writes `outPath + '.part'`, then renames; the `.part` is unlinked on any throw. |
 | `src/output/preview.mjs` | ~170 | `writePreview(state, outPath)` | `--preview`: a plain-text before/after diff over a sample of every replacement class, for the user's own editor, with the same "leaving this machine" accounting as a real export. |
 | `src/selftest.mjs` | ~340 | `selftest()` | The `--selftest` fixture suite (§5). Plain `node:assert`, no framework, no fixture files outside `test/fixtures/`. |
@@ -209,13 +209,13 @@ Claude Code writer* whose format we fail to round-trip. Run it late and it detec
 BRIEF lists it among the invariants without fixing its position. Run it after minting and
 the tool has already assigned `PERSON_3` into a corpus that already contained `PERSON_3`;
 from that moment the residual scan cannot tell the two apart and reversal is permanently
-ambiguous. Run it first and the remedy — shift the namespace — is free. Per C4 this check
+ambiguous. Run it first and the remedy, shift the namespace, is free. Per C4 this check
 fires on the real corpus today, so this ordering is load-bearing, not hypothetical.
 
 **cwd resolution (4) must precede retention (7), because retention drops the records that
 carry the cwd changes.** `relocated` and `worktree-state` are DROP records that are also
 the only evidence the effective directory moved. Drop them first and the per-line filter
-(6) evaluates the wrong directory for every line after the move — which, given §4.11 and
+(6) evaluates the wrong directory for every line after the move, which, given §4.11 and
 the measured `...\ops-handover\private` cwd inside an otherwise ordinary workspace,
 means exporting payroll material from an included workspace. This is the
 highest-consequence ordering constraint in the pipeline.
@@ -228,7 +228,7 @@ highest-consequence ordering constraint in the pipeline.
    could skip. Retention-first means the code is gone before an output path exists at all.
 2. **Entity discovery would be polluted.** Running tier-1 over unretained text hands the
    semantic pass ~97.7% harness bookkeeping (§4.10: `text` is 2.30% of bytes). Every false
-   entity invented there is then force-applied to the kept text — §F7's "a scan that cries
+   entity invented there is then force-applied to the kept text, §F7's "a scan that cries
    wolf", arriving through the discovery pass instead of the residual pass.
 3. **The invariant surface would be needlessly enormous.** The substitution invariant (13)
    must verify reversibility for every retained string. Retaining first shrinks that set by
@@ -251,7 +251,7 @@ that same output of step 10.** This is the constraint most easily got wrong, so,
 
 - The **input to discovery** is `cleaned = walker(retained, tier0Table)`. Not the raw
   records. Handing raw text to the semantic pass ships unredacted paths, the username and
-  emails into the discovery context — a privacy tool leaking inside its own privacy step.
+  emails into the discovery context, a privacy tool leaking inside its own privacy step.
   It also wastes the pass's attention on 26,505 path occurrences it cannot help with.
 - The **target of tier-1 substitution** is that **same `cleaned` object**, producing
   `final = walker(cleaned, tier1Table)`. It is *not* a re-run from raw with a merged
@@ -259,10 +259,10 @@ that same output of step 10.** This is the constraint most easily got wrong, so,
 
   Re-running from raw is wrong for two separate reasons. **(a) Longest-match resolution
   changes.** The mask algorithm resolves overlaps by decoded length, so adding tier-1
-  spellings to the table changes which entity wins at a given offset — the measured
+  spellings to the table changes which entity wins at a given offset, the measured
   collisions are real (`northwind` vs `northwind-agentic`, `devuser` vs `devuser` vs
   `devuser@northwind.example`). A merged single pass can therefore emit different output than the
-  two-pass sequence, which means `review.md` — the thing the human approved — no longer
+  two-pass sequence, which means `review.md`, the thing the human approved, no longer
   describes the artifact being shipped. **The reviewed artifact must be the shipped
   artifact.** **(b) Tier-1 candidates are observations about cleaned text.** A candidate
   string extracted from cleaned text need not exist in the raw text at all, because tier-0
@@ -278,7 +278,7 @@ that same output of step 10.** This is the constraint most easily got wrong, so,
 
 **Substitution invariant (13) runs at string level, before serialization (14).** §4.7(a) is
 explicit. Run it after serialization and it tests the JSON escaper rather than the
-substituter, and the bug class it exists for — ordering, overlap, prefix collision —
+substituter, and the bug class it exists for, ordering, overlap, prefix collision,
 becomes invisible once the strings are back inside a serialized line.
 
 **Residual scan (15) runs on the serialized bytes, not on the in-memory records.** This is
@@ -289,8 +289,8 @@ same transformation applies on the way *out*. Scan the exact bytes that enter th
 no other bytes.
 
 **Zip (17) is last and is the only step that writes an output file.** cli-ux §10: any
-non-zero exit leaves no output file behind. Enforced structurally — the writer is
-unreachable until 3, 13 and 15 have returned pass — and defensively, via `.part` + rename
+non-zero exit leaves no output file behind. Enforced structurally, the writer is
+unreachable until 3, 13 and 15 have returned pass, and defensively, via `.part` + rename
 + unlink-on-throw.
 
 `review.md` (5) is the only file `scan` writes, and the preview file is the only file
@@ -335,7 +335,7 @@ records, not bytes. See C1 for why this is 19 and not 16.
 | 6 | `permission-mode` | 6,862 | DROP | Harness bookkeeping, no user text, and the mode sequence is a behavioural fingerprint (§F4-adjacent) with no documented consumer. |
 | 7 | `bridge-session` | 6,763 | DROP | §F5 verbatim: `ownerAccountUuid` / `ownerOrganizationUuid` match no detector and no axis reads it. |
 | 8 | `ai-title` | 6,753 | DROP | Model-generated session title: derived, not a user turn, and it distils the subject matter (payroll, named people) into one high-signal string. |
-| 9 | `system` | 5,546 | KEEP-PARTIAL | Keep `compact_boundary` only (15 records) — it explains gaps in a transcript. Drop every other sub-type, notably `away_summary` (564), which is prose naming third parties (§F2). |
+| 9 | `system` | 5,546 | KEEP-PARTIAL | Keep `compact_boundary` only (15 records), it explains gaps in a transcript. Drop every other sub-type, notably `away_summary` (564), which is prose naming third parties (§F2). |
 | 10 | `file-history-snapshot` | 2,141 | DROP | §4.4 "pure bookkeeping"; inner object is `{messageId, timestamp, trackedFileBackups}`. |
 | 11 | `queue-operation` | 2,025 | KEEP-PARTIAL | §4.4. Keep `content` and `operation`; 70.3% of contents appear nowhere else (C2). |
 | 12 | `file-history-delta` | 1,090 | DROP | Backup file paths, no turn content. |
@@ -388,11 +388,11 @@ An unknown sub-type triggers the same refusal as an unknown top-level type.
 
 | Block | Count | Decision | Reason |
 |---|---:|---|---|
-| `user.tool_result` | 21,872 | KEEP-PARTIAL | Head and tail capped by `constants.mjs`; `is_error` preserved verbatim (§6 open question 1 — truncation must not suppress `failure_signal`). |
+| `user.tool_result` | 21,872 | KEEP-PARTIAL | Head and tail capped by `constants.mjs`; `is_error` preserved verbatim (§6 open question 1, truncation must not suppress `failure_signal`). |
 | `assistant.tool_use` | 21,848 | KEEP-PARTIAL | Tool name kept, `input` substituted, code-valued parameters (`content`, `new_string`, `old_string`) counted and dropped. |
 | `assistant.thinking` | 13,664 | KEEP | §6 posture: prefer preserving evidence over shrinking bytes. Substituted like any other text. This is the single largest byte lever if size ever bites, hence the `KEEP_THINKING_BLOCKS` constant. |
 | `assistant.text` | 7,466 | KEEP | Agent prose. |
-| `user.text` | 604 | KEEP | User prose — the Framing axis. |
+| `user.text` | 604 | KEEP | User prose, the Framing axis. |
 | `user.image` | 378 | DROP-COUNTED | Replaced by a placeholder; the manifest reads `0 images / 378 replaced`. |
 | `user.document` | 29 | DROP-COUNTED | Pasted documents are §F6's verbatim-document risk and are never exported. |
 
@@ -424,7 +424,7 @@ a refusal printed in the cli-ux §8 shape (reason plus remedy), exit 1, **no out
 | Trigger | Exit | What the message says |
 |---|---:|---|
 | I1 fails | 1 | File and line whose round-trip failed. "Claude Code's log format has changed in a way deident does not round-trip. Do not export; report this." |
-| I2 fails | 1 | The entity pair and the offending string redacted to 40 characters. "A replacement is not reversible — this is an ordering or overlap bug, not a configuration problem." |
+| I2 fails | 1 | The entity pair and the offending string redacted to 40 characters. "A replacement is not reversible, this is an ordering or overlap bug, not a configuration problem." |
 | I3 fails | 1 | Files and line count (23 today, C4). Remedy: `--namespace <TAG>`, producing e.g. `X_PERSON_1`. |
 | I4 or I5 fails | 1 | `known-entity residue    N` plus the first five locations by session and turn. "Nothing was written." |
 | I6 fails | 1 | The cli-ux §8 refusal verbatim: entity discovery from prose is required; remedy `/deident-scan` or `--entities entities.json`. |
@@ -470,9 +470,9 @@ content. Each fixture exists because it catches one specific bug.
 | F15 | A record with `"type":"future-thing"` | I7. Asserts refusal, not a silent drop. |
 | F16 | A record with no `cwd`, following one that has one | §4.8. Asserts the effective cwd carries forward rather than defaulting to the workspace root. |
 | F17 | Two records, `...\projects\x` then `...\projects\x\private` | §4.8 plus §4.11. Asserts the second is dropped even though the workspace is included. |
-| F18 | A `relocated` record between two user records | Asserts the cwd change is applied **before** the record is dropped — the step 4 versus step 7 ordering. |
+| F18 | A `relocated` record between two user records | Asserts the cwd change is applied **before** the record is dropped, the step 4 versus step 7 ordering. |
 | F19 | An empty `.jsonl` file | §9 definition of done. Handled, not a crash. |
-| F20 | A `tool_result` with `is_error: true` that exceeds the truncation cap | Asserts `is_error` survives truncation (§6 open question 1 — the one that silently inflates OVR). |
+| F20 | A `tool_result` with `is_error: true` that exceeds the truncation cap | Asserts `is_error` survives truncation (§6 open question 1, the one that silently inflates OVR). |
 | F21 | A line with a non-BMP emoji and an escaped CJK codepoint | I1 round-trip on the hard cases (§4.6: 1,206 non-BMP strings). |
 | F22 | A tier-1 entity string that overlaps an emitted pseudonym | The pseudonym guard at step 12. Catches a semantic pass returning `PERSON` and destroying every tier-0 replacement. |
 | F23 | Full pipeline run twice over the same three-record fixture, second run forced to fail | I10 idempotence, and I11: no `.part`, no zip, nothing left behind. |

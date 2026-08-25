@@ -65,7 +65,7 @@ export function groupSessions(sessions, opts = {}) {
     // that workspace. (`home-budget` is a fabricated stand-in; the shape that
     // matters is that its own name carries NO deny token, which is what made
     // the label wrong.) privacy-tiers §4 has three levels for exactly this
-    // reason — the wandering line is caught by level 2 (the per-line filter
+    // reason, the wandering line is caught by level 2 (the per-line filter
     // drops it, both for its deny token and because the directory it moved
     // into is its own excluded workspace) and by level 3 (the session is
     // listed under "sessions worth a second look"). Level 1 answers only

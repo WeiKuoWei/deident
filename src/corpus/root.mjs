@@ -1,6 +1,6 @@
 // Resolve the session-storage root from the environment and enumerate
 // depth-0 session files. BRIEF §4.9: never parse a slug. BRIEF §4.10: depth-0
-// only — a recursive glob ships 2.2x the payload with zero extra human turns.
+// only, a recursive glob ships 2.2x the payload with zero extra human turns.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,7 +19,7 @@ import { probeCaseFolding, setCaseFolding } from './cwdtrack.mjs';
  *
  * `os.homedir()` throws `uv_os_homedir returned ENOENT` when HOME and
  * USERPROFILE are both empty, and it was called unguarded from resolveRoot and
- * from defaultSaltDir — so `HOME= USERPROFILE= deident scan` printed
+ * from defaultSaltDir, so `HOME= USERPROFILE= deident scan` printed
  * `internal error … This is a bug in deident, not a problem with your data`
  * and told the user to file an issue about their own environment. It is an
  * environment, it has a remedy, and the remedy is a flag.
@@ -66,7 +66,7 @@ export function noHomeRefusal(what, flag) {
 
 export function resolveRoot(env, override = null) {
   // `??` does not treat '' as absent, and `path.resolve('')` is the current
-  // directory — so a shell profile that exports CLAUDE_CONFIG_DIR
+  // directory, so a shell profile that exports CLAUDE_CONFIG_DIR
   // unconditionally would silently point deident at the cwd, and scan whatever
   // `projects/` happens to sit there. An empty or whitespace-only value is not
   // a setting; it falls through to the default.

@@ -28,7 +28,7 @@ export function resolveLineCwd(records) {
   }
 
   // A file whose first records carry no cwd (last-prompt, bridge-session, mode
-  // all lack it — §4.8) would otherwise be null-filtered. Back-fill from the
+  // all lack it, §4.8) would otherwise be null-filtered. Back-fill from the
   // first known value: the session cannot have been in a *different* directory
   // before the first one it reports, and leaving null means "unknown", which
   // the line filter treats as deny.
@@ -57,7 +57,7 @@ export function cwdChangeFrom(rec) {
     if (ws && typeof ws === 'object') {
       // Entering a worktree moves the effective directory to worktreePath;
       // leaving it restores originalCwd. The record does not say which, so
-      // take worktreePath when present — the conservative choice, since a
+      // take worktreePath when present, the conservative choice, since a
       // worktree under a denied path must not be treated as the original.
       return nonEmpty(ws.worktreePath) ?? nonEmpty(ws.originalCwd);
     }

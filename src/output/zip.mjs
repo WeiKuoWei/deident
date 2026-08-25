@@ -3,7 +3,7 @@
 // No npm dependency: a privacy tool does not open a supply-chain question to
 // save a hundred lines (BRIEF §2).
 //
-// Deterministic because cli-ux §11 requires idempotence — running export twice
+// Deterministic because cli-ux §11 requires idempotence, running export twice
 // with the same input and salt produces byte-identical output. That means a
 // FIXED DOS timestamp, not the clock, and entries written in sorted order.
 
@@ -62,7 +62,7 @@ export function safeUnlink(p) {
  * There is no ZIP64 path here: the entry count is a uint16 and the size and
  * offset fields are uint32. 65,535 entries is fine and 65,536 threw
  * `RangeError: The value of "value" is out of range` from inside buildZip,
- * which reached the user as `internal error while running "export"` — the
+ * which reached the user as `internal error while running "export"`, the
  * shape BRIEF §2 forbids. Not reachable on a 218-session corpus, but a limit
  * that announces itself is a limit; one that throws is a bug.
  */

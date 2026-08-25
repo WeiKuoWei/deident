@@ -21,7 +21,7 @@ import { substituteString } from './engine.mjs';
  * `allSpans.push(...spans)` and no caller ever read it: the pipeline uses
  * `record` and `strings` only. Spreading an array into `push` passes every
  * element as an argument, so one decoded string holding ~125,000 entity spans
- * — a 762 KB session file is enough — overflowed the argument stack and the
+ *, a 762 KB session file is enough, overflowed the argument stack and the
  * whole export died with "Maximum call stack size exceeded" reported as
  * "a bug in deident". Every span is still carried, per string, in `strings`.
  */
@@ -36,7 +36,7 @@ export function substituteRecord(record, table) {
 // A replacement changes the text around the next candidate, and the boundary
 // rule reads that text. Measured on a real export: `devusernorthwind.onmicrosoft`
 // held the username handle glued to the org name, so the handle was a correct
-// embedded non-match on the first pass — and once the org became `X_ORG_7252582`
+// embedded non-match on the first pass, and once the org became `X_ORG_7252582`
 // the handle stood at a camel-case boundary in the output, plainly visible. The
 // residual scan reads the FINAL bytes, so it saw the leak and the substituter
 // never could: two passes that legitimately disagree because the text changed
@@ -88,7 +88,7 @@ function walk(value, table, keyPath, changed) {
     return mutated ? next : value;
   }
 
-  // number, boolean, null — nothing to substitute and nothing to copy.
+  // number, boolean, null, nothing to substitute and nothing to copy.
   return value;
 }
 

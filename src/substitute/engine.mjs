@@ -45,7 +45,7 @@ function isWordChar(ch) {
 //
 //   mcp__playwright-headless__browser_navigate   every MCP server name in the
 //     corpus. The log format is always `mcp__NAME__tool`, so `_` on both sides
-//     made the whole §F4 MCP entity class inert — a 100% miss rate on a control
+//     made the whole §F4 MCP entity class inert, a 100% miss rate on a control
 //     the manifest simultaneously claimed was not implemented.
 //   project_northwind_site_migration.md, dm-vance-cpa
 //   KestrelisAI x187, NoraLund x3, MeetingNora和Ivan x8
@@ -82,7 +82,7 @@ export function leftBoundaryBlocks(s, at, entry) {
   const ch = s[at - 1];
   if (ch === undefined) return false;
   // The case of the MATCHED TEXT, not of the entry's spelling. Matching is
-  // case-insensitive, so the entry for `Northwind` reads `northwind` — and asking
+  // case-insensitive, so the entry for `Northwind` reads `northwind`, and asking
   // the spelling whether it starts a hump would answer for a casing that is not
   // the one in the file.
   if (isUpper(s[at]) && isLowerish(ch)) return false;
@@ -95,7 +95,7 @@ export function leftBoundaryBlocks(s, at, entry) {
 //
 // BRIEF §4.6 lists "case-variant only 7" as an observed form and PLAN §1 says
 // variants.mjs expands case variants. It did not, for anything but a path's
-// drive letter — so the org entity seeded from the git remote `northwind-co/
+// drive letter, so the org entity seeded from the git remote `northwind-co/
 // northwind` was the lowercase spelling, the company writes itself `NorthWind`
 // everywhere, and `Northwind` survived 1,804 times in a real export while the
 // scan had no idea it existed. Enumerating lower/UPPER/Title does not help:
@@ -112,8 +112,8 @@ const CASE_INSENSITIVE_MIN = 4;
  * withheld it from every other bicameral script. Cyrillic and Greek entries got
  * entry.lower null, matchesAt fell through to startsWith, and residual.mjs
  * derives its own fold flag from the same entry.lower, so the substituter and
- * the residue scan went blind together. That is F51's guarantee — the one that
- * exists because a 1,804-occurrence leak came from a casing mismatch — denied
+ * the residue scan went blind together. That is F51's guarantee, the one that
+ * exists because a 1,804-occurrence leak came from a casing mismatch, denied
  * for no reason but the character class.
  *
  * The replacement asks the case map instead of the alphabet: a spelling folds if
@@ -167,7 +167,7 @@ export function foldLower(s) {
 /**
  * Does `entry` match `s` at `at`? The matched TEXT may differ from the entry's
  * spelling, which is why every caller records `s.slice(at, end)` as the span's
- * spelling rather than the entry's — reversal has to restore what was there.
+ * spelling rather than the entry's, reversal has to restore what was there.
  */
 export function matchesAt(s, at, entry) {
   const end = at + entry.spelling.length;
@@ -180,7 +180,7 @@ export function matchesAt(s, at, entry) {
  * Case-insensitive compare against an already-lowercased needle, without
  * allocating. This runs once per bucket entry per candidate offset over the
  * whole serialized output, so `s.slice(...).toLowerCase()` here would allocate
- * a string per comparison across tens of megabytes — a check nobody is willing
+ * a string per comparison across tens of megabytes, a check nobody is willing
  * to wait for is a check that gets switched off (§F7's failure mode arriving
  * as latency).
  */
@@ -206,7 +206,7 @@ export function rightBoundaryBlocks(s, end, entry) {
 // The tail of a JSON escape or a percent-encoding, at the end of the window.
 // `%25XX` is a DOUBLY percent-encoded byte, which is what a URL put inside
 // another URL's query string looks like. Measured on a real export:
-// `%2540northwind.example` — the window ends in `540`, so the digit `0` made
+// `%2540northwind.example`, the window ends in `540`, so the digit `0` made
 // `northwind` look embedded and the domain shipped in plaintext beside the
 // pseudonym of the person whose address it is.
 const ESCAPE_TAIL_RE = /(?:\\(?:u[0-9a-fA-F]{4}|[bfnrtv])|%(?:25)?[0-9A-Fa-f]{2})$/;
@@ -320,8 +320,8 @@ export function buildTable(entities, opts = {}) {
     }
   }
 
-  // Longest decoded spelling wins. The tiebreak is lexical so the table — and
-  // therefore the output — is identical across runs (I10).
+  // Longest decoded spelling wins. The tiebreak is lexical so the table, and
+  // therefore the output, is identical across runs (I10).
   entries.sort(
     (a, b) => b.spelling.length - a.spelling.length || (a.spelling < b.spelling ? -1 : a.spelling > b.spelling ? 1 : 0),
   );
@@ -357,7 +357,7 @@ export function buildTable(entities, opts = {}) {
     //
     // pseudonymGuardPattern, NOT pseudonymPattern. The latter carries the §4.5
     // boundary lookarounds, so it refused to match a token abutting a word
-    // character — `ORG_11499881Corp`, which is precisely the shape the
+    // character, `ORG_11499881Corp`, which is precisely the shape the
     // fixpoint exists to create. The token then sat in no forbidden range and
     // the next pass was free to substitute inside it. A guard that relies on
     // the same boundary rule the fixpoint is there to defeat is not a guard.
@@ -371,7 +371,7 @@ export function buildTable(entities, opts = {}) {
  *
  * The interval mask is materialised as `spans`, in ORIGINAL-string
  * coordinates. Because the scan jumps past each replacement, a replaced region
- * is never re-examined — which is the property BRIEF §4.6 requires and the one
+ * is never re-examined, which is the property BRIEF §4.6 requires and the one
  * `replaceAll` cannot give.
  *
  * @returns {{out: string, spans: ReadonlyArray<object>}}
@@ -408,8 +408,8 @@ export function substituteString(s, table, forbidOverride = undefined) {
     //
     // Without this the scan jumped the whole replaced span, so a longer entity
     // beginning inside it was never examined and its non-overlapping remainder
-    // shipped verbatim. Declare `the operator` and `Bell Wang Ivy` — the shape the
-    // tier-1 schema example invites, two person entities sharing a token — and
+    // shipped verbatim. Declare `the operator` and `Bell Wang Ivy`, the shape the
+    // tier-1 schema example invites, two person entities sharing a token, and
     // `the operator Wang Ivy` became `PERSON_A Wang Ivy`, with the substitution
     // invariant reporting "all reversible" and the residual scan reporting
     // "0 occurrences", because neither looks for a partially present entity.
@@ -450,7 +450,7 @@ export function substituteString(s, table, forbidOverride = undefined) {
         tier: hit.tier,
         // Two overlapping entities collapsed into one span. The token they
         // SHARED is gone, so `A: the operator Wang` and `B: the operator Reed Wang` both
-        // come out as `PERSON_a ORG_b` — identical output from different
+        // come out as `PERSON_a ORG_b`, identical output from different
         // input. I2 still passes because reverseString is fed the spans, which
         // carry the original text; but BRIEF §3 forbids persisting a map, so
         // the only reversal path that actually exists is regenerating the
@@ -531,7 +531,7 @@ function overlapsForbidden(start, end, ranges) {
  * Reconstruct the original string from a substituted one plus its spans.
  *
  * Reversal needs the spans because one entity legitimately has many spellings
- * and they all map to one pseudonym — `C:\Users\devuser` and `C:/Users/devuser`
+ * and they all map to one pseudonym, `C:\Users\devuser` and `C:/Users/devuser`
  * are the same workspace. Recovering "which spelling" from the token alone is
  * not possible, and inventing a per-spelling token would put escaping trivia
  * into the reviewer's entity list.

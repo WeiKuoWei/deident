@@ -621,7 +621,7 @@ export async function runExport(flags, env) {
   // ~/.deident-private/workspaces.json and are reused". An export that can
   // find neither the review file nor a remembered decision has nothing to
   // reuse, and falling through to the proposal is how nine remote-bearing
-  // workspaces got exported on a bare `deident export` — including one the
+  // workspaces got exported on a bare `deident export`, including one the
   // person had set to `exclude` in a review.md this run never looked at,
   // because --out defaults to the current directory.
   if (Object.keys(reviewTiers).length === 0 && Object.keys(remembered.workspaces).length === 0) {
@@ -737,7 +737,7 @@ export async function runExport(flags, env) {
   //     retained text: measured on a real export, the parent matched and the
   //     tail did not, so the zip carried `X_WORKSPACE_10601283/private/
   //     auditor-notes` x8, `/private/hsbc-out.json` x9 and
-  //     `/private/payroll-ledger` x12 — a recipient learning the private
+  //     `/private/payroll-ledger` x12, a recipient learning the private
   //     subtree's structure, the third party it concerns and what each file is
   //     for, from an export whose review said that workspace was excluded.
   //     Seeding the longer path makes longest-match replace the whole thing.
@@ -777,7 +777,7 @@ export async function runExport(flags, env) {
   //     yet, and cli-ux §10 promises that any non-zero exit leaves no output
   //     file behind. It used to be written on EVERY export attempt, ahead of
   //     the substitution invariant, the residual scan and the entity list it
-  //     is meant to feed — so a run that refused for an unrelated reason left
+  //     is meant to feed, so a run that refused for an unrelated reason left
   //     un-de-identified names on disk. It is written only on the path that
   //     needs it: the refusal that asks the user to produce an entity list.
   const candidatesPath = path.join(outDir, CANDIDATES_FILENAME);
@@ -900,7 +900,7 @@ export async function runExport(flags, env) {
   //     spelling can never match: `Devuser Consulting Ltd` is already
   //     `PERSON_3877290 Consulting Ltd` by the time tier 1 runs, so tier 1
   //     matched nothing and the remainder shipped verbatim with every gate
-  //     green. Nothing could catch it either — checkSubstitution only sees
+  //     green. Nothing could catch it either, checkSubstitution only sees
   //     strings that CHANGED, and residualScan cannot find a spelling tier 0
   //     already destroyed. A 20,000-trial two-tier fuzz produced 3,636 of
   //     these and the gates caught none.
@@ -976,7 +976,7 @@ export async function runExport(flags, env) {
   //
   //     Each pass is verified against ITS OWN table. Verifying tier-0's
   //     strings against the merged table reports every tier-1 entity in them
-  //     as "missed", because tier 0 was never asked to replace it — and a
+  //     as "missed", because tier 0 was never asked to replace it, and a
   //     check that fails on correct behaviour is worse than no check.
   report.renderPhase('Verifying the substitution invariant');
   const allStrings = [...cleaned.strings, ...final.strings];
@@ -1053,7 +1053,7 @@ export async function runExport(flags, env) {
   const entities = withOccurrences([...tier0.entities, ...tier1Assigned.entities], allStrings);
   // A declared entity that matched NOTHING is the loudest thing this run can
   // say. It means either the semantic pass named something that is not in the
-  // corpus, or tier 0 had already destroyed the spelling — and the second is
+  // corpus, or tier 0 had already destroyed the spelling, and the second is
   // how a declared org shipped its remainder while `--preview` alone would
   // have shown the row reading `1 spelling, 0 occurrences`. Plain `export`
   // printed nothing at all.
@@ -1276,7 +1276,7 @@ function rememberDecisions(saltDir, decisions, sessionDrops) {
  * The parsed records of a file are NOT kept. Measured on Sam's 833 MB corpus
  * (2026-08-22): holding the raw text, the parsed value and a second array of
  * raw lines for the whole corpus needed between 2.5 and 3.0 GB of old space and
- * aborted the process with a V8 heap-limit FATAL ERROR — which no try/catch can
+ * aborted the process with a V8 heap-limit FATAL ERROR, which no try/catch can
  * catch, so the user got no refusal and no explanation at all. Each file is
  * read, reduced to what later steps actually need (its per-line cwd values and
  * a few counters), and released. `retainCorpus` re-reads the files it needs.
@@ -1298,8 +1298,8 @@ function surveyCorpus(corpus, flags, namespace = null, phase = null) {
   // engine.mjs's escape-tail rule. With the lookbehind, the `n` of a
   // backslash-n
   // escape counted as a word character and hid every token at the start of a
-  // line inside multi-line prose — the exact shape cli-ux §3's own sample row
-  // arrives in — while the check printed "no pre-existing PERSON_n tokens ok"
+  // line inside multi-line prose, the exact shape cli-ux §3's own sample row
+  // arrives in, while the check printed "no pre-existing PERSON_n tokens ok"
   // and deident minted the same token for something else in the same archive.
   const pattern = pseudonymScanPattern(namespace);
 
@@ -1334,7 +1334,7 @@ function surveyCorpus(corpus, flags, namespace = null, phase = null) {
     badLines += session.badLines.length;
     // A loop, not `push(...arr)`. Spreading passes one argument per element,
     // so a file with ~125,000 failing lines throws RangeError before any check
-    // can report it — and it throws inside `scan`, the command cli-ux §1 sells
+    // can report it, and it throws inside `scan`, the command cli-ux §1 sells
     // as the one that writes nothing dangerous.
     for (const f of session.roundTripFailures) roundTripFailures.push(f);
     if (session.badLines.length > 0) {
@@ -1398,7 +1398,7 @@ function retainCorpus(
   // `--include-denied` takes a workspace NAME; the per-line gate matches a deny
   // TOKEN. The two were never connected, so a user who typed the documented
   // confirmation got the workspace promoted and then every one of its lines
-  // dropped by the token check — a green success report over a 22-byte zip.
+  // dropped by the token check, a green success report over a 22-byte zip.
   // The tokens allowed here are exactly those of the workspaces the user named.
   const allowDenyTokenFor = deniedTokensAllowed;
 
@@ -1433,7 +1433,7 @@ function retainCorpus(
     // BRIEF §4.11 and PLAN §4.2 say a deny-listed directory is `exclude` and
     // its material never leaves. It did. A `last-prompt` (and a
     // `queue-operation`, same shape) carries no `cwd` of its own, so cwdtrack
-    // gives it the cwd in force when it was written — which, for a record that
+    // gives it the cwd in force when it was written, which, for a record that
     // REPLAYS earlier user text, is the cwd of a later moment, not of the turn
     // it replays. Measured on a real export: prose authored only at
     // `...\ops-handover\private\auditor-notes` was replayed by three
@@ -1459,12 +1459,12 @@ function retainCorpus(
     // session. Under the most permissive policy the tool supports it still
     // cost 1,006 and 227. PLAN C2/C3 measure these at 70.3% and 32.2% unique
     // and the Framing axis is scored from exactly this text, so a class
-    // reduced to zero is not a conservative choice, it is a silent one — the
+    // reduced to zero is not a conservative choice, it is a silent one, the
     // manifest said only "3,784 records dropped" and "5,821 user messages",
     // which reads as though the user prose is intact.
     //
     // `mode` was worse: 6,976 of them in the corpus, 0 carrying a cwd, so
-    // every one went — and docs/privacy-tiers.md defines the count-only tier
+    // every one went, and docs/privacy-tiers.md defines the count-only tier
     // as "session count, work mode and outcome only", which the export
     // manifest prints verbatim while shipping no work mode at all.
     //
@@ -1497,7 +1497,7 @@ function retainCorpus(
       // cwd-less type (permission-mode, bridge-session, ai-title,
       // file-history-*) is dropped by the retention table anyway, and counting
       // those here reported 9,086 "dropped records" on the real corpus where
-      // the real cost was a fraction of that — a number that overstates its own
+      // the real cost was a fraction of that, a number that overstates its own
       // damage is as untrustworthy as one that hides it.
       const type = session.records[i].value?.type;
       if (
@@ -1657,7 +1657,7 @@ function withCleanedSpellings(entity, tier0Table, namespace = null) {
  * the ordinary workspace directory. They passed the gate and shipped.
  * A record that replays
  * text has that text in it, so the test is an exact match against the strings
- * on the excluded lines — no attribution guess required.
+ * on the excluded lines, no attribution guess required.
  */
 function replaysExcluded(record, excludedTexts) {
   if (excludedTexts === null || excludedTexts.size === 0) return false;
@@ -1675,7 +1675,7 @@ function replaysExcluded(record, excludedTexts) {
  * `--include-denied` names a workspace; `allowLine` matches a token. Only the
  * tokens of workspaces the user named AND that ended up on an exportable tier
  * are allowed, so typing the confirmation for one workspace does not quietly
- * open every `\private` directory on the machine — a line elsewhere still
+ * open every `\private` directory on the machine, a line elsewhere still
  * resolves to its own workspace and that workspace's tier still decides.
  */
 function allowedDenyTokens(decisions, includeDenied) {
@@ -1802,7 +1802,7 @@ function extractProseBySession(sessions) {
  * `sessions/C--Users-devuser/d1e2f3a4-...jsonl`: the slug carries the username
  * and the filename is the real session uuid. Neither is inside any JSON body,
  * so a scan over record bytes alone would report `known-entity residue: 0`
- * over a zip whose directory listing names the user — the §F1 failure, one
+ * over a zip whose directory listing names the user, the §F1 failure, one
  * level up from the text.
  */
 export function serializeSessions(sessions, table, rewriteUuid) {
@@ -1932,8 +1932,8 @@ function buildManifest(retained, decisions, serialized, residue, entities, cavea
       { label: 'phone numbers', suppressed: `${num(occurrencesOf('phone'))} replaced (${num(distinctOf('phone'))} distinct)` },
       // cli-ux §6's shape: a zero where a zero is the point, with the
       // suppressed count beside it. Both classes shipped verbatim before they
-      // existed — a Taiwan passport number 13 times, 8 people's Slack ids 255
-      // times — with nothing in the manifest naming either.
+      // existed, a Taiwan passport number 13 times, 8 people's Slack ids 255
+      // times, with nothing in the manifest naming either.
       { label: 'identity numbers', suppressed: `${num(occurrencesOf('idnumber'))} replaced (${num(distinctOf('idnumber'))} distinct)` },
       { label: 'account ids', suppressed: `${num(occurrencesOf('account'))} replaced (${num(distinctOf('account'))} distinct)` },
     ]),
@@ -2025,7 +2025,7 @@ function classify(loaded, saved, flags, probe = makeRemoteProbe()) {
  *
  * Both commands used to pass a literal `[]` here, so `review.md` read
  * `## entities to be replaced  (0)` and `review.html`'s entity table had no
- * rows — on a corpus whose export replaces 146,904 occurrences of 2,778
+ * rows, on a corpus whose export replaces 146,904 occurrences of 2,778
  * spellings. §F6's rule that low-confidence entities are listed individually
  * cannot be enforced over an empty list, and the person doing the review had
  * nothing to review.
@@ -2171,7 +2171,7 @@ function makeUuidRewriter(salt) {
   const cache = new Map();
   // The set of minted uuids lives ON the rewriter, not beside it. Every caller
   // that mints one registers it by construction, so a new call site cannot
-  // forget and leave I5 reporting its own output as an unknown uuid — which is
+  // forget and leave I5 reporting its own output as an unknown uuid, which is
   // exactly what happened when zip entry names started being rewritten.
   const minted = new Set();
   const rewrite = (value) => {

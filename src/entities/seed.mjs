@@ -176,7 +176,7 @@ export function seedEntities(env, corpus, opts = {}) {
   // A basename is only seeded when it is project-shaped: it carries a hyphen,
   // a digit or a non-ASCII character, or a word of it also appears in a git
   // remote. Without that gate the seed set picks up `dashboard`, `references`
-  // and `migration`, which are ordinary English words — §F7's "a scan that
+  // and `migration`, which are ordinary English words, §F7's "a scan that
   // cries wolf is the first thing switched off", arriving as over-substitution
   // of prose instead of over-reporting.
   for (const base of new Set((opts.cwds ?? []).map(basenameOf).filter(Boolean))) {
@@ -190,9 +190,9 @@ export function seedEntities(env, corpus, opts = {}) {
   //
   // Read from the local settings files AND swept out of the corpus itself.
   // Measured on a real export: the settings files cover locally-configured
-  // servers only, so every Claude.ai connector — `claude_ai_Gmail`,
+  // servers only, so every Claude.ai connector, `claude_ai_Gmail`,
   // `claude-in-chrome` and the rest, which are configured server-side and
-  // appear in no file on this machine — survived 436 times. The log form is
+  // appear in no file on this machine, survived 436 times. The log form is
   // always `mcp__NAME__tool`, which is exactly the §F7 precision profile: it
   // cannot match anything by accident, and it is the only form that occurs.
   for (const name of mcpServerNames(env, warnings)) {
@@ -215,14 +215,14 @@ export function seedEntities(env, corpus, opts = {}) {
   //
   // This is not in BRIEF §7.3's seed list, and without it the tool leaks. The
   // measured case on this corpus: `devuser@northwind.example` and
-  // `devuser@brightfern.ai` have no tier-0 source at all — git config carries
-  // only the personal address — so the local part survived tier 0 in 46
+  // `devuser@brightfern.ai` have no tier-0 source at all, git config carries
+  // only the personal address, so the local part survived tier 0 in 46
   // places. An email regex is also precisely the shape §F7 asks for: it
   // cannot match a thermal-paste part number.
   const ownHandles = new Set();
   for (const email of sweepEmails(opts.texts ?? [])) {
     add('person', email, 'email found in session text');
-    // The bare local part, but ONLY when it contains the OS username — i.e.
+    // The bare local part, but ONLY when it contains the OS username, i.e.
     // when it is demonstrably one of the uploader's own handles.
     //
     // Measured on a real export: `devuser` survived six times as a bare handle,
@@ -346,8 +346,8 @@ const EMAIL_RE = /[A-Za-z0-9](?:[A-Za-z0-9._%+-]*[A-Za-z0-9])?@(?:[A-Za-z0-9](?:
 // is the identity and the at-sign is what makes it an email rather than a word,
 // so the negative lookahead keeps it off `pkg@1.2.3` and off an @mention.
 //
-// Measured: deident-candidates.txt — the one artifact meant to be read by an
-// LLM, and therefore the one most likely to leave the machine — contained
+// Measured: deident-candidates.txt, the one artifact meant to be read by an
+// LLM, and therefore the one most likely to leave the machine, contained
 // "All 3 invites (devuser@ / ivy.lin@ / X_PERSON_2736243) are still Pending"
 // under a header stating the username had already been replaced.
 const EMAIL_LOCAL_RE = /[A-Za-z0-9](?:[A-Za-z0-9._%+-]{2,}[A-Za-z0-9])@(?![A-Za-z0-9])/g;
@@ -451,7 +451,7 @@ const SECRET_REFERENCE_RE = /^(?:process[.]env|os[.]environ|import[.]meta|[A-Z][
 // Measured on a real export: two live credentials shipped verbatim while the
 // manifest printed `0 secrets`. One was a `Bearer v2.…` API token; one was a
 // Notion MCP upload JWT whose base64 payload decodes to a purpose, a file
-// upload id, a bot id and a space id — so it also carries org UUIDs and
+// upload id, a bot id and a space id, so it also carries org UUIDs and
 // defeats §F5's UUID residue check. Neither matches any vendor prefix above.
 //
 // This is the §F7 precision profile rather than an entropy heuristic: the word
@@ -523,7 +523,7 @@ const NOTION_ID_RE = /(?:app[.]notion[.]com|notion[.]so)[/](?:[A-Za-z0-9-]*-)?([
 // contain single underscores (`claude_ai_Gmail`); the separator is a double.
 const MCP_TOOL_RE = /mcp__([A-Za-z0-9][A-Za-z0-9_-]*?)__[A-Za-z0-9]/g;
 
-// The same name written in prose without a tool after it — `mcp__plugin_
+// The same name written in prose without a tool after it, `mcp__plugin_
 // context7_context7__` on its own. Measured: three such fragments survived a
 // real export after 2,864 complete names had been replaced, because no
 // seeded spelling matched a name with nothing following the closing pair.

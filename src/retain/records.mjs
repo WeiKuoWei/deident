@@ -2,7 +2,7 @@
 //
 // BRIEF §4.4: enumerate every record type and decide each one DELIBERATELY;
 // do not whitelist by guessing. An unknown type is therefore a refusal, not a
-// silent drop — a new Claude Code version adding a record type is precisely
+// silent drop, a new Claude Code version adding a record type is precisely
 // the case §4.4 was written about, and the failure mode it warns of is user
 // text being discarded without anybody noticing.
 //
@@ -53,7 +53,7 @@ const TOP_LEVEL = Object.freeze({
   'worktree-state': 'drop-after-use',
 
   // These two did not exist when BRIEF §4.4 was written. They appeared in the
-  // live corpus DURING the acceptance run and were caught by I7 — the refusal
+  // live corpus DURING the acceptance run and were caught by I7, the refusal
   // is the mechanism working, not a defect in it.
   //
   // Both are artifact-comment bookkeeping and neither carries a user turn.
@@ -198,7 +198,7 @@ function retainTurn(rec, ctx, where) {
   const content = retainMessageContent(msg, ctx, where);
 
   // A turn whose every block was dropped carries nothing. Keep it only when it
-  // still has content or a distilled result — an empty shell is noise that the
+  // still has content or a distilled result, an empty shell is noise that the
   // residual scan then has to walk.
   const distilled = 'toolUseResult' in rec ? retainToolUseResult(rec.toolUseResult) : null;
   if (content.length === 0 && distilled === null) return null;
@@ -234,7 +234,7 @@ function retainTurn(rec, ctx, where) {
  *
  * Measured over all 225 depth-0 sessions: 3,323 `user` records carry
  * `message.content` as a string, 2,871,417 characters of user-typed prompt
- * text, none of them carrying a `toolUseResult` — so all 3,323 fell through to
+ * text, none of them carrying a `toolUseResult`, so all 3,323 fell through to
  * `records.length === 0` and were counted as "dropped" beside `permission-mode`
  * and `ai-title`. 207 of the 225 files were affected, and two exported no user
  * prose at all.
@@ -549,7 +549,7 @@ function snapBack(buf, at) {
  * discipline stopped one level down: anything that was not a string, not an
  * object with `.text` and not an image fell off the end of the loop with no
  * counter and no refusal. Measured over the corpus: 1,361 `tool_reference`
- * blocks today, carrying only an MCP tool name — and any new sub-block type
+ * blocks today, carrying only an MCP tool name, and any new sub-block type
  * tomorrow, carrying whatever Claude Code decides to put there.
  */
 const NESTED_BLOCK_DROP = Object.freeze(['tool_reference']);
@@ -622,7 +622,7 @@ function retainAttachment(rec, ctx, where) {
  */
 function retainPrompt(rec, ctx, kind, rawPrompt, extra = {}) {
   if (typeof rawPrompt !== 'string' || rawPrompt.trim().length === 0) return null;
-  // These carry user prose, so they carry the same quoted paths prose does —
+  // These carry user prose, so they carry the same quoted paths prose does,
   // and they were the one keep-path with no denial check at all. Measured on a
   // real export: `private/payroll-ledger/backfill-payload…` and
   // `.gitignore:8:/private/` survived here after every other route had been
@@ -651,7 +651,7 @@ function retainPrompt(rec, ctx, kind, rawPrompt, extra = {}) {
   // weaker than that justification requires, and the difference is not
   // theoretical: measured over all 225 sessions, 108 of 2,759 distinct prompts
   // (77,734 characters) were destroyed because they shared a boilerplate
-  // opening — inter-session relay messages that all begin with the same fixed
+  // opening, inter-session relay messages that all begin with the same fixed
   // envelope. That is the C3 evidence class being thrown away by the very step
   // meant to protect it.
   const key = text;
@@ -699,8 +699,8 @@ const UUID_IN_TEXT = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4
 /**
  * Rewrite every UUID inside retained STRINGS, not only in uuid-shaped fields.
  *
- * §F5: account UUIDs match no detector — not path-shaped, not name-shaped, not
- * high-entropy-secret-shaped — so the residual scan is seeded with "any UUID
+ * §F5: account UUIDs match no detector, not path-shaped, not name-shaped, not
+ * high-entropy-secret-shaped, so the residual scan is seeded with "any UUID
  * that is not a known message or session uuid". Measured on this corpus, ~10k
  * UUIDs appear inside tool output and prose (agent ids, scratchpad paths,
  * session references). If those are left alone, I5 can never pass and the gate
@@ -708,7 +708,7 @@ const UUID_IN_TEXT = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4
  *
  * Rewriting them deterministically costs nothing: a UUID carries no scoring
  * value, correlation between occurrences survives, and every UUID in the
- * output is then one deident minted — which is exactly what makes I5 a real
+ * output is then one deident minted, which is exactly what makes I5 a real
  * check rather than a wish.
  */
 export function rewriteUuidsInRecord(value, rewriteUuid) {

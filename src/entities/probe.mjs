@@ -4,8 +4,8 @@
 // asks whether it should have been done at all, and a wrong replacement that is
 // reversible satisfies all five of them.
 //
-// Measured 2026-08-24 on the live entity file: `會議` — an ordinary noun meaning
-// "meeting" — was a declared spelling, so it was a needle. The word is
+// Measured 2026-08-24 on the live entity file: `會議`, an ordinary noun meaning
+// "meeting", was a declared spelling, so it was a needle. The word is
 // fabricated and the counts are real; the shape is that it is HAN, which is
 // what leaves it with no boundary rule. `isWordChar` is
 // /[A-Za-z0-9_]/, so a Han needle gets needsLeft false and needsRight false and

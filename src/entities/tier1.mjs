@@ -1,13 +1,13 @@
 // The tier-1 (semantic) pass, implemented as a FILE CONTRACT, not an API
-// client. The CLI makes no network calls, ever (BRIEF §2) — that property is
+// client. The CLI makes no network calls, ever (BRIEF §2), that property is
 // the product.
 //
 // The contract, in both directions:
 //
-//   1. deident writes  deident-candidates.txt  — tier-0-CLEANED prose only.
+//   1. deident writes  deident-candidates.txt , tier-0-CLEANED prose only.
 //      PLAN §2: the input to discovery is the output of tier-0 substitution,
 //      not the raw records. Handing raw text to a semantic pass would ship
-//      unredacted paths, the username and emails into the discovery context —
+//      unredacted paths, the username and emails into the discovery context,
 //      a privacy tool leaking inside its own privacy step.
 //
 //   2. A host agent (or a human) reads it and writes  entities.json.
@@ -30,7 +30,7 @@ export const ENTITIES_FILENAME = 'deident-entities.json';
 
 // 'secret' is here so the semantic pass can name a VALUE, not only an identity.
 // Reviewing the 2026-08-22 archive, most of what a reader had to remove was a
-// balance, a rate, a meeting id or a sentence stating a figure — none of which
+// balance, a rate, a meeting id or a sentence stating a figure, none of which
 // is a person, an org or a machine. Without a kind for it the choice was to
 // mislabel it or to drop the whole session, and dropping sessions is what
 // took that archive from 35 to 17. It also makes the manifest's `secrets`
@@ -203,14 +203,14 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
 
   // The same gate the zip gets. This file's header states that the username,
   // paths, git identity, git remotes and MCP server names have already been
-  // replaced, and it is the one artifact meant to be read by an LLM — so a
+  // replaced, and it is the one artifact meant to be read by an LLM, so a
   // tier-0 entity surviving in it is the §F1 failure with the shortest route
   // off the machine.
   //
   // The PROSE is scanned, not the header. The header is deident's own text and
   // it names the tool: on the real corpus the tool's own name is a seeded
   // entity (the repo is `northwind-co/deident`), so scanning the header refused
-  // every export over deident's own boilerplate — §F7's cry-wolf failure
+  // every export over deident's own boilerplate, §F7's cry-wolf failure
   // arriving as a gate that can never go green.
   //
   // Only entity residue gates here. UUIDs are not rewritten until

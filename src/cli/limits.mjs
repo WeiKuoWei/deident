@@ -2,7 +2,7 @@
 //
 // cli-ux §6: this is the honesty mechanism, and "it must also not list
 // something the tool DOES handle. MCP server names sat in this block while
-// seed.mjs was adding them to the entity list — a disclosure hiding an
+// seed.mjs was adding them to the entity list, a disclosure hiding an
 // implemented-but-inert control, which is worse than either honest option."
 //
 // It was then fixed in report.mjs and missed in the two files that also print

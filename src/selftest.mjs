@@ -429,7 +429,7 @@ function writableByThisProcess(file) {
  *
  * `export` with no entity list refuses and writes deident-candidates.txt on
  * its way out, and THAT is what records a hash per session. Without it every
- * session is one nobody has read, and the per-session gate refuses — which is
+ * session is one nobody has read, and the per-session gate refuses, which is
  * the whole point of the gate, so the fixtures run the real first step rather
  * than being exempted from it.
  *
@@ -488,7 +488,7 @@ function setTier(reviewPath, name, tier) {
 // ----------------------------------------------------------------- suite
 
 const FIXTURES = [
-  // F01 — BRIEF §4.5 row 1. Python \b MISSES this; Node \b happens to hit it.
+  // F01, BRIEF §4.5 row 1. Python \b MISSES this; Node \b happens to hit it.
   // The regression guard is against anyone "simplifying" the lookaround back
   // to \b, which would make behaviour runtime-dependent.
   ['F01', '因為Dean他想要 / Dean: Latin entity abutting CJK', () => {
@@ -499,7 +499,7 @@ const FIXTURES = [
     assert.equal(substituteString('因為Dean他想要', t).out, '因為PERSON_1他想要');
   }],
 
-  // F02 — BRIEF §4.5 row 2, the other side of the CJK boundary.
+  // F02, BRIEF §4.5 row 2, the other side of the CJK boundary.
   ['F02', 'Ivy跟小語 / Ivy: CJK on the trailing side', () => {
     // Fabricated. Shape: the Latin name leads and the CJK follows, so the
     // trailing side of the lookaround is the one under test. `小語` must stay
@@ -508,8 +508,8 @@ const FIXTURES = [
     assert.equal(substituteString('Ivy跟小語', t).out, 'PERSON_1跟小語');
   }],
 
-  // F03 — BRIEF §4.5 row 3. Both \b implementations MISS 林先生/林, and the
-  // lookaround HITS it — but hitting it is over-matching inside a longer word,
+  // F03, BRIEF §4.5 row 3. Both \b implementations MISS 林先生/林, and the
+  // lookaround HITS it, but hitting it is over-matching inside a longer word,
   // so the rule is length >= 2 and FLAG, never substitute.
   ['F03', '林先生 / 林: one-char CJK is flagged, not substituted', () => {
     // `林` and `林大明` are fabricated. Shape: a ONE-character CJK surname that
@@ -527,7 +527,7 @@ const FIXTURES = [
     assert.equal(substituteString('林大明說', t2).out, 'PERSON_2說');
   }],
 
-  // F04 — BRIEF §4.5 row 4, the correct NON-match. Catches the over-eager
+  // F04, BRIEF §4.5 row 4, the correct NON-match. Catches the over-eager
   // substring substituter someone reaches for after seeing F03 fail.
   ['F04', "'array' does not match entity 'ray'", () => {
     const t = buildTable([entity('P1', 'person', 'ray', 'PERSON_1')]);
@@ -535,7 +535,7 @@ const FIXTURES = [
     assert.equal(substituteString('an array index', t).out, 'an array index');
   }],
 
-  // F05 — §F3. 296 bare occurrences in the owner column of ls -l, where
+  // F05, §F3. 296 bare occurrences in the owner column of ls -l, where
   // longest-prefix path substitution never fires.
   ['F05', 'ls -l owner column: bare username outside any path', () => {
     const t = buildTable([
@@ -550,7 +550,7 @@ const FIXTURES = [
     assert.equal(substituteString(`at C:${BS}Users${BS}devuser${BS}x`, t).out, 'at WORKSPACE_1' + BS + 'x');
   }],
 
-  // F06 — §4.6 prefix collision. Requires sort-by-length-descending.
+  // F06, §4.6 prefix collision. Requires sort-by-length-descending.
   ['F06', 'northwind vs northwind-agentic: prefix collision', () => {
     const t = buildTable([
       entity('O1', 'org', 'northwind', 'ORG_1'),
@@ -560,7 +560,7 @@ const FIXTURES = [
     assert.equal(substituteString('northwind-agentic first', t).out, 'ORG_2 first');
   }],
 
-  // F07 — §4.6 three-way nested collision plus the email form. Catches an
+  // F07, §4.6 three-way nested collision plus the email form. Catches an
   // interval mask that releases a region it already claimed.
   //
   // SHAPE: three fabricated spellings forming a STRICT PREFIX CHAIN,
@@ -581,7 +581,7 @@ const FIXTURES = [
     assert.equal(reverseString(r.out, r.spans), s);
   }],
 
-  // F08 — I2 over F01..F07 together, plus the independent verifier.
+  // F08, I2 over F01..F07 together, plus the independent verifier.
   ['F08', 'substitute then reverse over every earlier fixture (I2)', () => {
     const entities = [
       entity('P1', 'person', 'Dean', 'PERSON_1'),
@@ -616,7 +616,7 @@ const FIXTURES = [
     assert.ok(!checkSubstitution(corrupted, t).ok, 'the invariant must catch a dropped span');
   }],
 
-  // F09 — §4.2 / §4.3. The 24.1%-of-edits case that manufactures a false
+  // F09, §4.2 / §4.3. The 24.1%-of-edits case that manufactures a false
   // "abandoned" session. Expected value 7 is counted by hand from the fixture.
   ['F09', 'Edit with added 7, removed 7, net 0 → code_added_lines is 7, not 0', () => {
     const patch = [
@@ -646,7 +646,7 @@ const FIXTURES = [
     assert.equal(checkAddedLines(d), null);
   }],
 
-  // F10 — PLAN C6. 1,304 records carry a string-valued toolUseResult.
+  // F10, PLAN C6. 1,304 records carry a string-valued toolUseResult.
   ['F10', 'string-valued toolUseResult → null, not 0, and no crash', () => {
     const d = distillToolResult('The file has been updated successfully.');
     assert.equal(d.code_added_lines, null);
@@ -657,7 +657,7 @@ const FIXTURES = [
     }
   }],
 
-  // F11 — §4.3: null and 0 are different and 0 is the dangerous one.
+  // F11, §4.3: null and 0 are different and 0 is the dangerous one.
   ['F11', 'Write with no structuredPatch → null, not 0', () => {
     const d = distillToolResult({ filePath: 'x.md', type: 'create' });
     assert.equal(d.code_added_lines, null);
@@ -670,7 +670,7 @@ const FIXTURES = [
     assert.equal(distillToolResult({ structuredPatch: [{ lines: 'not an array' }] }).code_added_lines, null);
   }],
 
-  // F12 — I3, and PLAN C4: this fires on the real corpus today, so the test
+  // F12, I3, and PLAN C4: this fires on the real corpus today, so the test
   // protects a path Sam hits on his first run.
   ['F12', 'a pre-existing PERSON_1 token aborts, and --namespace X clears it', () => {
     const lines = [
@@ -688,7 +688,7 @@ const FIXTURES = [
     assert.equal(namespaceCollisions([{ file: 'b', line: 1, text: 'PERSON_1A' }], null).length, 0);
   }],
 
-  // F13 — §4.6 variant expansion. Catches a table that covers the common form
+  // F13, §4.6 variant expansion. Catches a table that covers the common form
   // and leaks the other five.
   ['F13', 'every escaping variant of one path root', () => {
     const variants = expandVariants(`C:${BS}Users${BS}devuser`);
@@ -727,7 +727,7 @@ const FIXTURES = [
     assert.ok(!out.includes('u6797'), `leaked escaped CJK: ${out}`);
   }],
 
-  // F14 — a truncated last line. Exit 3, cli-ux §9 shape, no stack trace.
+  // F14, a truncated last line. Exit 3, cli-ux §9 shape, no stack trace.
   ['F14', 'truncated last line → ReadError with file, line and cause', () => {
     const dir = tmpdir();
     const file = path.join(dir, 'a.jsonl');
@@ -750,7 +750,7 @@ const FIXTURES = [
     fs.rmSync(dir, { recursive: true, force: true });
   }],
 
-  // F15 — I7. An unknown type is a refusal, not a silent drop. That is the
+  // F15, I7. An unknown type is a refusal, not a silent drop. That is the
   // entire point of BRIEF §4.4.
   ['F15', 'an unknown record type refuses rather than dropping silently', () => {
     const ctx = newRetentionContext((u) => u);
@@ -776,7 +776,7 @@ const FIXTURES = [
     assert.equal(retainRecord({ type: 'ai-title', title: 'x' }, ctx, null).keep, false);
   }],
 
-  // F16 — §4.8. 33% of lines carry no cwd; the effective value carries forward
+  // F16, §4.8. 33% of lines carry no cwd; the effective value carries forward
   // rather than defaulting to the workspace root.
   ['F16', 'a record with no cwd inherits the previous effective cwd', () => {
     const records = [
@@ -792,7 +792,7 @@ const FIXTURES = [
     assert.deepEqual(leading, ['C:/a', 'C:/a']);
   }],
 
-  // F17 — §4.8 plus §4.11. The measured hazard: one file spanned 11 cwds, two
+  // F17, §4.8 plus §4.11. The measured hazard: one file spanned 11 cwds, two
   // of them under \private, inside a workspace that is not itself denied.
   ['F17', 'a line whose cwd moved under \\private is dropped inside an included workspace', () => {
     const records = [
@@ -811,7 +811,7 @@ const FIXTURES = [
     assert.equal(allowLine(null, {}).allow, false);
   }],
 
-  // F18 — the step 4 versus step 7 ordering. If `relocated` were dropped at
+  // F18, the step 4 versus step 7 ordering. If `relocated` were dropped at
   // retention before cwd resolution, every line after the move would be
   // filtered against the wrong directory.
   ['F18', 'a relocated record moves the cwd BEFORE it is dropped', () => {
@@ -833,7 +833,7 @@ const FIXTURES = [
     );
   }],
 
-  // F19 — §9 definition of done. Handled, not a crash.
+  // F19, §9 definition of done. Handled, not a crash.
   ['F19', 'an empty .jsonl file is handled, not a crash', () => {
     const dir = tmpdir();
     for (const [name, body] of [['empty.jsonl', ''], ['blank.jsonl', '\n\n\n'], ['bom.jsonl', '\ufeff{"type":"mode","mode":"n"}\n']]) {
@@ -848,7 +848,7 @@ const FIXTURES = [
     fs.rmSync(dir, { recursive: true, force: true });
   }],
 
-  // F20 — §6 open question 1: the one that silently inflates OVR. If
+  // F20, §6 open question 1: the one that silently inflates OVR. If
   // truncation dropped is_error, failure_signal could fall below 3,
   // hits_trouble would go false, Resilience would go null and OVR would RISE.
   ['F20', 'is_error survives truncation of a large tool_result', () => {
@@ -870,7 +870,7 @@ const FIXTURES = [
     assert.ok(ctx.stats.toolResultBytesOmitted > 0);
   }],
 
-  // F21 — I1 on the hard cases. §4.6 measured 1,206 non-BMP strings.
+  // F21, I1 on the hard cases. §4.6 measured 1,206 non-BMP strings.
   ['F21', 'non-BMP emoji and escaped CJK round-trip byte-identically (I1)', () => {
     const dir = tmpdir();
     const file = path.join(dir, 'hard.jsonl');
@@ -889,7 +889,7 @@ const FIXTURES = [
     fs.rmSync(dir, { recursive: true, force: true });
   }],
 
-  // F22 — the pseudonym guard at step 12. A semantic pass that helpfully
+  // F22, the pseudonym guard at step 12. A semantic pass that helpfully
   // returns "PERSON" as a name would otherwise destroy every tier-0 token.
   ['F22', 'a tier-1 entity overlapping an emitted pseudonym is refused, not applied', () => {
     const cleaned = 'we met PERSON_7 and WORKSPACE_3 today';
@@ -910,7 +910,7 @@ const FIXTURES = [
     assert.equal(substituteString(cleaned, bareGuarded).out, cleaned, 'the guard must stop it');
 
     // The case the guard exists for is a tier-1 spelling that IS a pseudonym
-    // token — a semantic pass reading the cleaned text and reporting the token
+    // token, a semantic pass reading the cleaned text and reporting the token
     // itself as a name it found. That match is boundary-valid, so nothing but
     // the guard stops it.
     const attack = entity('T1', 'person', 'PERSON_7', 'PERSON_99', { tier: 1 });
@@ -932,7 +932,7 @@ const FIXTURES = [
     assert.equal(substituteString('PERSON_7 met Nora', g2).out, 'PERSON_7 met PERSON_98');
   }],
 
-  // F23 — I10 idempotence, and I11: a failed run leaves nothing behind.
+  // F23, I10 idempotence, and I11: a failed run leaves nothing behind.
   ['F23', 'the same input produces a byte-identical zip; a failure leaves no file', () => {
     const entries = [
       { name: 'sessions/a/1.jsonl', data: '{"type":"mode","mode":"normal"}\n' },
@@ -1009,7 +1009,7 @@ const FIXTURES = [
     assert.equal(out.id, 'x', 'non-uuid values are untouched');
   }],
 
-  // F69 — the bare local part of the uploader's own address survived six times
+  // F69, the bare local part of the uploader's own address survived six times
   // in a real export, because the seeded spelling is the whole address and the
   // OS username inside it is a correct embedded non-match (F07's nested
   // collision). Seeding EVERY local part would make entities of `legal`,
@@ -1033,10 +1033,10 @@ const FIXTURES = [
     assert.ok(canonicals.includes('support@northsky-hr.com'));
   }],
 
-  // F70 — §F4 required MCP server names to be entities. seed.mjs read them from
+  // F70, §F4 required MCP server names to be entities. seed.mjs read them from
   // the local settings files, which cover locally-configured servers only, so
-  // every Claude.ai connector — configured server-side and named in no file on
-  // this machine — survived 436 times in a real export. The log form is always
+  // every Claude.ai connector, configured server-side and named in no file on
+  // this machine, survived 436 times in a real export. The log form is always
   // `mcp__NAME__tool`, which is the §F7 precision profile exactly: it cannot
   // match anything by accident and it is the only form that occurs.
   ['F70', 'MCP server names are swept out of the corpus, not just the settings files', () => {
@@ -1312,7 +1312,7 @@ const FIXTURES = [
     // string whose own newlines are the two characters backslash + n, and CJK
     // inside it arrives as backslash-u escapes. Before this rule the `n` of
     // `\n` counted as a word character, so `Best\nDean` was classified as the
-    // spelling sitting inside a longer word and left in the output — and the
+    // spelling sitting inside a longer word and left in the output, and the
     // residual scan had its own copy of the same rule, so it agreed and
     // reported `known-entity residue: 0` over a zip that named a third party.
     // Found by the live acceptance run, 2026-08-22, in 210 exported sessions.
@@ -1568,7 +1568,7 @@ const FIXTURES = [
     );
   }],
 
-  // F45 — a closed pipe is ordinary use, not a crash.
+  // F45, a closed pipe is ordinary use, not a crash.
   //
   // `deident scan | head -0` closes stdout mid-write. The EPIPE arrives as an
   // ASYNCHRONOUS 'error' event on the socket, so main()'s try/catch cannot see
@@ -1604,7 +1604,7 @@ const FIXTURES = [
     assert.equal(result.code, 0, 'a closed pipe is exit 0, not a crash');
   }],
 
-  // F46 — invalid UTF-8 is silently replaced with U+FFFD by a 'utf8' read, and
+  // F46, invalid UTF-8 is silently replaced with U+FFFD by a 'utf8' read, and
   // the serialization check then compares two already-damaged strings and
   // reports the line as byte-identical. The whole point of I1 is to catch a
   // writer that changed, so a check that cannot see the damage is not a check.
@@ -1629,7 +1629,7 @@ const FIXTURES = [
     assert.equal(readSession(clean).roundTripFailures.length, 0);
   }],
 
-  // F47 — the corpus is read one file at a time, and a file's raw line text is
+  // F47, the corpus is read one file at a time, and a file's raw line text is
   // released once it has been checked.
   //
   // Holding the raw text, the parsed value AND a second array of raw lines for
@@ -1659,7 +1659,7 @@ const FIXTURES = [
     assert.equal(readSession(file).records[0].line, JSON.stringify(rows[0]));
   }],
 
-  // F48 — an empty CLAUDE_CONFIG_DIR is not a setting.
+  // F48, an empty CLAUDE_CONFIG_DIR is not a setting.
   //
   // `??` does not treat '' as absent and `path.resolve('')` is the cwd, so a
   // shell profile exporting the variable unconditionally silently repointed the
@@ -1677,7 +1677,7 @@ const FIXTURES = [
     assert.equal(resolveRoot({}, '  ').source, 'the default ~/.claude', 'a blank --root is not an override');
   }],
 
-  // F49 — cli-ux §1 makes a point of scan and review writing nothing dangerous.
+  // F49, cli-ux §1 makes a point of scan and review writing nothing dangerous.
   // A refusal raised by `scan` that reads "Refusing to export" contradicts the
   // model the interface exists to teach.
   ['F49', 'a refusal names the command it is refusing, not always "export"', () => {
@@ -1694,7 +1694,7 @@ const FIXTURES = [
     setCommand(null);
   }],
 
-  // F50 — the embedded class was one bucket, and it shipped 870 known-entity
+  // F50, the embedded class was one bucket, and it shipped 870 known-entity
   // occurrences while the gate read `known-entity residue 0  ok`.
   //
   // The residual scan imports the substituter's boundary rule precisely so the
@@ -1731,7 +1731,7 @@ const FIXTURES = [
     assert.equal(residualScan('an array index', t, new Set()).entityCount, 0);
   }],
 
-  // F51 — the org entity is seeded from the git remote `northwind-co/ledger`,
+  // F51, the org entity is seeded from the git remote `northwind-co/ledger`,
   // i.e. lowercase, and the company writes itself `NorthWind` everywhere. That
   // spelling survived 1,804 times in a real export and the scan had no idea it
   // existed. Enumerating lower/UPPER/Title does not help: `NorthWind` is none of
@@ -1822,13 +1822,13 @@ const FIXTURES = [
     assert.throws(() => parseSessionDrops('## sessions' + NL + 'maybe 2026-08-01 ws aaaa-1111' + NL), RefusalError);
   }],
 
-  // F53 — two entities where one's suffix is the other's prefix.
+  // F53, two entities where one's suffix is the other's prefix.
   //
   // The scan jumped past each replacement, so an entity that STARTS INSIDE the
   // span just claimed was never examined and its remainder shipped verbatim.
-  // With `the operator` and `Bell Wang Ivy` both declared high-confidence persons —
+  // With `the operator` and `Bell Wang Ivy` both declared high-confidence persons,
   // the exact shape the tier-1 schema example invites, two names sharing a
-  // token — the export contained the complete third-party name `Wang Ivy`
+  // token, the export contained the complete third-party name `Wang Ivy`
   // while the report read `4 replacements, all reversible  ok` and
   // `known-entity residue  0  ok`. Three gates, all blind to one class.
   ['F53', 'a partially overlapping entity does not ship its tail', () => {
@@ -1855,11 +1855,11 @@ const FIXTURES = [
     assert.equal(pretend.ok, false, 'a span set that leaves an entity partly present must FAIL');
   }],
 
-  // F54 — the Write tool's real corpus shape is `{type:'create', filePath,
+  // F54, the Write tool's real corpus shape is `{type:'create', filePath,
   // content, structuredPatch: []}`: a genuinely empty patch array plus the
   // whole new file in `content`. Treating the empty array as a measured zero
-  // destroyed 83,211 true added lines across 838 records — 75.9% of every added
-  // line in the corpus — and destroyed them as `0`, the one value BRIEF §4.3
+  // destroyed 83,211 true added lines across 838 records, 75.9% of every added
+  // line in the corpus, and destroyed them as `0`, the one value BRIEF §4.3
   // calls dangerous, because `distill.ts` reads `abandoned: === 0`.
   //
   // F11 covers `no-patch` (9 records in the corpus). It never touched
@@ -1887,7 +1887,7 @@ const FIXTURES = [
     assert.match(checkAddedLines({ code_added_lines: 0, form: 'empty-patch' }), /must be null/);
   }],
 
-  // F55 — a `message.content` that is a plain string is the same user turn as
+  // F55, a `message.content` that is a plain string is the same user turn as
   // `[{type:'text',text}]`, and it was dropped whole. 3,323 records, 2,871,417
   // characters of user-typed prompt text, no refusal and no manifest line.
   ['F55', 'a string-valued message.content is a user turn, not a silent drop', () => {
@@ -1915,7 +1915,7 @@ const FIXTURES = [
     );
   }],
 
-  // F56 — the prompt dedupe keyed on a 120-character prefix, so 108 distinct
+  // F56, the prompt dedupe keyed on a 120-character prefix, so 108 distinct
   // prompts (77,734 characters) sharing a boilerplate opening collapsed to one.
   // PLAN C2/C3 justify removing EXACT duplicates; a prefix key is weaker than
   // that justification and throws away the evidence class C3 exists to keep.
@@ -1933,7 +1933,7 @@ const FIXTURES = [
     assert.equal(ctx.stats.dedupedPrompts, 1);
   }],
 
-  // F57 — cli-ux §6 prints a `0 secrets  N replaced` line, so the contract
+  // F57, cli-ux §6 prints a `0 secrets  N replaced` line, so the contract
   // already promised credential handling. Nothing in the pipeline looked for
   // one: a real export carried a 93-character GitHub fine-grained PAT twice, in
   // plain text, at full length. Only unambiguous vendor prefixes are matched,
@@ -1992,7 +1992,7 @@ const FIXTURES = [
     assert.match(out, /PHONE_[0-9]+/);
   }],
 
-  // F58 — a git remote is evidence a directory is a repository. It is not
+  // F58, a git remote is evidence a directory is a repository. It is not
   // evidence its content is shareable. A personal message archive was proposed
   // `redact` on the strength of its remote alone and shipped a third party's
   // real name 10 times plus per-chat filenames naming the people in them; the
@@ -2023,7 +2023,7 @@ const FIXTURES = [
     assert.equal(personalDataShape('health-tracker'), 'health');
   }],
 
-  // F59 — only the salt's LENGTH was checked, and String.prototype.trim does
+  // F59, only the salt's LENGTH was checked, and String.prototype.trim does
   // not strip U+0000, so a file of 64 NUL bytes passed and every pseudonym in
   // the export was derived from an all-zero salt: predictable to anyone who
   // guesses that, which is BRIEF §3's per-uploader salt decision undone in
@@ -2049,7 +2049,7 @@ const FIXTURES = [
     assert.equal(loadOrCreateSalt(good), minted);
   }],
 
-  // F60 — I9 was proved twice over two halves. `assignPseudonyms` created a
+  // F60, I9 was proved twice over two halves. `assignPseudonyms` created a
   // fresh `taken` set per call and the pipeline calls it once for tier 0 and
   // once for tier 1, so two different entities could carry one token and the
   // merged table silently kept the first. The index is 24 bits and the email
@@ -2085,7 +2085,7 @@ const FIXTURES = [
     );
   }],
 
-  // F61 — the acceptance run, end to end, over the shapes round 2 measured.
+  // F61, the acceptance run, end to end, over the shapes round 2 measured.
   //
   // Everything here is asserted against the SHIPPED BYTES of the zip, because
   // every one of these leaks passed an in-memory check: the report said
@@ -2150,7 +2150,7 @@ const FIXTURES = [
     assert.doesNotMatch(exported.out, /0 dropped by cwd/);
   }],
 
-  // F62 — `--include-denied` names a workspace; the per-line gate matches a
+  // F62, `--include-denied` names a workspace; the per-line gate matches a
   // deny token. The two were never connected, so the documented confirmation
   // promoted the workspace and then dropped every one of its lines: a green
   // success report over a 22-byte archive that `unzip -l` calls empty.
@@ -2214,7 +2214,7 @@ const FIXTURES = [
     assert.equal(fs.readdirSync(emptyOut).filter((f) => f.endsWith('.zip')).length, 0, 'no archive may be left');
   }],
 
-  // F63 — one unknown top-level record type blocked a whole export with no
+  // F63, one unknown top-level record type blocked a whole export with no
   // escape hatch, and --skip-unreadable did not cover the class. Claude Code
   // ships a new record type every few weeks (§F4 records 2.1.215 -> 2.1.238
   // inside one corpus), so refusal stays the default without being terminal.
@@ -2246,7 +2246,7 @@ const FIXTURES = [
     assert.match(skipped.out, /dropped unread under --skip-unknown-types/);
   }],
 
-  // F64 — `export --preview` printed a before/after pair per entity, i.e. a
+  // F64, `export --preview` printed a before/after pair per entity, i.e. a
   // complete portable re-identification key for every entity that actually
   // occurs, six lines under a header reading "Neither is any entity-to-
   // pseudonym map". review.md carries the same disclaimer and honours it, so
@@ -2311,11 +2311,11 @@ const FIXTURES = [
     assert.equal(runCli(['review', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
   }],
 
-  // F66 — every walker in the pipeline is recursive, so pathologically nested
+  // F66, every walker in the pipeline is recursive, so pathologically nested
   // JSON exhausts the JS stack. That is a property of the INPUT, and it was
   // reported as `internal error while running "scan": Maximum call stack size
   // exceeded / This is a bug in deident, not a problem with your data`, exit 1
-  // — naming the wrong culprit and sending the user to file an issue about
+  //, naming the wrong culprit and sending the user to file an issue about
   // their own file. Threshold measured between 1,500 (passes) and 3,000 (fails).
   ['F66', 'a record nested too deeply is a read error naming the line, not a bug report', () => {
     const dir = tmpdir();
@@ -2341,7 +2341,7 @@ const FIXTURES = [
     assert.match(caught.detail.likelyCause, /nests JSON/);
   }],
 
-  // F67 — the export's write ordering and its one deliberate exception.
+  // F67, the export's write ordering and its one deliberate exception.
   //
   // Three separate ways a run reported the opposite of what it did:
   //   - saveDecisions was the only writer with no try/catch and it ran AFTER
@@ -2414,7 +2414,7 @@ const FIXTURES = [
     assert.doesNotMatch(refused.out, /bug in deident/);
   }],
 
-  // F68 — an empty entity list satisfied I6: `semantic pass  --entities
+  // F68, an empty entity list satisfied I6: `semantic pass  --entities
   // empty.json · 0 entities  ok` printed beside a real zip. tier1.mjs's own
   // header says an empty list "passes I6 while delivering nothing", and it is
   // exactly the file a failed or interrupted discovery run leaves behind.
@@ -2467,14 +2467,14 @@ const FIXTURES = [
     assert.match(mixed.detail, /1 entities \(1 rejected\)/);
   }],
 
-  // F71 — a replacement changes the text the boundary rule reads.
+  // F71, a replacement changes the text the boundary rule reads.
   //
   // Measured on a real export: `devuserNorthwind.onmicrosoft.com` glued the
   // uploader's handle to the org name. Two things were wrong. The camel-hump
   // test asked the ENTRY's spelling whether it started a hump, and matching is
   // case-insensitive, so the entry for `Northwind` reads `northwind` and answered
   // for a casing that is not the one in the file. And once a replacement lands,
-  // the text around the next candidate is different — so the substituter and
+  // the text around the next candidate is different, so the substituter and
   // the residual scan can legitimately disagree, which is a permanently red
   // gate rather than a bug in either.
   ['F71', 'the boundary reads the matched text, and substitution runs to a fixpoint', () => {
@@ -2606,13 +2606,13 @@ const FIXTURES = [
     assert.ok(!only.keep || (only.record.message.content ?? []).length === 0, 'nothing authored means nothing kept');
   }],
 
-  // F73 — `array.push(...items)` passes one ARGUMENT per element, so a
+  // F73, `array.push(...items)` passes one ARGUMENT per element, so a
   // corpus-sized array overflows the argument stack.
   //
   // Measured 2026-08-22: 100,000 spans is fine, 125,000 throws RangeError
   // "Maximum call stack size exceeded". A 762 KB session file holding one user
   // message of `'devuser '.repeat(130000)` reached it through walker.mjs, and the
-  // same shape reached `deident scan` through roundTripFailures — surfacing as
+  // same shape reached `deident scan` through roundTripFailures, surfacing as
   // "internal error … This is a bug in deident", with no remedy at all.
   ['F73', 'a corpus-sized array never reaches push(...spread)', () => {
     const t = buildTable([entity('P1', 'person', 'devuser', 'PERSON_1')]);
@@ -2641,7 +2641,7 @@ const FIXTURES = [
     assert.deepEqual(offenders, [], 'push(...arr) is an argument-stack overflow on corpus-sized input');
   }],
 
-  // F74 — the deep-nesting refusal told the user to run --skip-unreadable, and
+  // F74, the deep-nesting refusal told the user to run --skip-unreadable, and
   // --skip-unreadable produced the identical exit 3, because the RangeError
   // branch ran BEFORE the skip branch. A remedy that cannot work is worse than
   // none (cli-ux §8), and there was no other route past the file.
@@ -2683,7 +2683,7 @@ const FIXTURES = [
     assert.ok(!captureOutput(() => renderReadError(other)).includes('--skip-unreadable'));
   }],
 
-  // F75 — `review.md` read `## entities to be replaced  (0)` and review.html's
+  // F75, `review.md` read `## entities to be replaced  (0)` and review.html's
   // entity table had no rows, on the same corpus whose export replaced 146,904
   // occurrences of 2,778 spellings: runScan and runReview both passed a
   // literal `[]` as the entity list. §F6's rule that low-confidence entities
@@ -2716,7 +2716,7 @@ const FIXTURES = [
     assert.ok(!/https?:\/\//.test(page.replace(/[^]*?<script>/, '')), 'no network, no CDN');
   }],
 
-  // F76 — the "NOT protected against" block lived in three files and two of
+  // F76, the "NOT protected against" block lived in three files and two of
   // them still listed MCP server names as unprotected while the entity table
   // was replacing 2,864 of them. cli-ux §6: a disclosure hiding an
   // implemented-but-inert control is worse than either honest option.
@@ -2750,7 +2750,7 @@ const FIXTURES = [
     }
   }],
 
-  // F77 — `deident scan` is the command whose whole job is to regenerate
+  // F77, `deident scan` is the command whose whole job is to regenerate
   // review.md, and it was the one command a hand-broken review.md could block.
   // It refused, left the broken file exactly as the user broke it, and the
   // other refusals in the codebase point at this command as the fix.
@@ -2785,7 +2785,7 @@ const FIXTURES = [
     assert.match(exported.out, /is not a tier/);
   }],
 
-  // F78 — SALT_RE is a shape test. 64 zeros were caught by an explicit branch;
+  // F78, SALT_RE is a shape test. 64 zeros were caught by an explicit branch;
   // 63 zeros and a 1 walked around it, and so did 64 digits. BRIEF §3's
   // per-uploader salt reasoning only holds while the salt is actually random.
   ['F78', 'a patterned salt is refused, not accepted on shape', () => {
@@ -2812,13 +2812,13 @@ const FIXTURES = [
     assert.equal(loadOrCreateSalt(fresh), made, 'the salt is stable across runs (I10)');
   }],
 
-  // F79 — a tier the person typed has to be durable and has to survive a
+  // F79, a tier the person typed has to be durable and has to survive a
   // neighbouring workspace appearing.
   //
   // Two separate holes, both ending with an excluded workspace in the zip and
   // every gate green:
   //   1. saveDecisions persisted only rows where `decided` was already true,
-  //      which was only set when a saved decision had already matched — so a
+  //      which was only set when a saved decision had already matched, so a
   //      tier typed for the FIRST time was never written down. --out defaults
   //      to the current directory, so `scan` / `cd elsewhere` / `export`
   //      applied the proposal to nine remote-bearing workspaces with no flags.
@@ -2871,7 +2871,7 @@ const FIXTURES = [
     assert.deepEqual(orphanedDecisions({ 'c:/gone': 'redact' }, [group]), ['c:/gone']);
   }],
 
-  // F80 — I3 ran the DECODED-string pattern over RAW serialized lines, where
+  // F80, I3 ran the DECODED-string pattern over RAW serialized lines, where
   // the `n` of a backslash-n escape is a word character, so its lookbehind
   // refused to match any pseudonym-shaped token at the start of a line inside
   // multi-line prose. That is exactly how docs/cli-ux §3's own `PERSON_03 <-`
@@ -2879,7 +2879,7 @@ const FIXTURES = [
   //
   // The check printed `pseudonym namespace  no pre-existing PERSON_n tokens
   // ok`, deident minted the same token for a tier-1 person, and the archive
-  // then contained one token meaning two different things — with reversal
+  // then contained one token meaning two different things, with reversal
   // permanently ambiguous, which PLAN §2 says this check exists to prevent.
   ['F80', 'the namespace check sees a token that follows a JSON escape', () => {
     const scan = pseudonymScanPattern(null);
@@ -2929,7 +2929,7 @@ const FIXTURES = [
     assert.equal(fs.readdirSync(out).filter((f) => f.endsWith('.zip')).length, 0, 'nothing may be written');
   }],
 
-  // F81 — four classes shipped verbatim while the manifest asserted they were
+  // F81, four classes shipped verbatim while the manifest asserted they were
   // handled, which is the §F6b failure repeated in new shapes.
   //
   //   `0 secrets`      beside two live Bearer tokens (a `v2.…` API token and a
@@ -3005,7 +3005,7 @@ const FIXTURES = [
     assert.deepEqual(assigned.map((e) => e.pseudonym.replace(/_\d+$/, '')), ['ACCOUNT', 'IDNUM']);
   }],
 
-  // F82 — a pseudonym whose plaintext original appears in the same string has
+  // F82, a pseudonym whose plaintext original appears in the same string has
   // done nothing. Three forms reversed one without the salt, measured on a
   // real export:
   //   `accountant = X_ORG_1684551 https://www.norbroo…ory.com`   x15
@@ -3053,15 +3053,15 @@ const FIXTURES = [
     assert.equal(substituteString('array index', strict).out, 'array index');
   }],
 
-  // F83 — the deny-list filtered where the agent WAS, never what it TOUCHED.
+  // F83, the deny-list filtered where the agent WAS, never what it TOUCHED.
   //
   // BRIEF §4.11 says per-directory opt-in, never opt-out, and privacy-tiers §4
   // claims three levels of granularity make that sufficient. All three read
   // the cwd, so a Read, an Edit or a directory listing of a deny-listed path
   // from an ALLOWED cwd was invisible to every one of them. Measured on a real
   // export: `…\private\vendor-search\SCORECARD.md` x17,
-  // `…\private\VENDOR-BRIEF.md` x36, `calc.mjs` x5 — the
-  // parent got a WORKSPACE pseudonym and the subpath below it did not — and a
+  // `…\private\VENDOR-BRIEF.md` x36, `calc.mjs` x5, the
+  // parent got a WORKSPACE pseudonym and the subpath below it did not, and a
   // `[chat]…txt` naming the counselling counterparty arrived in a directory
   // listing run from the home directory.
   ['F83', 'a deny-listed path is withheld whoever touched it, from wherever', () => {
@@ -3147,17 +3147,17 @@ const FIXTURES = [
     assert.equal(ctx.stats.deniedBlocks, 2);
   }],
 
-  // F84 — the cwd-less gate destroyed two whole record classes and never said
+  // F84, the cwd-less gate destroyed two whole record classes and never said
   // so. Measured over the 39 sessions a default-shaped run exports: 2,162
   // last-prompt and 613 queue-operation records dropped, 0 kept, 872 of those
-  // texts (135,668 characters) appearing nowhere else in their own session —
+  // texts (135,668 characters) appearing nowhere else in their own session,
   // and 0 of 6,976 `mode` records in the corpus carry a cwd, so every one went
   // too, while the manifest prints privacy-tiers' "session count, work mode
   // and outcome only" verbatim.
   //
   // Claude Code is launched from the home directory, scan proposes that
   // workspace `exclude`, and BRIEF §4.8 already measured that one session
-  // spans many cwds — so `touchedExcluded` was true for 39 of 39 sessions.
+  // spans many cwds, so `touchedExcluded` was true for 39 of 39 sessions.
   ['F84', 'a cwd-less record is dropped only when it replays excluded text', () => {
     const root = tmpdir();
     const out = path.join(root, 'out');
@@ -3212,7 +3212,7 @@ const FIXTURES = [
     assert.ok(!types.has('queue-operation'), 'the replayed one is the only one dropped');
   }],
 
-  // F85 — a declared tier-1 entity whose spelling contains a tier-0 spelling
+  // F85, a declared tier-1 entity whose spelling contains a tier-0 spelling
   // was never applied, and its remainder shipped with every gate green.
   //
   // Tier 1 runs over CLEANED text, so `Devuser Consulting Ltd` is already
@@ -3260,7 +3260,7 @@ const FIXTURES = [
     );
   }],
 
-  // F87 — three retention defects that all report something untrue.
+  // F87, three retention defects that all report something untrue.
   ['F87', 'one line count, a codepoint-safe cut, and no silent nested drop', () => {
     const ctx = newRetentionContext((u) => u);
     const at = { file: 'a', line: 1 };
@@ -3386,7 +3386,7 @@ const FIXTURES = [
     assert.equal(ctx.stats.deniedBlocks, 1, 'and it is not counted as denied');
   }],
 
-  // F88 — three environment and format ceilings that each arrived as
+  // F88, three environment and format ceilings that each arrived as
   // `internal error … This is a bug in deident, not a problem with your data`,
   // which is the one shape BRIEF §2 forbids.
   ['F88', 'an empty HOME and a full archive are named, not reported as bugs', () => {
@@ -3422,7 +3422,7 @@ const FIXTURES = [
     assert.ok(buildZip(many.slice(0, MAX_ENTRIES)).length > 0, 'the documented limit still works');
   }],
 
-  // F89 — a full-corpus export ran 24m28s and printed its first byte after the
+  // F89, a full-corpus export ran 24m28s and printed its first byte after the
   // whole pipeline had finished. Twenty-four minutes of silence is
   // indistinguishable from a hang, and two runs were killed believing it had
   // wedged. cli-ux §2 rules out progress bars, not output.
@@ -3458,14 +3458,14 @@ const FIXTURES = [
     assert.ok(Date.now() - started < 10_000, `20,000 spans took ${Date.now() - started} ms`);
   }],
 
-  // F90 — two things the report was silent about while every gate read green.
+  // F90, two things the report was silent about while every gate read green.
   //
   // (a) BRIEF §4.5 asks for length >= 2 AND a flag for CJK entities, "because
   //     the lookaround does not prevent over-matching inside a longer CJK
   //     word". The length rule shipped, the flag did not: 小明 matched inside
   //     小明天 and mangled a sentence that named nobody.
   // (b) Two overlapping declared entities collapse to one span, and the token
-  //     they SHARE disappears — so `Rosa Barnard Freight` and `Rosa Barnard
+  //     they SHARE disappears, so `Rosa Barnard Freight` and `Rosa Barnard
   //     Barnard Freight` come out identical. I2 passes because reverseString
   //     is fed the spans, but §3 forbids persisting them, so the reversal path
   //     that actually exists (regenerate the list, hash candidates) cannot
@@ -3510,7 +3510,7 @@ const FIXTURES = [
     assert.match(printed, /5 entity occurrences in a script written without spaces/);
   }],
 
-  // F91 — the second half of F83: a deny-listed path quoted in PROSE.
+  // F91, the second half of F83: a deny-listed path quoted in PROSE.
   //
   // Withholding a whole assistant turn because it names a path would throw
   // away the scoring evidence the export exists for, so the path goes and the
@@ -3615,8 +3615,8 @@ const FIXTURES = [
   //
   // caseInsensitive() gates on /[A-Za-z]/, so a Cyrillic or Greek spelling gets
   // entry.lower null and matchesAt falls through to startsWith. That is F51's
-  // guarantee — the one that exists because a 1,804-occurrence leak came from a
-  // casing mismatch — withheld from Cyrillic and Greek for no reason but the
+  // guarantee, the one that exists because a 1,804-occurrence leak came from a
+  // casing mismatch, withheld from Cyrillic and Greek for no reason but the
   // character class. residual.mjs:65 derives its own fold flag from the same
   // entry.lower, so the substituter and the residue scan go blind together.
   //
@@ -5340,7 +5340,7 @@ const FIXTURES = [
     assert.ok(scan.embedded >= 4, 'the glued rows are the same occurrences the embedded counter sees');
   }],
 
-  // F126 — every run started from zero.
+  // F126, every run started from zero.
   //
   // The expensive stage is the only one that scales with the corpus, so a
   // second run cost as much as the first for almost no new information: the
@@ -5400,7 +5400,7 @@ const FIXTURES = [
     assert.ok(!fs.existsSync(path.join(repo, DICTIONARY_FILENAME)), 'the dictionary was written into the repository');
   }],
 
-  // F127 — merging by position mints two pseudonyms for one person, which
+  // F127, merging by position mints two pseudonyms for one person, which
   // entities/tier1.mjs already warns about in the operator contract: "One
   // identity per entry, or one person gets two pseudonyms and the prose stops
   // making sense". A dictionary makes it worse, because the split then
@@ -5455,7 +5455,7 @@ const FIXTURES = [
     assert.ok(cased.entities[0].spellings.includes('bramblesoft-dev'));
   }],
 
-  // F128 — the gate that says "a semantic pass ran" was all-or-nothing:
+  // F128, the gate that says "a semantic pass ran" was all-or-nothing:
   // supplying --entities satisfied it for the whole corpus. With a dictionary
   // that is not good enough, because a repeat run could satisfy it having read
   // nothing new, and the corpus grows between runs.
@@ -5510,7 +5510,7 @@ const FIXTURES = [
     );
   }],
 
-  // F129 — a dictionary that cannot be read must refuse, the way loadUserDeny
+  // F129, a dictionary that cannot be read must refuse, the way loadUserDeny
   // refuses. Continuing with no dictionary is how a person ships an export
   // they believed was covered: the entity list would silently be empty and the
   // per-session gate would report every session as never read, which reads as
@@ -5568,7 +5568,7 @@ const FIXTURES = [
     assert.match(noSpellings.out, /entities\[1\]/, `the refusal must name the entry: ${noSpellings.out}`);
   }],
 
-  // F130 — every uuid in the candidates file is already a pseudonym, and
+  // F130, every uuid in the candidates file is already a pseudonym, and
   // declaring one made the export refuse against deident's own output (the
   // reason stripMintedSpellings exists). A dictionary turns that from a
   // one-run mistake into a permanent one, so the stripped list is what gets
@@ -5625,7 +5625,7 @@ const FIXTURES = [
     assert.ok(remembered.includes('Bramblesoft Ltd'), `the rest of the entity was thrown away too: ${remembered}`);
   }],
 
-  // F131 — the record is a memory of what a person decided, and a person is
+  // F131, the record is a memory of what a person decided, and a person is
   // allowed to change their mind about what counts as an identity. Without a
   // way to ignore the record, the only route back to the whole corpus is
   // deleting a file whose path they would have to be told.
@@ -6599,7 +6599,7 @@ const FIXTURES = [
   // F149 - the number is for a person at a terminal AND for the agent that
   // orchestrates the read, and the agent cannot parse prose. Both files that
   // cost a reader anything carry it.
-  ['F149', 'the token estimate is in --json, for the candidates file and for the triage file', () => {
+  ['F173', 'the token estimate is in --json, for the candidates file and for the triage file', () => {
     const root = tmpdir();
     const out = path.join(root, 'out');
     const saltDir = path.join(root, 'salt');
@@ -6647,7 +6647,7 @@ const FIXTURES = [
   // a re-identification key. This is the one command whose whole job is mapping
   // a pseudonym back to a real person, so the excerpt it prints is the real
   // spelling. A reader who does not know that will paste it into a ticket.
-  ['F148', 'review --entity prints every occurrence with its session, and says the mapping is local', () => {
+  ['F172', 'review --entity prints every occurrence with its session, and says the mapping is local', () => {
     const root = tmpdir();
     const out = path.join(root, 'out');
     const saltDir = path.join(root, 'salt');
@@ -6707,7 +6707,7 @@ const FIXTURES = [
   // script cannot tell from success. The commonest way to arrive here is a
   // token copied from an earlier export: the salt is stable, --namespace is
   // not, so the same person gets a different token per namespace.
-  ['F149', 'review --entity refuses by name for a token the last export never replaced', () => {
+  ['F171', 'review --entity refuses by name for a token the last export never replaced', () => {
     const root = tmpdir();
     const out = path.join(root, 'out');
     const saltDir = path.join(root, 'salt');
@@ -6898,7 +6898,7 @@ const FIXTURES = [
   // the corpus that could disagree with it. Measured three
   // times on the delivery run a reviewer was handed something that was not what
   // shipped, and each time the gap was where the leak lived.
-  ['F150', 'review --session prints the redacted transcript that is actually in the archive', () => {
+  ['F170', 'review --session prints the redacted transcript that is actually in the archive', () => {
     const root = tmpdir();
     const out = path.join(root, 'out');
     const saltDir = path.join(root, 'salt');
@@ -6939,7 +6939,7 @@ const FIXTURES = [
   // it is the one artifact on the machine that re-identifies the archive. It
   // gets F126's treatment exactly: salt directory only, never the output
   // directory, never an archive entry, never the repository.
-  ['F151', 'the occurrence index is memory, and reaches no file the export produces', () => {
+  ['F169', 'the occurrence index is memory, and reaches no file the export produces', () => {
     const root = tmpdir();
     const out = path.join(root, 'out');
     const saltDir = path.join(root, 'salt');
@@ -7057,7 +7057,7 @@ const FIXTURES = [
   // makes the reader distrust the export, which is the exact opposite of what
   // section 5 is for. And the short list has to SAY it is short, or a reader
   // counting the rows re-derives the wrong number by hand.
-  ['F153', 'a spelling past the occurrence cap keeps its true count, and the short list says so', () => {
+  ['F168', 'a spelling past the occurrence cap keeps its true count, and the short list says so', () => {
     const CAP = 2000; // occurrences.mjs MAX_PER_PSEUDONYM
     const OVER = 2100;
     const root = tmpdir();
@@ -7634,6 +7634,23 @@ const FIXTURES = [
     );
     assert.match(text, /No other spelling of the same entity matched either/, `the report does not say what it actually checked:${NL}${text}`);
   }],
+  ['F174', 'every fixture id is distinct, so a failure message identifies one fixture', () => {
+    // Five ids were used twice or three times, and "F151 failed" named two
+    // different fixtures. They collided because parallel branches each appended
+    // at the tail and each picked the next free number against its own copy, so
+    // nothing compared them until a review did.
+    //
+    // Reads FIXTURES rather than the file, so it cannot drift from what runs.
+    const seen = new Map();
+    const dup = [];
+    for (const [id] of FIXTURES) {
+      if (seen.has(id)) dup.push(id);
+      seen.set(id, true);
+    }
+    assert.deepEqual(dup, [], `duplicated fixture ids: ${dup.join(", ")}`);
+    assert.equal(seen.size, FIXTURES.length);
+  }],
+
 ];
 
 export function selftest() {

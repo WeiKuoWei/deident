@@ -1,7 +1,7 @@
 // The residual scan, run on the FINAL SERIALIZED BYTES.
 //
 // PLAN §2: this is the one place where later is strictly more correct.
-// Serialization re-introduces escaping forms the in-memory scan never sees —
+// Serialization re-introduces escaping forms the in-memory scan never sees , 
 // a CJK entity re-emitted as a backslash-u escape, a Windows path re-doubled
 // to `C:\\Users\\...`. BRIEF §4.6 recorded both forms on the way in; the same
 // transformation applies on the way out. Scan the exact bytes that enter the
@@ -131,11 +131,11 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       if (form.length === 0) continue;
       // A case-insensitive entry is matched, and therefore scanned for, in any
       // casing. Indexing it under one case only would let `Northwind` through a
-      // scan whose table knows `northwind` — the exact shape of the 1,804-
+      // scan whose table knows `northwind`, the exact shape of the 1,804-
       // occurrence leak this pairing exists to make impossible.
       // `second` is a one-character pre-check. residualScan is linear in the
-      // number of spellings — measured over a fixed 12.6 MB string: 216 ms at
-      // 10 spellings, 2,791 ms at 1,000, 7,798 ms at 3,000 — and the spelling
+      // number of spellings, measured over a fixed 12.6 MB string: 216 ms at
+      // 10 spellings, 2,791 ms at 1,000, 7,798 ms at 3,000, and the spelling
       // count itself grows with the corpus, so the sweep is quadratic in
       // corpus size. Most probes in a bucket differ from the text at the
       // SECOND character, and rejecting those with one comparison rather than
@@ -159,7 +159,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
   }
   for (const bucket of byFirst.values()) bucket.sort((a, b) => b.form.length - a.form.length);
 
-  // Embedded occurrences — a spelling sitting inside a longer word — are
+  // Embedded occurrences, a spelling sitting inside a longer word, are
   // counted but do NOT fail the export.
   //
   // BRIEF §4.5 row 4 labels `ray` inside `array index` a CORRECT non-match, so
@@ -173,7 +173,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
   let embedded = 0;
   // Counted separately from `embedded`, because the reason is different and so
   // is what a reader can do about it. An escape artifact IS legible to anyone
-  // who greps the shipped file — measured 2026-08-22: 16 occurrences of the OS
+  // who greps the shipped file, measured 2026-08-22: 16 occurrences of the OS
   // username and 2 of the storage slug, beside a printed
   // `known-entity residue 0`. Exempting it silently was the part that was
   // wrong, not the exemption.
@@ -214,7 +214,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       // Measured on the real corpus: one session records an ENOENT whose path
       // a tool had already double-decoded, so the retained string genuinely
       // holds CR + "ayku". Serialized, that is the two bytes `\` `r` followed
-      // by `ayku` — and the literal substring "devuser" therefore appears in the
+      // by `ayku`, and the literal substring "devuser" therefore appears in the
       // byte stream while appearing nowhere in the decoded text. Failing the
       // export on it is §F7 exactly: a scan that cries wolf.
       //
@@ -265,7 +265,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
     }
   }
 
-  // §F5: account UUIDs match no detector — not path-shaped, not name-shaped,
+  // §F5: account UUIDs match no detector, not path-shaped, not name-shaped,
   // not high-entropy-secret-shaped. So seed the scan with "any UUID that is
   // not a known message or session uuid".
   const uuidHits = [];
@@ -303,7 +303,7 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
 
 /**
  * True when position `at` is the character immediately after an odd-length run
- * of backslashes — i.e. inside a JSON escape sequence rather than at the start
+ * of backslashes, i.e. inside a JSON escape sequence rather than at the start
  * of real content. Exported so the selftest can pin it directly.
  */
 export function startsInsideEscape(bytes, at) {

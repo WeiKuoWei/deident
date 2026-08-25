@@ -66,7 +66,7 @@ abstractions are worth keeping, not which features get built now.
 Each of these was measured against real Claude Code session logs on this
 machine. Treat them as facts, and preserve the evidence in tests.
 
-### 4.1 `toolUseResult` is NOT a duplicate of `tool_result` — do not drop it
+### 4.1 `toolUseResult` is NOT a duplicate of `tool_result`, do not drop it
 
 For an `Edit`, the `tool_result` content block is prose with **zero** line
 information:
@@ -83,7 +83,7 @@ machine-readable added-line count in the record.**
 `structuredPatch`, emit `code_added_lines` as the true **added** count, then
 discard the patch body. This preserves scoring and removes the code.
 
-### 4.2 Net line count is not a substitute — measured
+### 4.2 Net line count is not a substitute, measured
 
 511 edits across the 12 largest local session files:
 
@@ -181,7 +181,7 @@ FAILING on `ray` inside `array`; it does not justify one bucket for both.
 The rule is therefore: `_` is a token boundary for a spelling of five
 characters or more, and a camel-case hump is a token boundary always, because
 `MeetingNora` is two words in any reading. `ray` inside `array` is untouched
-by either exception — three characters, starts lowercase — so row 4 still
+by either exception, three characters, starts lowercase, so row 4 still
 holds. Fixture F50 pins both directions.
 
 **Second correction, same measurement.** "case-variant only 7" understated the
@@ -213,7 +213,7 @@ already-replaced interval mask, never re-scan a replaced region.** Sequential
 `String.replaceAll` per entity is order-dependent and can re-match its own
 output.
 
-### 4.7 The round-trip test as originally stated cannot pass — split it
+### 4.7 The round-trip test as originally stated cannot pass, split it
 
 Retention drops most bytes, so byte-equality against the original file is false
 by construction. Two separate invariants:
@@ -247,7 +247,7 @@ permission-mode, ai-title, queue-operation, file-history-snapshot/-delta.
 ```
 
 The directory slug reflects the **launch** directory only; the agent `cd`s
-mid-session. So directory-level opt-in is **not sufficient** — filter on the
+mid-session. So directory-level opt-in is **not sufficient**, filter on the
 per-line `cwd` value as well.
 
 ### 4.9 The slug is not reversible and not guaranteed path-derived
@@ -299,7 +299,7 @@ a person's own added token is excluded by default and requires a typed confirmat
 
 ## 5. Security findings that change the product, not just the code
 
-### F1 — the residual scan proves less than its label claims
+### F1, the residual scan proves less than its label claims
 
 The residual scan searches for **known** entities. A third-party name that the
 seed sources never knew about and the semantic pass missed is, by construction,
@@ -313,7 +313,7 @@ Required:
 - If the semantic pass did not run, **refuse to emit the zip**. Graceful
   degradation here is silent failure.
 
-### F2 — third parties never consented
+### F2, third parties never consented
 
 The consent model is "the individual chooses what to upload", but what the
 individual is choosing about is **other people's** identities: company counsel,
@@ -323,10 +323,10 @@ them.
 **Third-party entities are force-replaced with no opt-out checkbox.** Only the
 uploader's own pseudonym is optional. This is one fewer UI control, not one more.
 
-### F3 — bare username outside any path
+### F3, bare username outside any path
 
 `devuser` distribution in a 25-file sample: 4,520 inside paths, 130 in emails, 28
-in GitHub handles, **296 bare** — the owner column of `ls -l` output:
+in GitHub handles, **296 bare**, the owner column of `ls -l` output:
 
 ```
 -rw-r--r-- 1 devuser 197609    929 ...
@@ -340,7 +340,7 @@ that everything that *should* be replaced was.
 **The username is its own entity, and a chunk of `ls -l` output is a required
 test fixture.**
 
-### F4 — device fingerprint survives entirely
+### F4, device fingerprint survives entirely
 
 Present verbatim and not covered by any entity rule: the MCP server set, the
 model mix (`claude-opus-5` 4653 / `claude-fable-5` 631 / `claude-opus-4-8` 527),
@@ -352,13 +352,13 @@ Leave the version sequence; the cost is not worth it. Document that this class
 exists rather than implying it is solved.
 
 MCP server names were added to the entity list and then never matched, because
-of the `_` boundary bug corrected in §4.5 — while the "NOT protected against"
+of the `_` boundary bug corrected in §4.5, while the "NOT protected against"
 block went on listing them as unprotected. A disclosure that hides an
 implemented-but-inert control is worse than either honest option. Both are
 fixed: the names are replaced, and the block now names only what actually
 survives (localhost ports, the model mix, the CLI version sequence).
 
-### F5 — account UUIDs match no detector
+### F5, account UUIDs match no detector
 
 ```json
 {"type":"bridge-session","bridgeSessionId":"cse_01HZQK4M...",
@@ -373,24 +373,24 @@ Not path-shaped, not name-shaped, not high-entropy-secret-shaped. **Drop the
 record type, and seed the residual scan with "any UUID that is not a known
 message or session uuid".**
 
-### F6 — collapsed review categories are the categories nobody opens
+### F6, collapsed review categories are the categories nobody opens
 
 A `names 12 items [expand]` row is a button that never gets expanded. When a
 review surface exists, high-confidence and low-confidence candidates must not
 share a list; low-confidence is per-item or it blocks the export. Not slice 1,
 but do not design the surface the other way and inherit the problem.
 
-### F6b — credentials and phone numbers are entity classes, measured
+### F6b, credentials and phone numbers are entity classes, measured
 
 Added 2026-08-22, after a real export shipped a **93-character GitHub
 fine-grained PAT** twice in plain text, at full length, with no `secrets`
-counter and no `secrets` line in the manifest — while `docs/cli-ux.md` §6 shows
+counter and no `secrets` line in the manifest, while `docs/cli-ux.md` §6 shows
 `0 secrets   8 replaced` as part of the contract. Silently omitting the line
 while shipping a live token is the worst of the available options.
 
 Same export: at least 10 distinct E.164 phone numbers, 40+ occurrences, the
 uploader's and third parties' personal mobiles, in no entity class and named in
-no "NOT protected against" line — so a reader of the manifest had no way to know
+no "NOT protected against" line, so a reader of the manifest had no way to know
 they were in the file.
 
 Both are implemented as force-replaced entity classes, and both are exactly the
@@ -405,13 +405,13 @@ The stable Windows owner id §F3 already calls "itself an identifier" is seeded
 the same way, from the column beside the username in `ls -l` output. It had
 survived 786 times, in the exact shape fixture F05 exists to guard.
 
-### F7 — false positives kill the scan
+### F7, false positives kill the scan
 
 A passport-shaped regex matched `M1019757`, a Microsoft thermal-paste part
 number. A scan that cries wolf is the first thing switched off. **Tune for
 precision, not recall.**
 
-## 6. Open questions — blocked on someone else
+## 6. Open questions, blocked on someone else
 
 Four of six scoring axes and both hero tiles depend on rules that are not in any
 local repo. The dashboard consumes a `SessionLog` produced by two upstream runs,
@@ -422,7 +422,7 @@ Unresolved, do not guess:
 
 1. What `success_signal` and `failure_signal` are counted from. If truncating
    `tool_result` reduces `failure_signal` below 3, `hits_trouble` becomes false,
-   Resilience goes null, and **OVR rises** — the tool would silently inflate
+   Resilience goes null, and **OVR rises**, the tool would silently inflate
    scores. Measured: an 800+400 byte cap destroys 98.7% of `tool_result` bytes;
    23.9% of blocks exceed 1200 B; `is_error` is a block-level flag and survives.
 2. Whether the prompt-quality run reads only user messages.
@@ -460,7 +460,7 @@ Slice 1 may treat every included workspace as `redact`.
 
 Vertical slices, each independently verifiable, each its own commit series.
 
-**Slice 1 — the substitution core.** One CLI entry point, depth-0 sessions only,
+**Slice 1, the substitution core.** One CLI entry point, depth-0 sessions only,
 no server, no browser UI.
 
 1. Resolve the storage root from the environment.
@@ -484,7 +484,7 @@ no server, no browser UI.
 
 Test data is Sam's own real mixed zh/en sessions, not synthetic fixtures.
 
-**Slice 2 and beyond — do not build until triggered.**
+**Slice 2 and beyond, do not build until triggered.**
 
 | Deferred | Trigger |
 |---|---|
@@ -495,7 +495,7 @@ Test data is Sam's own real mixed zh/en sessions, not synthetic fixtures.
 | Any non-Claude-Code adapter | see §8 |
 | subagent/workflow tree | Nora asks for orchestration evidence and says the parent session's tool_use records are insufficient |
 
-## 8. Adapter research — do this from vendor sources, not from this machine
+## 8. Adapter research, do this from vendor sources, not from this machine
 
 **This machine is not evidence about other products.** Cursor here has four
 empty draft conversations and was never really used; Codex is installed and
@@ -508,7 +508,7 @@ neither exists, say so and stop rather than building a parser from blog posts.
 
 Known so far:
 
-- **Codex** — open source. `codex-rs/rollout/src/lib.rs` defines
+- **Codex**, open source. `codex-rs/rollout/src/lib.rs` defines
   `SESSIONS_SUBDIR = "sessions"`; `codex-rs/rollout/src/list.rs` documents
   `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`.
   `codex-rs/protocol/src/items.rs` carries `CommandExecutionItem{command,
@@ -517,18 +517,18 @@ Known so far:
   `git_origin_url`, `rollout_path`. Codex is the **only** source observed to
   carry a git remote. `CODEX_HOME` overrides the root; `--ephemeral` suppresses
   rollout files.
-- **Antigravity** — `~/.gemini/antigravity-cli/cache/last_conversations.json`
+- **Antigravity**, `~/.gemini/antigravity-cli/cache/last_conversations.json`
   maps absolute workspace paths to conversation ids (official). So storage is
   flat and cwd scoping is a separate index; both statements are true. **The
   on-disk transcript format is not documented by the vendor** and third-party
   claims (`.pb` protobuf vs per-conversation SQLite vs JSONL) contradict each
   other. Unresolved.
-- **Cursor** — closed source. Nothing established.
-- **ChatGPT export** — the export flow is documented
+- **Cursor**, closed source. Nothing established.
+- **ChatGPT export**, the export flow is documented
   (Settings > Data Controls > Export Data). The internal structure of
   `conversations.json` is **not** published by OpenAI; the message-tree claim is
   third-party only.
-- **Gemini Takeout** — the My Activity JSON schema is documented, but that page
+- **Gemini Takeout**, the My Activity JSON schema is documented, but that page
   **does not mention Gemini at all**. The "My Activity > Gemini Apps" path is
   third-party only.
 

@@ -10,10 +10,10 @@ import { residualScan, residueLine, firstExamples } from './residual.mjs';
 import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
 
 /**
- * I2 — substitution reversibility, at STRING level, before serialization
+ * I2, substitution reversibility, at STRING level, before serialization
  * (BRIEF §4.7a). Run after serialization and it tests the JSON escaper rather
- * than the substituter, and the bug class it exists for — ordering, overlap,
- * prefix collision — becomes invisible.
+ * than the substituter, and the bug class it exists for, ordering, overlap,
+ * prefix collision, becomes invisible.
  *
  * Four independent properties. Reconstruction alone would be a tautology (the
  * spans were produced by the same pass that consumes them), so maximality and
@@ -128,7 +128,7 @@ export function substitutionRefusal(result) {
 }
 
 /**
- * I4 + I5 — known-entity residue and unknown UUIDs, on the serialized bytes.
+ * I4 + I5, known-entity residue and unknown UUIDs, on the serialized bytes.
  */
 export function checkResidue(bytes, table, knownUuids) {
   const scan = residualScan(bytes, table, knownUuids);
@@ -157,7 +157,7 @@ export function residueRefusal(result) {
 }
 
 /**
- * I6 — the semantic pass ran. §3 and §F1: without it the tool cannot honestly
+ * I6, the semantic pass ran. §3 and §F1: without it the tool cannot honestly
  * claim safety, so the export is refused. Checked at step 11 and again at
  * step 17, because a refusal a single skipped code path can bypass is not a
  * refusal.
@@ -167,7 +167,7 @@ export function checkSemanticPass(tier1, coverage = null) {
   // An EMPTY list is indistinguishable from not running, and it is exactly the
   // file a failed or interrupted /deident-scan leaves behind. tier1.mjs's own
   // header says a malformed list "must never silently become an empty list,
-  // because an empty list passes I6 while delivering nothing" — and then a
+  // because an empty list passes I6 while delivering nothing", and then a
   // deliberately empty one did precisely that, printing
   // `semantic pass  --entities empty.json · 0 entities  ok` beside a real zip.
   //
@@ -176,7 +176,7 @@ export function checkSemanticPass(tier1, coverage = null) {
   // 1 entities  ok` and shipped a zip: the spelling is rejected downstream by
   // rejectReason, so nothing was substituted, but the gate only counted the
   // array. A list whose every entry is rejected is not a semantic pass, for
-  // the same reason an empty list is not — and BRIEF §3 makes this gate the
+  // the same reason an empty list is not, and BRIEF §3 makes this gate the
   // reason the tool can claim safety at all.
   const usable = ran ? tier1.entities.filter((e) => !e.rejected && e.spellings.length > 0).length : 0;
   const delivered = ran && usable > 0;

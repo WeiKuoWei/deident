@@ -93,7 +93,7 @@ export function renderPreview(state) {
   push(`    ${state.manifest.sessions} sessions from ${state.manifest.workspaces} workspaces`);
   push(`    ${state.manifest.userMessages} user messages`);
   for (const z of state.manifest.zeros) push(`    0 ${z.label.padEnd(18)} ${z.suppressed}`);
-  // Counters, not zeros — the same distinction the terminal manifest makes, so
+  // Counters, not zeros, the same distinction the terminal manifest makes, so
   // the two trust surfaces cannot disagree about what was dropped.
   if (state.manifest.droppedByCwd > 0) {
     push(`    ${state.manifest.droppedByCwd} lines dropped: outside an included directory`);
@@ -150,7 +150,7 @@ const PLACEHOLDER = Object.freeze({ after: '' });
  * One excerpt, in EXPORTED form only.
  *
  * A before/after pair is a complete, portable re-identification key for every
- * entity that actually occurs — the artifact BRIEF §3 says not to write — and
+ * entity that actually occurs, the artifact BRIEF §3 says not to write, and
  * the file's own header stated it contained no such map. review.md carries the
  * same disclaimer and honours it, printing occurrence counts only, so the two
  * report surfaces disagreed with each other and one of them was wrong.

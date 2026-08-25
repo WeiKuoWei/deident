@@ -1,4 +1,4 @@
-# CLI user experience — the slice 1 contract
+# CLI user experience, the slice 1 contract
 
 **This is part of slice 1, not a later polish pass.** The tool's job is to make
 an engineer willing to hand over their session logs. That willingness is produced
@@ -24,7 +24,7 @@ Bare `deident` and `deident --help` print usage and exit 0. **Bare `deident`
 never exports.** The default action of a tool that ships data off a machine is to
 show you what it would do.
 
-## 2. `scan` — the census comes before any question
+## 2. `scan`, the census comes before any question
 
 Nobody can consent to something whose scale they cannot see.
 
@@ -88,7 +88,7 @@ Rules this shape enforces:
   deny-listed path are pre-marked `drop`.
 - **`unclassified` is visible and excluded.** New workspaces are never swept in.
 
-## 4. `review --html` — read in the browser, decide in the text file
+## 4. `review --html`, read in the browser, decide in the text file
 
 One self-contained HTML file, written to disk, opened by the user. **No local
 server.** That sidesteps the whole localhost-CSRF and port-binding threat surface
@@ -104,7 +104,7 @@ the writing side stays in a text file they control.
 https://vibeprompts.dev is a prompt library that emits Tailwind markup. Three of
 its fifteen categories are relevant here and are worth reading for layout ideas:
 **Dashboards** (data tables, admin panels), **Stats Bars** (metrics, progress
-indicators) and **Onboarding** (setup wizards, checklists — the scan → review →
+indicators) and **Onboarding** (setup wizards, checklists, the scan → review →
 export flow is exactly a three-step checklist). The rest are marketing-page
 sections and do not apply.
 
@@ -326,7 +326,7 @@ ids, which is strictly more than either `entities.json` or `export-map.txt`
 holds on its own, so it gets the same handling as both: never an archive entry,
 never the output directory, never the repository.
 
-## 6. `export` — the gate is a manifest of what leaves, not a spinner
+## 6. `export`, the gate is a manifest of what leaves, not a spinner
 
 ```
 $ deident export
@@ -360,7 +360,7 @@ $ deident export
       letters or digits (yourname-prod) and were left alone by the same rule
 
   → deident-export-2026-08-22.zip    14.2 MB
-    salt stays at ~/.deident-private/salt — do not share it, do not commit it
+    salt stays at ~/.deident-private/salt, do not share it, do not commit it
 ```
 
 ### 6a. The declared list, printed back with what it did
@@ -522,7 +522,7 @@ Three blocks do the work:
   strengths gets over-trusted, and the first surprise destroys it permanently.
   It must also not list something the tool *does* handle. MCP server names sat
   in this block while `seed.mjs` was adding them to the entity list and the
-  boundary rule was guaranteeing none of them ever matched — a disclosure
+  boundary rule was guaranteeing none of them ever matched, a disclosure
   hiding an implemented-but-inert control, which is worse than either honest
   option.
 
@@ -736,7 +736,7 @@ The first: the semantic-pass refusal writes `deident-candidates.txt` and then
 points at it, because the whole remedy is "read this file and write an entity
 list". It is written on that refusal path
 and on no other, it holds tier-0-cleaned prose that the semantic pass has not
-seen yet — third-party names included, by design — and the tier-0 residual scan
+seen yet, third-party names included, by design, and the tier-0 residual scan
 runs over it before it is written. Treat it the way you treat `review.md`: local
 only, never shared, never committed.
 
@@ -746,7 +746,7 @@ level 3 is the last look, and a last look cannot act without attribution: every
 id inside the archive has already been rewritten, so nothing on the machine
 otherwise says which entry is which session. It maps a local id to a local id
 rather than a pseudonym to a name, so it is not a re-identification key for the
-data that left — but it is local only, never shared, never committed, and it is
+data that left, but it is local only, never shared, never committed, and it is
 removed along with the zip if anything after it fails.
 
 ## 11. Idempotence and the second run

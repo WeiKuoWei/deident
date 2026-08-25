@@ -17,7 +17,7 @@ const REPLACEMENT_CHAR = String.fromCharCode(0xfffd);
  * @param {{skipUnreadable?: boolean, keepRaw?: boolean, inspect?: Function}} opts
  *   keepRaw: false drops each record's raw line text once it has been checked.
  *     The raw text is as large as the file itself, and the export pass has no
- *     use for it — holding it is a second copy of the corpus for nothing.
+ *     use for it, holding it is a second copy of the corpus for nothing.
  *   inspect(line, lineNo): called with the raw text of every parsed line, so a
  *     caller that needs to look at raw lines (the namespace collision check)
  *     can do so without the reader accumulating them.
@@ -50,7 +50,7 @@ export function readSession(filePath, opts = {}) {
   // be that while the comparison happens against an already-lossily-decoded
   // string. `readFileSync(path, 'utf8')` replaces every invalid byte with
   // U+FFFD, so `stringify(parse(line)) === line` compares two strings that both
-  // already lost the bytes — the check can never see the damage, by
+  // already lost the bytes, the check can never see the damage, by
   // construction, and the report still says byte-identical.
   //
   // Re-encoding is the cheap proof: a lossless decode round-trips. It is only

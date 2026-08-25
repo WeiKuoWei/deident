@@ -20,7 +20,7 @@ export function allowLine(cwd, policy = {}) {
   if (cwd === null || cwd === undefined || cwd === '') {
     // Unknown directory is deny. cwdtrack back-fills the head of a file from
     // its first known value, so a null here means the whole file never
-    // declared one — which is not a case we are willing to guess about.
+    // declared one, which is not a case we are willing to guess about.
     return DENY_UNKNOWN;
   }
 
@@ -52,7 +52,7 @@ const DENY_UNMAPPED = Object.freeze({ allow: false, reason: 'cwd is outside ever
 
 /**
  * Apply the gate across a whole session.
- * Returns the kept record indices plus a per-reason tally for the manifest —
+ * Returns the kept record indices plus a per-reason tally for the manifest,
  * a dropped line the user never hears about is the failure mode this counts
  * against.
  */

@@ -116,14 +116,14 @@ of them, inside a session whose directory slug looked unremarkable. The agent
 So three levels of granularity are all required, and each catches what the level
 above it misses:
 
-1. **Workspace tier** — the coarse decision, made once, remembered. The
+1. **Workspace tier**, the coarse decision, made once, remembered. The
    workspace is the directory the sessions actually worked in, taken from their
    `cwd` records. It is not the storage slug: 214 of 224 real sessions were
    launched from the home directory and share one slug, so a slug-shaped
    workspace would have put 95% of the corpus behind a single decision.
-2. **Per-line `cwd` filter** — catches private subdirectories reached mid-session.
+2. **Per-line `cwd` filter**, catches private subdirectories reached mid-session.
    Already in slice 1.
-3. **Per-session drop, after preview** — the escape hatch. The preview lists each
+3. **Per-session drop, after preview**, the escape hatch. The preview lists each
    session with a one-line redacted summary (its first user message, truncated),
    and anything that still looks wrong is dropped before the zip is written.
 

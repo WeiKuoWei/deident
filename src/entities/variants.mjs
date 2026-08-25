@@ -39,7 +39,7 @@ export function expandVariants(spelling, opts = {}) {
   // because matchesAt measures its span as `at + entry.spelling.length` and
   // the two forms have different lengths. As spellings each keeps its own, the
   // matcher stays literal, and reversal restores whichever form was actually
-  // in the text — which matters for a path, since a Mac filename put back
+  // in the text, which matters for a path, since a Mac filename put back
   // recomposed no longer names the file it came from.
   //
   // Free for ASCII: both normalisations return the identical string and the Set
@@ -66,7 +66,7 @@ export function expandVariants(spelling, opts = {}) {
   }
 
   // URL/percent encoding, for non-path spellings only. The measured case is
-  // `%3Ddevuser%40northwind.example` — an email inside a URL query. Percent-encoding
+  // `%3Ddevuser%40northwind.example`, an email inside a URL query. Percent-encoding
   // every separator of every path root as well would multiply the needle set
   // twenty-fold for forms never observed, and §F7 says tune for precision.
   if (!looksLikePath(spelling)) {
@@ -76,7 +76,7 @@ export function expandVariants(spelling, opts = {}) {
       out.add(enc.replace(/%([0-9A-F]{2})/g, (m, h) => `%${h.toLowerCase()}`));
       // DOUBLE percent-encoding, which is what a URL that was itself put in a
       // query string looks like. Measured on a real export:
-      // `…authuser%3DX_PERSON_465285%2540northwind.example` — `%2540` is an encoded
+      // `…authuser%3DX_PERSON_465285%2540northwind.example`, `%2540` is an encoded
       // `%40`, so the domain sat in plaintext beside the pseudonym of the
       // person whose address it is.
       const dbl = enc.replace(/%/g, '%25');
@@ -88,7 +88,7 @@ export function expandVariants(spelling, opts = {}) {
   // The domain/URL spelling of a multi-word name.
   //
   // Measured on a real export: `accountant = X_ORG_1684551
-  // https://www.norbrookvan…ory.com` — 15 occurrences of the pseudonym and the
+  // https://www.norbrookvan…ory.com`, 15 occurrences of the pseudonym and the
   // plaintext identity of the same org on one line. A pseudonym whose original
   // appears in the same sentence has done nothing. The squashed form is what a
   // company writes as its domain and as its handle, and at eight characters or

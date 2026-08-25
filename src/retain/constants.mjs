@@ -14,7 +14,7 @@
  * `failure_signal` is counted from. Measured, an 800+400 byte cap destroyed
  * 98.7% of tool_result bytes and 23.9% of blocks exceed 1200 B. If truncating
  * pushes failure_signal below 3, `hits_trouble` goes false, Resilience goes
- * null, and OVR RISES — the tool would silently inflate scores.
+ * null, and OVR RISES, the tool would silently inflate scores.
  *
  * So these are set generously, not tightly, and `is_error` is preserved
  * verbatim regardless of truncation. Shrink them only after that question is
@@ -175,8 +175,8 @@ export const DENIED_USER_FILENAME = 'denied.json';
  * every one of them. Measured on a real export: files under
  * `…ops-handover\\private\\` were named 17, 36 and 5 times
  * (`vendor-search\\SCORECARD.md`, `VENDOR-BRIEF.md`,
- * `calc.mjs`) — the parent got a WORKSPACE pseudonym and the subpath
- * below it did not — and a `[chat]…txt` from the archive of private messages was named
+ * `calc.mjs`), the parent got a WORKSPACE pseudonym and the subpath
+ * below it did not, and a `[chat]…txt` from the archive of private messages was named
  * by a directory listing run from an included directory.
  *
  * The token has to sit inside a path SEGMENT: a separator, then segment
@@ -207,7 +207,7 @@ export const DENIED_PATH_RE = new RegExp(
  * The same, for a path that BEGINS with the deny-listed segment.
  *
  * DENIED_PATH_RE requires a separator BEFORE the token, so a relative path
- * quoted as `private/vendor-search/COST-COMPARISON.md:17:` matched nothing —
+ * quoted as `private/vendor-search/COST-COMPARISON.md:17:` matched nothing,
  * measured, that shape survived a real export inside grep output. Requiring a
  * separator AFTER the segment instead is what keeps this off the ordinary
  * English sentence "a private repo": there the next character is a space.

@@ -37,7 +37,7 @@ export function renderReview(model) {
   push('');
 
   // privacy-tiers §4 level 3: the last look. A workspace tier is a coarse
-  // decision and the home directory proves why one is not enough — 130 of this
+  // decision and the home directory proves why one is not enough, 130 of this
   // corpus's sessions share it, and they are not one decision. Every session
   // gets a line so any single one can be held back without excluding the
   // directory it ran in.

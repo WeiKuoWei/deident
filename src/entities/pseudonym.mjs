@@ -3,7 +3,7 @@
 // BRIEF §3: stable salted hash, NO plaintext map file, ever. A map is a
 // portable re-identification key for data that has already left the machine;
 // the raw logs are not. Reversal is done by regenerating the local entity list
-// and hashing candidates — which is why the hash must be deterministic given
+// and hashing candidates, which is why the hash must be deterministic given
 // (salt, kind, canonical).
 //
 // BRIEF §3 also fixes the salt as per-uploader, not shared: seven teammates
@@ -57,7 +57,7 @@ export function pseudonymPattern(namespace = null) {
  * The same tokens, with NO left lookbehind, for scanning RAW serialized lines.
  *
  * I3 ran pseudonymPattern() over the raw text of each line, where the `n` of a
- * `\\n` escape is a word character — so the lookbehind refused to match a token
+ * `\\n` escape is a word character, so the lookbehind refused to match a token
  * at the start of any line inside multi-line prose, which is exactly the shape
  * docs/cli-ux §3's own `PERSON_03  <- ...` sample row arrives in once a
  * teammate pastes the docs into a session. Every escape whose last character is
@@ -75,7 +75,7 @@ export function pseudonymPattern(namespace = null) {
  * A guard has to cover a token whatever abuts it. walker.mjs promises "every
  * pass after the first runs under the pseudonym guard, so the fixpoint can
  * never eat its own output", and the guard was pseudonymPattern, whose
- * trailing lookahead refuses to match `ORG_11499881Corp` — the exact shape the
+ * trailing lookahead refuses to match `ORG_11499881Corp`, the exact shape the
  * fixpoint exists to create. The token sat in no forbidden range and pass 2
  * was free to substitute inside it.
  */
@@ -99,8 +99,8 @@ const SALT_RE = /^[0-9a-f]{64}$/;
 // The shape test is not an entropy test, and the shape test alone is what the
 // all-zero branch below was working around one case at a time. 64 zeros were
 // caught; 63 zeros and a `1` were not, and neither was a salt of 64 digits or
-// one repeating `abab…`. BRIEF §3's per-uploader reasoning — seven teammates
-// uploading to one recipient who holds the roster — only holds while the salt
+// one repeating `abab…`. BRIEF §3's per-uploader reasoning, seven teammates
+// uploading to one recipient who holds the roster, only holds while the salt
 // is actually random.
 //
 // 32 random bytes give all 16 hex characters with probability > 0.999999, so
@@ -154,7 +154,7 @@ export function readSalt(saltDir) {
 /**
  * Load the salt, creating it 0600 on first run.
  * PLAN §4.2: an unreadable or unwritable salt is a refusal, never a fallback
- * to an unsalted or in-memory value — that would make two exports
+ * to an unsalted or in-memory value, that would make two exports
  * non-reversible against each other.
  */
 export function loadOrCreateSalt(saltDir) {
@@ -162,8 +162,8 @@ export function loadOrCreateSalt(saltDir) {
   try {
     const existing = fs.readFileSync(file, 'utf8').trim();
     // Shape, not length. `String.prototype.trim` does not strip U+0000, so a
-    // salt file of 64 NUL bytes — an interrupted write, filesystem corruption,
-    // a file someone touched — passed a length check and produced pseudonyms
+    // salt file of 64 NUL bytes, an interrupted write, filesystem corruption,
+    // a file someone touched, passed a length check and produced pseudonyms
     // derived from an all-zero salt: predictable to anyone who guesses that,
     // which is the whole per-uploader salt decision in BRIEF §3 undone in
     // silence. deident writes exactly 64 lowercase hex characters, so anything
@@ -237,7 +237,7 @@ export function pseudonymIndex(canonical, kind, salt) {
  * `opts.taken` threads the tokens an EARLIER pass already minted through this
  * one. Without it each call proved bijectivity over its own half: the pipeline
  * calls this twice, once for tier 0 and once for tier 1, and the merged table
- * silently kept the first entry per pseudonym — so two different people could
+ * silently kept the first entry per pseudonym, so two different people could
  * carry one token and no refusal fired. The index is 24 bits and sweepEmails
  * admits up to 5,000 addresses, each a `person`; 5,000 tier-0 persons against
  * ~50 tier-1 persons is order 1.5% per export, not one in sixteen million.
@@ -314,7 +314,7 @@ function format(namespace, prefix, index) {
  * already been assigned into a corpus that already contained PERSON_3, and
  * from that moment reversal is permanently ambiguous.
  *
- * PLAN C4: this fires on the real corpus today — 23 lines in the session where
+ * PLAN C4: this fires on the real corpus today, 23 lines in the session where
  * deident itself is being built. The namespace-shift remedy is therefore part
  * of slice 1, not a deferred nicety.
  *

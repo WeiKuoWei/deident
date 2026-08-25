@@ -7,7 +7,7 @@
 // machine-readable added-line count in the record.
 //
 // §4.2: net line count is not a substitute. Measured over 511 edits: true
-// added 9,290, removed 5,338, net 3,952 — the net undercounts true added by
+// added 9,290, removed 5,338, net 3,952, the net undercounts true added by
 // 57.5%, and 123 edits (24.1%) have added>0 with net==0.
 //
 // §4.3: `null` and `0` are different, and `0` is the dangerous one. A wrong 0
@@ -43,7 +43,7 @@ export function distillToolResult(toolUseResult) {
   if (patch.length === 0) {
     // An empty `structuredPatch` is NOT a measured zero. The Write tool's real
     // corpus shape is `{type:'create', filePath, content, structuredPatch: []}`
-    // — a genuinely empty patch array plus the whole new file in `content`.
+    //, a genuinely empty patch array plus the whole new file in `content`.
     //
     // Measured over all 225 depth-0 sessions: 838 such records carrying 83,211
     // true added lines, every one of them emitted as 0. Against the 26,459 the
