@@ -49,7 +49,10 @@ import {
   saveDecisions,
   loadSavedDecisions,
   orphanedDecisions,
+  exportableTiers,
+  nothingAdmittedRefusal,
 } from './policy/workspaces.mjs';
+import { recordRead, loadReads, countReads, readsPath } from './policy/reads.mjs';
 import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
 import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from './policy/signals.mjs';
 import { setUserDeny } from './policy/userdeny.mjs';
@@ -1418,7 +1421,11 @@ const FIXTURES = [
     });
     const probe = (dir) => (dir === 'C:/w/northwind' ? { raw: 'northwind-co/ledger' } : null);
 
-    assert.equal(proposeTier(g('northwind'), probe).tier, 'redact');
+    // Every proposal is non-exportable since F175, so what separates these two
+    // rows is `admissible` and not the tier: one has a signal a person can act
+    // on in a word, the other has none.
+    assert.equal(proposeTier(g('northwind'), probe).tier, 'exclude');
+    assert.equal(proposeTier(g('northwind'), probe).admissible, true);
     assert.equal(proposeTier(g('scratch'), probe).tier, 'exclude', 'no remote fails closed');
     // git missing from PATH is not the same fact as a directory without a
     // remote, and the reason the person reads has to say which one happened.
@@ -1443,7 +1450,7 @@ const FIXTURES = [
       { propose: (ws) => proposeTier(ws, probe) },
     );
     const byTier = Object.fromEntries(summarizeTiers(decisions).map((r) => [r.tier, r.workspaces]));
-    assert.deepEqual(byTier, { exclude: 3, redact: 1, unclassified: 1 });
+    assert.deepEqual(byTier, { exclude: 4, unclassified: 1 });
 
     // A proposal is not a decision and is never written to workspaces.json.
     // Saved as one, a repo that later lost its remote would keep exporting on
@@ -2013,8 +2020,12 @@ const FIXTURES = [
     assert.equal(personal.tier, 'unclassified', 'a personal archive must not be swept in by its remote');
     assert.match(personal.reason, /personal data/);
 
-    // Ordinary work still proposes redact, or the row becomes 29 questions.
-    assert.equal(proposeTier(group('northwind'), () => remote('northwind-co/ledger')).tier, 'redact');
+    // Ordinary work is still not a question, or the row becomes 29 questions.
+    // It proposes `exclude` like everything else since F175, so the contrast
+    // this fixture turns on is `admissible`: a candidate a person can admit
+    // with one word, against a row the tool is refusing to have an opinion on.
+    const work = proposeTier(group('northwind'), () => remote('northwind-co/ledger'));
+    assert.deepEqual({ tier: work.tier, admissible: work.admissible }, { tier: 'exclude', admissible: true });
     // Whole segments only: a substring test would call these personal data.
     // Fabricated. Shape: an ordinary multi-segment work name whose every
     // segment is outside PERSONAL_TOKENS, so it must come back null.
@@ -2851,7 +2862,7 @@ const FIXTURES = [
     // Exporting against the review the person edited records the decision...
     const refused = runCli(args(scanned));
     assert.equal(refused.code, 1, refused.out);
-    assert.match(refused.out, /no workspace is set to an exportable tier/);
+    assert.match(refused.out, /no workspace has been admitted/);
     const saved = JSON.parse(fs.readFileSync(path.join(saltDir, 'workspaces.json'), 'utf8'));
     assert.equal(Object.values(saved.workspaces).includes('exclude'), true, `the typed tier was not saved: ${JSON.stringify(saved)}`);
     assert.ok(Object.keys(saved.workspaces).every((k) => k.includes('/')), 'keyed by path, not by label');
@@ -2859,7 +2870,7 @@ const FIXTURES = [
     // ...and the memory is what a run with a different --out then reuses.
     const again = runCli(args(elsewhere));
     assert.equal(again.code, 1, again.out);
-    assert.match(again.out, /no workspace is set to an exportable tier/);
+    assert.match(again.out, /no workspace has been admitted/);
 
     // The label is not the key: rename the workspace and the decision holds.
     const group = { key: 'c:/users/devuser/projects/alpha', name: 'alpha', cwd: 'C:/Users/devuser/projects/alpha', normCwd: 'c:/users/devuser/projects/alpha', sessionCount: 1, bytes: 1, denyToken: null, unresolved: false, isHome: false };
@@ -6072,7 +6083,11 @@ const FIXTURES = [
     }
 
     // Latin work names are untouched, or the review row becomes 29 questions.
-    assert.equal(proposeTier(group('ledger'), () => remote('northwind-co/ledger')).tier, 'redact');
+    // Untouched means `admissible` since F175, not `redact`: no proposal is
+    // exportable any more, so the distinction being pinned is candidate versus
+    // question.
+    const latin = proposeTier(group('ledger'), () => remote('northwind-co/ledger'));
+    assert.deepEqual({ tier: latin.tier, admissible: latin.admissible }, { tier: 'exclude', admissible: true });
     // And the per-person file is what actually closes it, in both directions:
     // one token added there feeds matchDenyToken and deniedPathToken alike.
     setUserDeny({ tokens: ['私人'] });
@@ -7867,6 +7882,218 @@ const FIXTURES = [
     }
     assert.deepEqual(dup, [], `duplicated fixture ids: ${dup.join(", ")}`);
     assert.equal(seen.size, FIXTURES.length);
+  }],
+
+  ['F184', 'a git remote proposes exclude, so no workspace exports without a typed admission', () => {
+    // Two exports shipped with all six gates green and both leaked, and neither
+    // leak was in a work repository. The proposal read `redact` for any
+    // directory with a remote, `scan` wrote that word into column 1 of
+    // review.md, and reading it back was indistinguishable from a tier the
+    // person had typed. So `scan` then `export` admitted every remote-bearing
+    // workspace on the machine while the person typed nothing. Accepting a
+    // proposal by doing nothing is opt-out wearing an opt-in label.
+    const g = (name, extra = {}) => ({
+      key: name, name, cwd: `C:/w/${name}`, normCwd: `c:/w/${name}`,
+      sessionCount: 3, denyToken: null, unresolved: false, ...extra,
+    });
+    const probe = (dir) => (dir === 'C:/w/northwind' ? { raw: 'northwind-co/ledger', repo: 'ledger' } : null);
+    const propose = { propose: (ws) => proposeTier(ws, probe) };
+
+    const remote = proposeTier(g('northwind'), probe);
+    assert.equal(remote.tier, 'exclude', 'a remote is evidence of a repository, never of consent');
+    assert.equal(remote.admissible, true, 'and the row still has to say which one is the one to admit');
+    assert.equal(proposeTier(g('scratch'), probe).admissible, false, 'no remote, no candidacy');
+
+    // The gate: a proposal can never reach an exportable tier on its own.
+    const proposed = classifyWorkspaces([g('northwind'), g('scratch')], {}, propose);
+    assert.equal(exportableTiers(proposed).size, 0, 'a proposal admits nothing at all');
+
+    const typed = classifyWorkspaces([g('northwind'), g('scratch')], { northwind: 'redact' }, propose);
+    assert.deepEqual([...exportableTiers(typed).keys()], ['northwind']);
+    assert.equal(typed.find((d) => d.name === 'northwind').decided, true, 'a typed tier is a decision');
+
+    // The census still separates the row that is waiting for an answer from
+    // the rows that are simply not candidates, or the first-run screen says
+    // `exclude 31 workspaces` and names no next step.
+    const row = summarizeTiers(proposed).find((r) => r.tier === 'exclude');
+    assert.match(String(row.note), /1 .*git remote/, `the census hides the admissible row: ${row.note}`);
+  }],
+
+  ['F183', 'with nothing admitted the refusal names the file, the word, and the rows to type it on', () => {
+    // The old text for an export with no exportable tier was
+    // `Set tiers: deident scan  # then edit review.md`, which is the command
+    // the person had just run, and it named none of the 31 rows. An empty
+    // export that refuses is correct only if the refusal carries the next
+    // action.
+    const g = (name, extra = {}) => ({
+      key: name, name, cwd: `C:/w/${name}`, normCwd: `c:/w/${name}`,
+      sessionCount: 4, denyToken: null, unresolved: false, ...extra,
+    });
+    const probe = (dir) => (dir === 'C:/w/northwind' ? { raw: 'northwind-co/ledger', repo: 'ledger' } : null);
+    const decisions = classifyWorkspaces([g('northwind'), g('scratch')], {}, { propose: (ws) => proposeTier(ws, probe) });
+
+    const refusal = nothingAdmittedRefusal(decisions, 'C:/out/review.md');
+    assert.ok(refusal instanceof RefusalError, 'nothing admitted has to refuse, not ship an empty zip');
+    const text = captureOutput(() => renderRefusal(refusal));
+    assert.match(text, /review\.md/, 'the file to edit');
+    assert.match(text, /redact/, 'the word to type in it');
+    assert.match(text, /northwind/, 'the row to type it on');
+    assert.doesNotMatch(text, /scratch/, 'a directory with no remote is not offered as a candidate');
+    assert.ok(!text.includes(String.fromCharCode(0x2014)), 'no em dash in user-facing prose');
+
+    // And it fires only when nothing is admitted: one typed tier and the
+    // export proceeds, or this becomes a gate that is always red.
+    const typed = classifyWorkspaces([g('northwind')], { northwind: 'redact' }, { propose: (ws) => proposeTier(ws, probe) });
+    assert.equal(nothingAdmittedRefusal(typed, 'C:/out/review.md'), null);
+  }],
+
+  ['F182', 'a read counts for the session it opened, and stops counting when that session changes', () => {
+    // The manifest has to be able to say how many shipped sessions a human
+    // actually opened. Nobody in this field claims recall of 1.0, so the number
+    // is stated rather than gated, and a stale read is the one way a stated
+    // number could quietly inflate: a session appended to after it was read is
+    // not a session that was read.
+    const dir = tmpdir();
+    try {
+      assert.deepEqual(loadReads(dir).sessions, {}, 'no reads yet is an empty record, never a refusal');
+
+      const before = Date.now() - 60_000;
+      recordRead(dir, 'sess-a', 'review --session');
+      const reads = loadReads(dir);
+      assert.equal(reads.sessions['sess-a'].via, 'review --session');
+
+      const counted = countReads(reads, [
+        { id: 'sess-a', mtimeMs: before },
+        { id: 'sess-b', mtimeMs: before },
+      ]);
+      assert.deepEqual(
+        { read: counted.read, unread: counted.unread, stale: counted.stale },
+        { read: 1, unread: 1, stale: 0 },
+      );
+
+      const later = countReads(reads, [{ id: 'sess-a', mtimeMs: Date.now() + 60_000 }]);
+      assert.deepEqual(
+        { read: later.read, unread: later.unread, stale: later.stale },
+        { read: 0, unread: 1, stale: 1 },
+        'the file changed after the read, so the read is about text that is not shipping',
+      );
+
+      // Local only, and beside the salt rather than beside the zip: it pairs
+      // real session ids with dates, which is the pairing occurrences.json is
+      // kept out of the output directory for.
+      assert.equal(path.dirname(readsPath(dir)), dir);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }],
+
+  ['F181', 'the manifest states the sessions a human read against the total, and says zero out loud', () => {
+    // A silent manifest is the failure this exists to fix: two archives shipped
+    // with all six gates green and nothing in either of them said that no human
+    // had opened a single session. An absent line reads as "not applicable"; a
+    // zero reads as what it is.
+    const base = {
+      sessions: 12, workspaces: 2, userMessages: 40, zeros: [], droppedByCwd: 0, emptiedSessions: 0,
+      absorbedSpans: 0, cjkSpans: 0, embedded: 0, unknownTypes: [], countOnly: { sessions: 0, workspaces: 0 },
+    };
+    const none = captureOutput(() => renderManifest({ ...base, read: { read: 0, unread: 12, total: 12, stale: 0 } }));
+    assert.match(none, /0 of 12/, `the count is missing:${NL}${none}`);
+    assert.match(none, /unverified/, 'the remainder has to be named as unverified, not left implied');
+
+    const some = captureOutput(() => renderManifest({ ...base, read: { read: 3, unread: 9, total: 12, stale: 2 } }));
+    assert.match(some, /3 of 12/);
+    assert.match(some, /9 .*unverified/);
+    assert.match(some, /2 /, 'a stale read is reported, not counted');
+    assert.ok(!some.includes(String.fromCharCode(0x2014)), 'no em dash in user-facing prose');
+
+    // The bound the entry gate buys, in the block whose job is being believed.
+    const bounded = captureOutput(() => renderManifest({
+      ...base,
+      read: { read: 0, unread: 12, total: 12, stale: 0 },
+      admitted: { workspaces: 2, notAdmitted: 29 },
+    }));
+    assert.match(bounded, /admitted/, `the manifest cannot state the bound:${NL}${bounded}`);
+    assert.match(bounded, /29/, 'and how many workspaces contributed nothing');
+  }],
+
+  ['F179', 'end to end: an export counts the sessions a human opened, and says zero before any', () => {
+    // F177 and F178 are the halves; this is the wiring between them, and the
+    // wiring is where every one of this tool's silent-zero bugs lived. The
+    // denominator has to be the archive's own entries, the id has to be the
+    // real session id rather than the rewritten archive entry name, and the
+    // count has to survive the round trip through the salt directory.
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const sid = '11111111-1111-4111-8111-111111111111';
+    writeCorpus(root);
+    const args = ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--entities', path.join(root, 'ents.json')];
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+
+    const first = runCli(args, CORPUS_USER_ENV);
+    assert.equal(first.code, 0, first.out);
+    assert.match(first.out, /0 of \d+ sessions were opened and read here/, first.out);
+    assert.match(first.out, /nobody has read any of this archive/, 'silence is what shipped twice');
+    // The phrase, not the plural: with nothing left unadmitted the line
+    // collapses to one sentence, because `0 others were never admitted` reads
+    // as an accounting slip in the block whose job is being believed.
+    assert.match(first.out, /admitted by name/, 'the entry-gate bound is missing from the manifest');
+
+    // The one read path that opens a whole session. It answers from the index
+    // the export just wrote, so it needs no --root.
+    const opened = runCli(['review', '--session', sid, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(opened.code, 0, opened.out);
+
+    const second = runCli(args, CORPUS_USER_ENV);
+    assert.equal(second.code, 0, second.out);
+    assert.match(second.out, /1 of \d+ sessions were opened and read here/, second.out);
+    assert.doesNotMatch(second.out, /nobody has read any of this archive/);
+    fs.rmSync(root, { recursive: true, force: true });
+  }],
+
+  ['F180', 'a tier remembered from before the entry gate is applied, and is not passed off as typed', () => {
+    // Measured on the live corpus after the gate landed: 14 workspaces exported
+    // on tiers already in workspaces.json, and 3 newly proposed rows that the
+    // gate now holds. The 14 are the migration. Before the gate, `scan` wrote
+    // its own `redact` into column 1 of review.md and reading it back set
+    // `decided`, so a saved exportable tier from that era cannot be told apart
+    // from an answer.
+    //
+    // Applied rather than reverted: re-asking 14 rows is the 29 questions
+    // privacy-tiers §3 measures as producing none, and overriding a recorded
+    // answer on a guess about how it was produced is the worse error. What
+    // must not happen is the manifest's new sentence quietly inheriting it.
+    const dir = tmpdir();
+    try {
+      const file = path.join(dir, 'workspaces.json');
+      const write = (doc) => fs.writeFileSync(file, JSON.stringify(doc), 'utf8');
+
+      write({ version: 2, workspaces: { 'c:/w/alpha': 'redact' }, sessionDrops: [] });
+      assert.equal(loadSavedDecisions(dir).legacy, true, 'a pre-gate record has to declare itself');
+      assert.deepEqual(loadSavedDecisions(dir).workspaces, { 'c:/w/alpha': 'redact' }, 'and still apply');
+
+      // v1 was the flat map, which is older still.
+      write({ 'c:/w/alpha': 'redact' });
+      assert.equal(loadSavedDecisions(dir).legacy, true);
+
+      // An empty record claims nothing, so it is not a migration.
+      write({ version: 2, workspaces: {}, sessionDrops: [] });
+      assert.equal(loadSavedDecisions(dir).legacy, false);
+      assert.equal(loadSavedDecisions(path.join(dir, 'nothing-here')).legacy, false);
+
+      // Writing under the gate clears it, and only writing does.
+      saveDecisions(dir, [
+        { key: 'c:/w/alpha', name: 'alpha', tier: 'redact', decided: true },
+      ]);
+      const written = loadSavedDecisions(dir);
+      assert.equal(written.legacy, false, 'a record written under the gate is not a migration');
+      assert.deepEqual(written.workspaces, { 'c:/w/alpha': 'redact' });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   }],
 
 ];

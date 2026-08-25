@@ -26,9 +26,11 @@ import {
   saveDecisions,
   orphanedDecisions,
   unclassifiedRefusal,
+  nothingAdmittedRefusal,
   exportableTiers,
   cwdTierIndex,
 } from './policy/workspaces.mjs';
+import { recordRead, loadReads, countReads } from './policy/reads.mjs';
 import { groupSessions } from './policy/grouping.mjs';
 import { proposeTier, makeRemoteProbe } from './policy/signals.mjs';
 import { allowLine, touchedDenied } from './policy/linefilter.mjs';
@@ -308,6 +310,12 @@ function runEntityQuery(token, saltDir) {
     });
   }
   report.renderEntityOccurrences(rec, file);
+  // Recorded as a drill-down and never as a session read. The rows this printed
+  // are one excerpt per occurrence, so what the person now knows is about the
+  // entity, not about any session it appeared in. Folding it into the session
+  // count is the arithmetic that killed the random-sample proposal: a matched
+  // line is not a look at 5,000 lines around it.
+  recordRead(saltDir, token, 'review --entity', 'entities');
   return 0;
 }
 
@@ -365,6 +373,14 @@ function runSessionQuery(id, saltDir) {
     });
   }
   report.renderSessionTranscript(match.id ?? id, match.entry, entry.data, `${file} and ${archive}`);
+  // The one read path that opens a whole session, which is why it is the only
+  // one that counts in the manifest. Recorded against the REAL session id, not
+  // the archive entry name: the entry name is rewritten per export and the
+  // manifest has to match reads to the sessions the next export ships.
+  //
+  // Written after the transcript, so a read is recorded only once the person
+  // has actually been shown one.
+  recordRead(saltDir, match.id ?? id, 'review --session');
   return 0;
 }
 
@@ -645,6 +661,28 @@ export async function runExport(flags, env) {
       `a remembered tier for "${orphan}" matches no workspace in this run and was not applied`,
     );
   }
+  // The one migration the entry gate needs, and the only half of it that is
+  // detectable. Before default-deny, `scan` wrote its own `redact` proposal
+  // into column 1 of review.md, so a remembered exportable tier from that era
+  // may be a proposal nobody typed. Applied anyway (re-asking every row is the
+  // 29 questions that produce no answers), and said out loud, because the
+  // manifest's new sentence is a claim about how those tiers got there.
+  //
+  // The undetectable half is a review.md file written by that same version and
+  // never regenerated. It is named in the remedy rather than guessed at:
+  // `deident scan` rewrites column 1 from the current proposals.
+  if (remembered.legacy) {
+    const inherited = Object.values(remembered.workspaces).filter((t) => t === 'redact' || t === 'open').length;
+    if (inherited > 0) {
+      const one = inherited === 1;
+      report.renderWarning(
+        `${inherited} remembered tier${one ? ' predates' : 's predate'} the entry gate, when deident still proposed ` +
+          `"redact" for any workspace with a git remote, so ${one ? 'it' : 'some of them'} may be a proposal you ` +
+          `never typed. ${one ? 'It is' : 'They are'} applied this run. To see and re-type ` +
+          `${one ? 'it' : 'them'}: deident scan, then read column 1 of ${REVIEW_FILENAME}`,
+      );
+    }
+  }
   // Remembered HERE, not after the zip is written.
   //
   // A decision typed into review.md used to be persisted only by a run that
@@ -678,15 +716,11 @@ export async function runExport(flags, env) {
     if (refusal !== null) throw refusal;
   }
   const exportable = exportableTiers(decisions);
-  if (exportable.size === 0) {
-    throw new RefusalError('no workspace is set to an exportable tier', {
-      why: [
-        'Every workspace is excluded, count-only or unclassified, so the export',
-        'would contain nothing. Opt in explicitly; deident never opts you in.',
-      ],
-      remedies: [{ label: 'Set tiers', command: `deident scan   # then edit ${REVIEW_FILENAME}` }],
-    });
-  }
+  // The screen every first run now ends on, because no proposal is exportable
+  // (signals.mjs, the remote branch). It has to carry the next action rather
+  // than restate the rule, so it names the file, the column and the rows.
+  const nothingAdmitted = nothingAdmittedRefusal(decisions, reviewPath);
+  if (nothingAdmitted !== null) throw nothingAdmitted;
 
   //  6 + 7  per-line cwd gate, then retention
   const salt = loadOrCreateSalt(saltDir);
@@ -1095,7 +1129,20 @@ export async function runExport(flags, env) {
   if (unmatched.length > 0) {
     report.renderUnmatched(unmatched.map((e) => ({ id: e.id, kind: e.kind, canonical: e.canonical })));
   }
-  const manifest = buildManifest(retained, decisions, serialized, residue, entities, spanCaveats(allStrings), reviewSessions, seeded.audienceEntities);
+  // How many sessions in THIS archive a human has opened, and how many are
+  // shipping unread. Keyed on the archive's own entries rather than on the
+  // retained set, so the denominator is the number of files the recipient will
+  // find in the zip and cannot drift from it.
+  //
+  // The mtime comes from the session record the export already read, so a read
+  // of a session that has been appended to since stops counting with no extra
+  // stat and no extra state.
+  const mtimeOf = new Map(perSession.map((s) => [s.id, s.mtimeMs]));
+  const reading = countReads(
+    loadReads(saltDir),
+    serialized.entries.map((e) => ({ id: e.source, mtimeMs: mtimeOf.get(e.source) ?? NaN })),
+  );
+  const manifest = buildManifest(retained, decisions, serialized, residue, entities, spanCaveats(allStrings), reviewSessions, seeded.audienceEntities, reading);
   report.renderManifest(manifest);
 
   // 17  the only step that writes an output artifact
@@ -1941,7 +1988,7 @@ export function sanitizeEntryName(name) {
 }
 
 /** Step 16. */
-function buildManifest(retained, decisions, serialized, residue, entities, caveats = { absorbed: 0, cjk: 0 }, held = null, audienceEntities = 0) {
+function buildManifest(retained, decisions, serialized, residue, entities, caveats = { absorbed: 0, cjk: 0 }, held = null, audienceEntities = 0, read = null) {
   const s = retained.stats;
   const num = (v) => v.toLocaleString('en-US');
   const occurrencesOf = (kind) =>
@@ -2019,6 +2066,17 @@ function buildManifest(retained, decisions, serialized, residue, entities, cavea
       sessions: decisions.filter((d) => d.tier === 'count-only').reduce((a, d) => a + d.sessionCount, 0),
       workspaces: decisions.filter((d) => d.tier === 'count-only').length,
     }),
+    // The entry-gate bound. Derived from the decisions already in hand rather
+    // than passed in, because these two numbers ARE the tier list counted two
+    // ways and a second source for them could disagree with the tier rows.
+    admitted: Object.freeze({
+      workspaces: decisions.filter((d) => d.tier === 'redact' || d.tier === 'open').length,
+      notAdmitted: decisions.filter((d) => d.tier !== 'redact' && d.tier !== 'open').length,
+    }),
+    // How much of this a human opened. Never null in a real run: an absent
+    // field renders as no line at all, and a silent manifest is what shipped
+    // twice.
+    read,
     bytes: Buffer.byteLength(serialized.allBytes, 'utf8'),
   });
 }

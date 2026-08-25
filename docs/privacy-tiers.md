@@ -63,29 +63,55 @@ inherited.
 Nobody is going to answer 31 questions. The tool derives a proposal from signals
 it can read, and the person corrects the rows that are wrong.
 
-| Signal | Proposed tier |
-|---|---|
-| the workspace directory name matches the deny-list (`private`, `identity`, `payroll`, plus any token the person adds in their own file beside the salt) | `exclude` |
-| no git remote | `exclude` |
-| git remote is a public repository | `open` |
-| git remote org is not one the user belongs to | `redact` (third-party work) |
-| git remote in the user's own org, private | `redact` |
-| no `cwd` was ever recorded, so no signal could be read | `unclassified` |
+| Signal | Proposed tier | |
+|---|---|---|
+| the workspace directory name matches the deny-list (`private`, `identity`, `payroll`, plus any token the person adds in their own file beside the salt) | `exclude` | |
+| no git remote | `exclude` | |
+| git remote, of any org and any visibility | `exclude` | **admissible** |
+| the name reads like personal data, or is in a script the deny-list cannot read | `unclassified` | |
+| no `cwd` was ever recorded, so no signal could be read | `unclassified` | |
 
-**Unclassified fails closed**, and it is the residue rather than the default. A
-default of unclassified is not a conservative choice, it is 29 questions, and a
-person facing 29 questions answers none of them. Every row that carries a
-readable signal gets a proposal and the person corrects the ones that are wrong.
+**No proposal is exportable.** `redact` and `open` are reached only by a person
+typing one of them into `review.md`, and everything the tool proposes by itself
+is `exclude` or `unclassified`. This is the entry gate, and it is the whole of
+it: shrink what enters the pipeline rather than harden what scans it.
+
+The reason is measured. `scan` writes its proposal into column 1 of `review.md`,
+so a proposal read back is indistinguishable from a tier somebody typed:
+`scan` then `export`, with no edit in between, used to admit every
+remote-bearing workspace on the machine. Two exports shipped that way with all
+six gates green and both leaked, and neither leak was in a work repository. A
+git remote is evidence that a directory is a *repository*. It is not evidence
+that its contents may be handed to anyone.
+
+What this buys is a bound rather than a new check: whatever the substitution
+still misses can only be missed inside a workspace that was named by hand. The
+manifest states it (§6), and it is the first claim in that block that no
+internal check produced.
+
+**Admissible is not a tier and not an answer.** It marks the rows that carry a
+git remote, so the census can count them and the refusal can list them. Without
+it, default-deny is 31 questions, and privacy-tiers' own rule is that a person
+facing 29 questions answers none of them. With it, the first run says which
+handful of rows are worth a word.
+
+**Unclassified fails closed**, and it is the residue rather than the default.
+It differs from `exclude` in exactly one way that still matters under
+default-deny: `exclude` is silent, and `unclassified` stops the export until the
+person decides or passes `--skip-unclassified`. It is kept for the rows where an
+instrument could not read the name at all, because silence from an instrument
+that could not look is not a clearance.
 
 Three notes on what the table can and cannot do, measured while implementing it
 (2026-08-22, the operator's corpus, 43 workspaces).
 
 **`open` is never proposed.** Repository visibility is not on disk. A remote URL
 says nothing about who may read it, and BRIEF §2 forbids the network call that
-would answer it. `open` is the *weaker* tier (§5), so a wrong guess leaks. Every
-remote is therefore proposed `redact`, and the row says so, which also removes
-any need to work out whether the remote's org is one the user belongs to: both
-of those rows were `redact` anyway.
+would answer it. `open` is the *weaker* tier (§5), so a wrong guess leaks. This
+finding generalised: `redact` is not proposed either, for the same reason one
+step further out. The remote row now proposes `exclude` and says in the row how
+to admit it, which also removes any need to work out whether the remote's org is
+one the user belongs to. Both of those rows were the same answer anyway.
 
 **The deny-list is read from the workspace's own directory, not from every line
 that passed through it.** Applying it to any per-line `cwd` was tried and
@@ -105,6 +131,16 @@ The answers are stored at `~/.deident-private/workspaces.json` and reused, so th
 review happens once rather than every export. A workspace whose signals change
 (a remote added, visibility flipped) is re-proposed and reverts to unclassified,
 which means excluded, until confirmed.
+
+**One migration, and one gap it does not close.** A `workspaces.json` written
+before the entry gate holds tiers that may be the tool's own `redact` proposal
+rather than an answer, and nothing in the record distinguishes them. Those tiers
+are applied and the export warns once, naming the count and the command that
+rewrites the rows; re-asking every one of them is the 29 questions above, and
+overriding a recorded answer on a guess about how it was produced is the worse
+error. The half that cannot be detected is a `review.md` generated by that same
+version and never regenerated: its column 1 still carries the old proposal, and
+`deident scan` is what rewrites it.
 
 ## 4. Workspace granularity alone is not enough
 
@@ -196,3 +232,29 @@ Two things follow:
   tier. A recipient comparing two people needs to see that one of them withheld
   40% of their corpus. Hiding that turns a privacy choice into a silent skill
   gap.
+
+## 7. Two sentences the manifest now carries, and why they are not gates
+
+Both answer questions the six checks structurally cannot, because every one of
+those checks is an internal-consistency check (cli-ux §12b).
+
+**The bound.** `every session here is from one of 14 workspaces you admitted by
+name; 34 others were never admitted and contributed nothing.` This is what the
+entry gate buys. It says nothing about what the substitution found, and that is
+the point: it bounds where a miss can live, without claiming there are none.
+
+**The read count.** `9 of 170 sessions were opened and read here, 161 are
+unverified.` Counted from `deident review --session`, which is the only path
+that puts a whole session in front of a person; a read stops counting once the
+session file changes, because a transcript read in March says nothing about the
+turns appended in August. `review --entity` is reported separately and never
+folded in, because a drill-down shows an excerpt per occurrence and crediting a
+whole session for one matched line is arithmetic, not reading. `export
+--preview` counts for nothing at all: it carries one 45-character window per
+entity class by construction.
+
+Stated, never gated. A gate cleared by opening one arbitrary session buys a
+checkbox rather than a look, and a gate that can only ever be red on a
+205-session corpus is BRIEF §F7's first thing switched off. The number ships
+with the archive to the recipient, who is the person the claim is being made to,
+and it cannot be made to look better without doing the reading.

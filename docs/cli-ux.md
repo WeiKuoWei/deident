@@ -35,9 +35,8 @@ $ deident scan
   Workspaces             31
 
   Proposed tiers
-    redact          16 workspaces   161 sessions
-    open             1 workspace      9 sessions
-    exclude         12 workspaces    47 sessions   (3 matched the deny-list)
+    exclude         29 workspaces   208 sessions   (16 have a git remote and are
+                                                    yours to admit, 3 matched the deny-list)
     unclassified     2 workspaces     8 sessions   (excluded until you decide)
 
   Nothing has been written except review.md.
@@ -46,6 +45,13 @@ $ deident scan
 ```
 
 Counts, sizes and a date range. No progress bars.
+
+A first run has no `redact` row and no `open` row, and that is the entry gate
+rather than an empty corpus: nothing deident proposes is exportable, so those
+two tiers appear only once somebody has typed one (privacy-tiers §3). The
+parenthesis is what stops default-deny from being 31 questions. `exclude 29
+workspaces` on its own is a census that says nothing about what to do next;
+the count of rows carrying a git remote is the short list worth reading.
 
 ## 3. `review.md` is both the report and the config
 
@@ -345,6 +351,9 @@ $ deident export
 
   Leaving this machine
     170 sessions from 17 workspaces
+    every session here is from one of 17 workspaces you admitted by name;
+      14 others were never admitted and contributed nothing
+    9 of 170 sessions were opened and read here, 161 are unverified
     2,104 user messages
     0 lines of code       18,402 counted, none included
     0 images              73 replaced with placeholders
@@ -675,6 +684,59 @@ which script the corpus actually uses. `declaredValueRows` sums per entity, so
 §6a's total is the sum of both scripts, which is what "what this value
 replaced" has always meant.
 
+### 6e. The two lines no internal check could produce
+
+Every gate in this tool is an internal-consistency check (§12b), so not one of
+them can answer "was everything that should have been substituted, substituted".
+These two lines are in the manifest because they answer something adjacent that
+the gates cannot reach at all, and both ship inside the trust block rather than
+in the terminal alone.
+
+```
+    every session here is from one of 17 workspaces you admitted by name;
+      14 others were never admitted and contributed nothing
+    9 of 170 sessions were opened and read here, 161 are unverified
+```
+
+**The first is a bound, not a check.** Nothing deident proposes is exportable
+(privacy-tiers §3), so a shipped session is always from a workspace somebody
+typed a tier for. That does not say the substitution found everything; it says
+where a miss can live. Both archives that leaked did so from a session no
+allowlist would have admitted, and this is the sentence that would have said so
+in advance.
+
+**The second is a count of reading, and it is deliberately not a gate.** Nobody
+in this field claims recall of 1.0. What the recipient has no way to know is
+whether a human opened any of what they are holding, and until now the manifest
+was silent about it, which reads as "somebody checked".
+
+- It counts `deident review --session`, the only path that puts a whole session
+  in front of a person.
+- A read stops counting once that session file changes. A transcript read in
+  March says nothing about four turns appended in August, and BRIEF §4.3 is this
+  repository's own record of what a number that is quietly wrong does
+  downstream. Those show as a separate line, never inside the count.
+- `deident review --entity` is reported separately and never folded in. It shows
+  an 80-character excerpt per occurrence, so it is evidence about an entity, not
+  a look at the session around it.
+- `deident export --preview` counts for nothing. It carries one 45-character
+  window per replacement class by construction, so it opens no session at all,
+  and the preview says so where the count would otherwise be.
+- At zero it says so in words. An absent line reads as "not applicable"; a zero
+  reads as what it is.
+
+Not a gate, for two reasons that point the same way. A gate cleared by opening
+one arbitrary session buys a checkbox rather than a look. And a gate that can
+only ever be red on a 205-session corpus is BRIEF §F7's "a scan that cries wolf
+is the first thing switched off". The number ships to the recipient instead,
+who is the person the claim is being made to, and it cannot be made to look
+better without doing the reading.
+
+The reads are recorded at `~/.deident-private/reads.json`, beside the salt and
+never in the output directory, for the reason `occurrences.json` is: it holds
+real session ids. A missing or unreadable file counts as zero reads and never
+refuses, which understates rather than the other way round.
+
 ## 7. Wording is a security control
 
 - The residue line reads **`known-entity residue    0`**. Never "safe", never
@@ -747,6 +809,30 @@ Not a stack trace, not a bare exit code.
     New workspaces are excluded by default and never exported silently.
     Set a tier for each in review.md, or run with --skip-unclassified to
     confirm you want them left out.
+```
+
+The refusal every first run now ends on, because nothing deident proposes is
+exportable (privacy-tiers §3). It is the one screen that has to carry the next
+action, so it names the file, the column, the word, and the rows worth typing it
+on. Only the rows carrying a git remote are listed: a directory with no remote
+has no signal arguing for it, and listing all 31 would turn the short screen
+into the 29 questions nobody answers.
+
+```
+  ✗ Refusing to export: no workspace has been admitted, so the export would be empty
+
+    A proposed tier is not an admission. deident exports a workspace only after
+    you have named it yourself, so whatever it still misses can only be missed
+    inside a workspace you chose.
+
+    3 workspaces have a git remote:
+      ledger                     41 sessions   C:\Users\<you>\projects\ledger
+      northwind-site             12 sessions   C:\Users\<you>\projects\northwind-site
+      deident                     4 sessions   C:\Users\<you>\projects\deident
+
+    Admit one: in review.md, change "exclude" to "redact" in column 1
+                                  node deident.js export
+    Or see the rows again:        node deident.js scan
 ```
 
 ## 9. Errors name the file, the line, and the fix

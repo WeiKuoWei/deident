@@ -417,6 +417,61 @@ export function renderManifest(m) {
     : 'employer vocabulary left in place';
   say(`    declared audience: ${audience}  (${did})`);
   say(`    ${n(m.sessions)} sessions from ${n(m.workspaces)} workspaces`);
+  // The bound the entry gate buys, and the first sentence in this block that is
+  // about what CANNOT have gone wrong rather than about what was counted. Every
+  // other line here reports an internal check; this one reports the shape of
+  // the input those checks ran over. Both exports that leaked did so from a
+  // session no allowlist would have admitted, so a reader who trusts nothing
+  // else in this block can still bound what they are holding.
+  if (m.admitted) {
+    const admitted = `${n(m.admitted.workspaces)} workspace${m.admitted.workspaces === 1 ? '' : 's'}`;
+    if (m.admitted.notAdmitted > 0) {
+      say(`    every session here is from one of ${admitted} you admitted by name;`);
+      say(`      ${n(m.admitted.notAdmitted)} others were never admitted and contributed nothing`);
+    } else {
+      // No second line where the second number is 0. `0 others were never
+      // admitted` is a true sentence that reads as an accounting slip, and this
+      // block's only job is being believed.
+      say(`    every session here is from the ${admitted} you admitted by name`);
+    }
+  }
+  // How much of this a human actually opened. Stated, never gated: a gate a
+  // person clears by opening one arbitrary session buys a checkbox, and a gate
+  // that can only be red on a 205-session corpus is the first thing switched
+  // off (§F7). It ships to the recipient, who is the person the claim is being
+  // made to, and it is the only number in this block that no internal check can
+  // produce.
+  if (m.read) {
+    say(
+      `    ${n(m.read.read)} of ${n(m.read.total)} sessions were opened and read here, ` +
+        `${n(m.read.unread)} ${m.read.unread === 1 ? 'is' : 'are'} unverified`,
+    );
+    if (m.read.read === 0) {
+      // Silence here is what shipped twice. cli-ux §12b: a number printed where
+      // no check ran is worse than no number, and so is no line at all where
+      // the honest answer is zero.
+      say('      nobody has read any of this archive. The six checks above are internal:');
+      say('      none of them can find a name that was never in the entity list');
+    }
+    if ((m.read.stale ?? 0) > 0) {
+      // A read of text that is not the text shipping. Reported rather than
+      // counted, because BRIEF §4.3 is this repository's own record of what a
+      // number that is quietly wrong does downstream.
+      const one = m.read.stale === 1;
+      say(
+        `    ${n(m.read.stale)} further session${one ? '' : 's'} changed after ${one ? 'it was' : 'they were'} read, ` +
+          `so ${one ? 'that read is' : 'those reads are'} out of date`,
+      );
+    }
+    if ((m.read.entities ?? 0) > 0) {
+      // Not folded into the count above. A drill-down shows an excerpt per
+      // occurrence, so it is evidence about an entity and not about a session.
+      say(
+        `    ${n(m.read.entities)} entity drill-down${m.read.entities === 1 ? '' : 's'}, ` +
+          'which read lines rather than whole sessions',
+      );
+    }
+  }
   say(`    ${n(m.userMessages)} user messages`);
   // Sessions are held by the floor and by nothing else. The audience setting
   // cannot reach them: it moves what goes into the entity list.
