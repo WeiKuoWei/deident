@@ -42,6 +42,18 @@ naming convention, not a Claude Code universal; an entity can survive as a
 fragment of itself; export scores are unverified against raw-log scores; and
 subagent transcripts are not exported.
 
+### The check deident cannot run on itself
+
+Both real leaks were found the same way: someone opened the finished archive and
+compared it against something they already held. Nothing inside the tool does
+that, and no check it has can, because every one of them compares the output
+against the same table the substitution used.
+
+So the last step is a person, or a fresh agent that has not seen the corpus:
+hand it a sample of the archive and ask it to name the person, the employer and
+three colleagues from that alone. What comes back is the finding. The skill
+carries this as a step; if you are driving the CLI yourself, it is yours to run.
+
 ### The one list deident cannot infer
 
 All of the above is inference, and inference cannot be told "this exact string is
@@ -58,6 +70,18 @@ Local only, never committed. A bare string is enough, `kind` only changes which
 pseudonym the value gets, and no file at all is the normal case. A malformed one
 refuses the run and names the row, because an export that silently declared
 nothing is indistinguishable, in every check deident has, from one that leaked.
+
+### Nothing is admitted until you say so
+
+The first `scan` proposes `exclude` for every workspace, including the ones with
+a git remote, and an export with nothing admitted refuses and names the file and
+the word to type. That is the design rather than a failure: every archive that
+leaked did so from a session an allowlist would never have admitted, so what
+this buys is a bound. Whatever the tool still misses can only be missed inside a
+directory you typed out by hand.
+
+Open `review.md`, change `exclude` to `redact` on the workspaces whose work may
+leave, and run again.
 
 ## Install
 
@@ -195,7 +219,7 @@ with net == 0, so a net figure is not a substitute.
 ## Development
 
 ```
-node deident.js --selftest      # 176 fixtures, plain node:assert, no framework
+node deident.js --selftest      # 186 fixtures, plain node:assert, no framework
 ```
 
 The suite is `test/selftest.mjs`. Each fixture exists because it catches a
