@@ -1,0 +1,52 @@
+# The 175 fixtures are the entire quality mechanism of this codebase, and until
+# now they ran on one machine, when someone remembered, on one operating system.
+#
+# This repository already records two bugs that passed on Windows and failed on
+# Linux, both found by hand in a container: --out naming a regular file refused
+# two different ways because Windows answers ENOENT where POSIX answers ENOTDIR,
+# and a fixture that hardcoded the author's own account name so "the stable
+# owner id must not leave" passed on his machine and on no other.
+#
+# Both operating systems, and the two Node lines the runtime gate names, because
+# a floor nobody tests is a floor nobody knows is right.
+
+name: selftest
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  selftest:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['20.15', '22']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # deident.js is the ES5 version gate and the documented entry point. It is
+      # what a person types, so it is what CI runs.
+      - run: node deident.js --version
+      - run: node deident.js --selftest
+
+      # The gate must refuse a runtime below the floor with its own message
+      # rather than a parser traceback. Verified against a real old Node, not a
+      # mock, because the failure it prevents is a SyntaxError raised before any
+      # of this project's code gets to run.
+      - name: the version gate refuses an old runtime
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w node:10-alpine \
+            sh -c 'node deident.js --version 2>&1 | head -20' > out.txt || true
+          cat out.txt
+          grep -q "cannot run on Node 10" out.txt
+          grep -qv "SyntaxError" out.txt
