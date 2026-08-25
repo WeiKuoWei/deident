@@ -3,9 +3,11 @@
   "version": "0.2.1",
   "description": "De-identify your AI coding-agent session logs and pack them into an archive you can hand to someone else. Reads local files, writes local files, makes no network calls.",
   "author": {
-    "name": "Northwind"
+    "name": "Ray Kuo",
+    "email": "devuser@gmail.com",
+    "url": "https://github.com/devuser"
   },
-  "homepage": "https://github.com/northwind-co/deident",
+  "homepage": "https://github.com/gitroll-dev/deident",
   "license": "MIT",
   "skills": "./skills/"
 }
