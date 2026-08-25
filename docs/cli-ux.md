@@ -526,6 +526,83 @@ Three blocks do the work:
   hiding an implemented-but-inert control, which is worse than either honest
   option.
 
+### 6d. Simplified and Traditional Han are one entity
+
+A person's declared redaction strings were
+Traditional; the corpus contained the Simplified twins of the same words. The
+substituter did not match them and the residue scan did not find them **in
+agreement**, because both read `table.entries` and the entries carried one
+script. Two checks that consult the same table are one check.
+
+Measured over the real corpus root, 2026-08-25, 4,132 session files and 1.97
+billion characters: 5,751,541 occurrences of Traditional-only characters beside
+38,621 of Simplified-only ones. Counting every Han 2-, 3- and 4-gram that the
+fold maps to a different string and that also occurs in that other form:
+**33,032 strings are present in this corpus in both scripts, and 204,902
+occurrences are reachable only through the fold.** Restricted by shape to
+strings that could be an identity (beginning with a family name or ending in
+the fixed tail of a company name or an administrative division): 488 strings
+and 4,006 occurrences. The sharpest single row is a three-character personal
+name occurring 240 times in Traditional and 34 times in Simplified in the same
+corpus, which is the leak, still there, in the corpus that produced it.
+
+`src/entities/hanfold.mjs` holds the table. There is no npm and therefore no
+OpenCC, and a full mapping is several thousand characters. **The subset rule:**
+a pair earns its place when the Traditional character belongs to the vocabulary
+a Han identity string is built from: family names, the given-name stock in
+common use, the fixed words of a registered company name, and administrative or
+postal vocabulary. In practice that is the characters carrying one of the
+productive systematic simplifications (言→讠, 金→钅, 糸→纟, 馬→马, 門→门,
+車→车, 貝→贝, 見→见, 頁→页, 食→饣, 魚→鱼, 鳥→鸟, 風→风, 韋→韦, 專→专,
+東→东, 長→长, 辵, 囗, 广/厂) plus the individually simplified characters that
+appear in names, company names and addresses. 821 pairs. Outside it,
+deliberately: general prose vocabulary and rare characters.
+
+**The mapping is not a bijection, and getting that wrong would make this a text
+corrupter rather than a redaction tool.** Several Traditional characters
+collapse onto one Simplified character (發/髮 → 发, 乾/幹 → 干, 鐘/鍾 → 钟) and
+several Simplified forms are themselves distinct Traditional characters
+(後 → 后 while 后 means empress; 隻 → 只, 麵 → 面, 餘 → 余, 臺 → 台). So the two
+directions are not the same operation:
+
+- **Traditional → Simplified is a function** and runs on every spelling. A
+  character the table does not know is left alone.
+- **Simplified → Traditional is a guess** wherever the Simplified form is
+  ambiguous, and a guess mints a needle for a word the person never wrote. Only
+  the 751 pairs that are bijective fold back, and the reverse is **all or
+  nothing per spelling**: if any character of the spelling is one this table
+  knows to be ambiguous, no Traditional form is generated at all. `头发` would
+  otherwise come back as `頭发`, a spelling nobody writes. That set is derived
+  from the table rather than hand-listed, so it cannot drift from it.
+
+The cost, stated rather than hidden: a Traditional spelling containing 後, 發 or
+臺 still folds forward, but a Simplified spelling containing 后, 发 or 台 folds
+nowhere, so its Traditional occurrences are missed. That is a miss, not a
+corruption, and it is the direction `caseInsensitive()` already takes for
+Turkish dotted I.
+
+**Where the fold lives: extra spellings, not a matcher fold.** The NFC/NFD
+argument in `expandVariants` does not apply, because Han pairs are one UTF-16 unit
+each, so a matcher fold would keep every span length correct. Two other reasons
+decide it:
+
+- These logs nest JSON inside JSON, so a Han character arrives as the six ASCII
+  characters of a `\uXXXX` escape, and `residualScan` searches
+  `jsonEscaped(spelling)` for exactly that. A character-level fold cannot see
+  hex digits. As a spelling, the twin picks up its own escaped form for free.
+- `residualScan` and `probeCounts` both sweep `table.entries`. One addition
+  reaches the substituter, the residue gate and the probe together. A fold
+  inside the matcher would need the first-character index widened in
+  `buildTable`, `residualScan` and `probeCounts` separately, each of which
+  already carries one such special case for case-folding, and the leak this
+  fixes happened because the substituter and the scan were wrong together.
+
+The probe still counts **per spelling**, so a Traditional declared value and
+its Simplified twin get one row each with their own counts, and the reader sees
+which script the corpus actually uses. `declaredValueRows` sums per entity, so
+§6a's total is the sum of both scripts, which is what "what this value
+replaced" has always meant.
+
 ## 7. Wording is a security control
 
 - The residue line reads **`known-entity residue    0`**. Never "safe", never

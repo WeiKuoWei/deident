@@ -9,6 +9,8 @@
 //
 // Pure. No I/O. Every branch is covered by fixture F13.
 
+import { hanVariants } from './hanfold.mjs';
+
 /** Does this look like a Windows/POSIX absolute path rather than a bare name? */
 export function looksLikePath(s) {
   return /^[A-Za-z]:[\\/]/.test(s) || s.startsWith('/') || s.includes('\\') || s.includes('/');
@@ -43,6 +45,21 @@ export function expandVariants(spelling, opts = {}) {
   // Free for ASCII: both normalisations return the identical string and the Set
   // absorbs it.
   for (const form of [spelling.normalize('NFC'), spelling.normalize('NFD')]) out.add(form);
+
+  // The other Han script, as SPELLINGS, for the reasons hanfold.mjs states at
+  // hanVariants. The short version: residualScan and probeCounts both sweep
+  // `table.entries`, so one addition here reaches the substituter, the residue
+  // gate and the probe together, and the leak this fixes happened because the
+  // substituter and the scan were wrong TOGETHER.
+  //
+  // The NFC/NFD argument above does not apply and is not the reason. Han pairs
+  // are one UTF-16 unit each, so a matcher fold would keep every span length
+  // correct. What a matcher fold cannot do is see a Han character that arrived
+  // as the six ASCII characters of a `\uXXXX` escape, which is how CJK enters
+  // these logs from embedded JSON. As a spelling the twin picks up its own
+  // escaped form below, for free.
+  const folded = hanVariants(spelling);
+  for (const form of folded) out.add(form);
 
   if (looksLikePath(spelling)) {
     for (const form of pathForms(spelling, opts.home ?? null)) out.add(form);
@@ -81,9 +98,13 @@ export function expandVariants(spelling, opts = {}) {
 
   // Backslash-u escaping of any non-ASCII codepoint, as seen inside embedded
   // JSON that was itself stored as a string. Applied to the original spelling
-  // only: an escaped form of an escaped form does not occur.
-  const uEsc = backslashUEscape(spelling);
-  if (uEsc !== spelling) {
+  // and to its Han twins, never to a form that is already escaped: an escaped
+  // form of an escaped form does not occur, but a Simplified twin arriving
+  // inside embedded JSON does, and it is the one form a matcher fold could
+  // never have reached.
+  for (const base of [spelling, ...folded]) {
+    const uEsc = backslashUEscape(base);
+    if (uEsc === base) continue;
     out.add(uEsc);
     out.add(uEsc.toUpperCase().replace(/\\U/g, '\\u'));
   }

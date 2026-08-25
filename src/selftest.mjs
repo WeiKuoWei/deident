@@ -15,6 +15,7 @@ import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 import { expandVariants, looseVariants, squashedForm, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
+import { hanVariants, foldTable } from './entities/hanfold.mjs';
 import {
   seedEntities,
   rejectReason,
@@ -95,6 +96,9 @@ import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
 import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings } from './pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
 
+// Both sides of every fold pair must be Han and nothing else. A pair that
+// slipped in a lookalike from another block would fold text nobody asked about.
+const HAN_ONLY = /^\p{sc=Han}$/u;
 const BS = String.fromCharCode(92); // a single backslash, written without escapes
 const NL = String.fromCharCode(10);
 const SEP = String.fromCharCode(92); // a backslash, written this way so no escape layer can eat it
@@ -7419,6 +7423,93 @@ const FIXTURES = [
     assert.equal(first.code, 0, first.out);
     assert.ok(!first.out.includes('known-values.json'), `a genuine first run was nagged:${NL}${first.out}`);
   }],
+
+  // F164 - the Simplified and Traditional Han fold, in the substituter and in
+  // the residue scan at the same time.
+  //
+  // The root cause of a delivered leak. The first export's declared redaction
+  // strings were Traditional and the corpus wrote the same words in Simplified.
+  // The substituter did not match them and the residue scan did not find them,
+  // IN AGREEMENT, because both read `table.entries` and the entries carried one
+  // script. The residue assertion below is the whole fixture: a fold that
+  // reached only the substituter would leave the gate green over a known miss,
+  // which is worse than the state it replaced.
+  ['F164', 'a Traditional spelling matches its Simplified twin, and the residue scan looks for both', () => {
+    // `遠帆投資` is fabricated. Shape: a four-character Han org name in which
+    // every character has a distinct Simplified form, which is the shape a
+    // Taiwan-written company name has.
+    const t = buildTable([entity('O1', 'org', '遠帆投資', 'ORG_1')]);
+    assert.equal(substituteString('客戶是遠帆投資的顧問', t).out, '客戶是ORG_1的顧問', 'the declared script');
+    assert.equal(substituteString('客户是远帆投资的顾问', t).out, '客户是ORG_1的顾问', 'the other script');
+
+    // The gate, on text the substituter never touched. Before the fold this
+    // returned 0 over plaintext that names the org.
+    assert.equal(residualScan('客户是远帆投资的顾问', t).entityCount, 1, 'the residue scan is blind to the twin');
+
+    // And the twin as it arrives inside embedded JSON, which is the form a
+    // character-level matcher fold could never have seen: six ASCII characters
+    // per Han character. Written out by hand rather than by calling the
+    // escaper, so the fixture cannot agree with a broken escaper.
+    const escaped = `${BS}u8fdc${BS}u5e06${BS}u6295${BS}u8d44`;
+    assert.equal(residualScan(`{"text":"${escaped}"}`, t).entityCount, 1, 'the escaped twin is not scanned for');
+
+    // The reverse direction, because a corpus mixes the two: measured over the
+    // real corpus root, 5,751,541 Traditional-only characters beside 38,621
+    // Simplified-only ones.
+    const s = buildTable([entity('O2', 'org', '远帆投资', 'ORG_2')]);
+    assert.equal(substituteString('客戶是遠帆投資的', s).out, '客戶是ORG_2的', 'the fold is not one-directional');
+
+    // Reversal restores the script that was actually in the text. The span
+    // records `s.slice(at, end)`, not the entry's spelling, so the Simplified
+    // occurrence comes back Simplified.
+    const r = substituteString('客户是远帆投资的', t);
+    assert.equal(reverseString(r.out, r.spans), '客户是远帆投资的', 'reversal restored the wrong script');
+  }],
+
+  // F165 - the fold refuses the ambiguous pairs, because a redaction tool that
+  // corrupts text is worse than one that misses.
+  //
+  // Several Traditional characters collapse onto one Simplified character
+  // (發/髮 -> 发, 乾/幹 -> 干, 鐘/鍾 -> 钟) and several Simplified forms are
+  // themselves distinct Traditional characters (后, 只, 面, 余, 台). Folding
+  // those in reverse is a guess, and a guess mints a needle for a word the
+  // person never wrote.
+  ['F165', 'the Han fold is a function one way and a bijection the other, and never guesses', () => {
+    // 后 is the Simplified form of 後 AND a Traditional character meaning
+    // empress. Reversing it would turn a declared 王后 into the needle 王後.
+    assert.deepEqual(hanVariants('幕後'), ['幕后'], 'Traditional to Simplified is a function and must work');
+    assert.deepEqual(hanVariants('王后'), [], 'the reverse of an ambiguous character was guessed');
+    assert.deepEqual(hanVariants('頭髮'), ['头发'], '髮 folds forward');
+    assert.deepEqual(hanVariants('头发'), [], '发 has two Traditional preimages and must not fold back');
+    assert.deepEqual(hanVariants('臺北'), ['台北'], '臺 folds forward');
+    assert.deepEqual(hanVariants('台北'), [], '台 is its own Traditional character');
+
+    // Structural invariants of the table, pinned rather than its size. A wrong
+    // pair here is silent: the substitution stays reversible and the residue
+    // count stays zero, which is the failure direction the whole file exists
+    // for.
+    const { forward, back } = foldTable;
+    for (const [t, s] of forward) {
+      assert.equal(t.length, 1, `${t} is not one UTF-16 unit`);
+      // matchesAt measures its span as `at + entry.spelling.length`, so a fold
+      // that changed the unit count would consume the wrong span and reversal
+      // would restore the wrong text.
+      assert.equal(s.length, 1, `${s} is not one UTF-16 unit`);
+      assert.notEqual(t, s, `${t} folds onto itself`);
+      assert.ok(HAN_ONLY.test(t) && HAN_ONLY.test(s), `${t}${s} is not a Han pair`);
+      // No character is both a source and a target: that would make the fold
+      // order-dependent and a round trip lossy.
+      assert.ok(!forward.has(s), `${s} is both a Simplified target and a Traditional source`);
+    }
+    for (const [s, t] of back) assert.equal(forward.get(t), s, `${s} does not round trip through ${t}`);
+
+    // Nothing in the corpus is a spelling of length zero, and a fold that
+    // changed a length would be caught here rather than by a corrupted export.
+    for (const spelling of ['遠帆投資顧問', '张大明', '臺灣銀行']) {
+      for (const v of hanVariants(spelling)) assert.equal(v.length, spelling.length, `${spelling} -> ${v} changed length`);
+    }
+  }],
+
 ];
 
 export function selftest() {

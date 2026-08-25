@@ -153,6 +153,35 @@ the second half of the same bug: `caseInsensitive()` gates folding on `/[A-Za-z]
 bicameral non-Latin script gets no folding at all. Greek and Cyrillic are denied the
 guarantee that Latin has, for no reason but the regex.
 
+### M3 postscript, 2026-08-25: what shipped, and where the ruling was wrong
+
+`\p{Script=Han}` still cannot distinguish the two, and that sentence stands as written
+about the property. What does not stand is the reading it invited, that nothing here can:
+`src/entities/hanfold.mjs` is an in-repo table of 821 pairs and it tells them apart for the
+vocabulary an identity string is built from. The census the losing position wanted is now
+possible, and it was run: over the real corpus root, 5,751,541 occurrences of
+Traditional-only characters beside 38,621 of Simplified-only ones, 33,032 strings present in
+both scripts, and 204,902 occurrences reachable only through the fold.
+
+**The ruling said "fold inside the engine" and the implementation did not.** The debate
+compared candidate generation against matcher folding on whether the guarantee may rest on
+literal matching, and never reached the fact that decided it: these logs nest JSON inside
+JSON, so a Han character arrives as the six ASCII characters of a `\uXXXX` escape, and
+`residualScan` searches `jsonEscaped(spelling)` for exactly that shape. A character-level
+fold in the matcher cannot see hex digits, so it would have left the embedded-JSON form
+unmatched, the form this repository has been bitten by three times already. Carried as
+spellings, the twin gets its own escaped form for free, and the one addition reaches the
+substituter, the residue gate and the probe together, because all three sweep
+`table.entries`.
+
+**The ruling's ordering was right and was followed.** The probe went in first, and it is
+what makes a wrong fold loud: the counts are per spelling, so a declared Traditional value
+and its Simplified twin each get a row, and a fold that matched something it should not
+prints its count in front of a reader on the first run.
+
+`docs/cli-ux.md` §6d has the subset rule, the handling of the non-bijective pairs, and the
+measurement.
+
 ---
 
 ## Postscript: what the debate found in the operator's own work
