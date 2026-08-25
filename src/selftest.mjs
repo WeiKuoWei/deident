@@ -4082,6 +4082,44 @@ const FIXTURES = [
     // And the skill must not restate a constant it can read at runtime, which
     // is the drift that already happened once.
     assert.doesNotMatch(skill, /person \| org \| client \| workspace \| machine/);
+
+    // The frontmatter is the half the body comparison above cannot see, and it
+    // drifted there: SKILL.md's `description` listed two Chinese trigger
+    // phrases, AGENTS.md has no frontmatter and so listed none. Same contract,
+    // different activation on the two harnesses, with the drift check green.
+    //
+    // The fix is not to compare frontmatter, because AGENTS.md legitimately has
+    // none. It is that the description must carry no language-specific literal
+    // at all: a literal list serves exactly the languages someone remembered to
+    // add, so "English plus the author's own language" is what it always
+    // becomes. Non-ASCII in the description is that mistake, detectably.
+    const description = /^description:.*$/m.exec(skill.slice(0, skill.indexOf(NL + '---')))?.[0] ?? '';
+    assert.ok(description.length > 0, 'no description in the skill frontmatter');
+    const literals = [...description].filter((c) => c.codePointAt(0) > 127);
+    assert.deepEqual(literals, [], `language-specific trigger literals: ${literals.join(' ')}`);
+  }],
+
+  // F156 - the two operator contracts are the only files in this repository a
+  // person reads end to end, and both carried four em dashes against a house
+  // rule that forbids them anywhere.
+  //
+  // F41 already asserts this over one user-facing string. One string is what a
+  // fixture can guard by naming it; a document is not, and these four survived
+  // because nothing looked at the file. The scope is exactly the two contract
+  // files: source comments and the design docs quote outside text, and a check
+  // over those would fail on punctuation the source actually used.
+  ['F156', 'the operator contract carries no em dash, in either of its two copies', () => {
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const EM_DASH = String.fromCharCode(0x2014);
+    for (const rel of [path.join('skills', 'deident', 'SKILL.md'), 'AGENTS.md']) {
+      const text = fs.readFileSync(path.join(repo, rel), 'utf8');
+      const offenders = text
+        .split(NL)
+        .map((line, i) => [i + 1, line])
+        .filter(([, line]) => line.includes(EM_DASH))
+        .map(([n, line]) => `${rel}:${n}: ${line.trim().slice(0, 70)}`);
+      assert.deepEqual(offenders, [], offenders.join(NL));
+    }
   }],
   // F104 - scanning into a fresh directory forgot every session decision.
   //

@@ -344,8 +344,8 @@ corpus, so a namespace used before will collide and refuse.
 The JSON document carries `checks`. Every one must be `ok`. Two of them are
 worth naming to the person:
 
-- `known-entity residue` — zero occurrences of everything the table knew.
-- `archive on disk` — the same scan, over the file that was actually written.
+- `known-entity residue`: zero occurrences of everything the table knew.
+- `archive on disk`: the same scan, over the file that was actually written.
   This is the only check whose subject is the artifact the recipient opens.
 
 Also carry back:
@@ -357,11 +357,11 @@ Also carry back:
   Zero at `public` on a machine with no git remote is a GAP, not a clean bill:
   the employer's written-out name has no tier-0 source, so only the entity list
   from step 4 can carry it.
-- `replacementCounts.hits` — how many times each spelling was replaced, highest
+- `replacementCounts.hits`: how many times each spelling was replaced, highest
   first. **Read the top rows.** A common word near the top is a false positive
   that every gate will pass. A workspace path or the user's own name at the top
   is expected.
-- `replacementCounts.zeros` — spellings that matched nothing, so they protected
+- `replacementCounts.zeros`: spellings that matched nothing, so they protected
   nothing. Usually a typo in the entity list.
 
 **When a count looks wrong, drill into it rather than guessing.** Each hit row

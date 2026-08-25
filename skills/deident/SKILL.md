@@ -1,6 +1,6 @@
 ---
 name: deident
-description: De-identify the user's own Claude Code session logs and pack them into an archive they can hand to someone else. Reads Claude Code's own log layout only; Codex and Cursor logs are not read yet. Use when the user asks to export, share, hand over, submit or donate their session logs or transcripts, when a colleague has asked them for their logs for a benchmark or an evaluation, or when they say 導出 session log, 匯出對話紀錄, deident, or paste a request for their coding history. Drives the whole flow: survey, decide what leaves, redact, export, verify. Not for exporting someone else's logs and not for ordinary file archiving.
+description: De-identify the user's own Claude Code session logs and pack them into an archive they can hand to someone else. Reads Claude Code's own log layout only; Codex and Cursor logs are not read yet. Use when the user asks to export, share, hand over, submit, donate, anonymise or de-identify their session logs, transcripts, conversation history or coding history, when a colleague has asked them for their logs for a benchmark or an evaluation, or when they name deident. Match on what is being asked for rather than on the wording: the request arrives in whatever language the person speaks, and a translation of any phrase above is the same request. Drives the whole flow: survey, decide what leaves, redact, export, verify. Not for exporting someone else's logs and not for ordinary file archiving.
 ---
 
 # deident
@@ -337,8 +337,8 @@ corpus, so a namespace used before will collide and refuse.
 The JSON document carries `checks`. Every one must be `ok`. Two of them are
 worth naming to the person:
 
-- `known-entity residue` — zero occurrences of everything the table knew.
-- `archive on disk` — the same scan, over the file that was actually written.
+- `known-entity residue`: zero occurrences of everything the table knew.
+- `archive on disk`: the same scan, over the file that was actually written.
   This is the only check whose subject is the artifact the recipient opens.
 
 Also carry back:
@@ -350,11 +350,11 @@ Also carry back:
   Zero at `public` on a machine with no git remote is a GAP, not a clean bill:
   the employer's written-out name has no tier-0 source, so only the entity list
   from step 4 can carry it.
-- `replacementCounts.hits` — how many times each spelling was replaced, highest
+- `replacementCounts.hits`: how many times each spelling was replaced, highest
   first. **Read the top rows.** A common word near the top is a false positive
   that every gate will pass. A workspace path or the user's own name at the top
   is expected.
-- `replacementCounts.zeros` — spellings that matched nothing, so they protected
+- `replacementCounts.zeros`: spellings that matched nothing, so they protected
   nothing. Usually a typo in the entity list.
 
 **When a count looks wrong, drill into it rather than guessing.** Each hit row
