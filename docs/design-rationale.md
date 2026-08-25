@@ -60,8 +60,29 @@ harness-specific has to be installed and there is no slash command to run.
 
 ## Opt-in, never opt-out
 
-A workspace deident has not seen before is `unclassified`, which means excluded.
-It is never swept in.
+**Nothing deident proposes is exportable.** `redact` and `open` are reached only
+by a person typing one of them into `review.md`; every proposal the tool makes
+by itself is `exclude` or `unclassified`. A workspace it has not seen before is
+excluded, and it is never swept in.
+
+This used to be weaker in one specific way, and the weakness is what two
+shipped exports leaked through. A directory with a git remote was proposed
+`redact`, `scan` wrote that word into column 1 of `review.md`, and reading the
+file back could not tell a proposal from an answer. So `scan` followed by
+`export`, with no edit in between, admitted every remote-bearing workspace on
+the machine. Measured on the live corpus after the change: 14 workspaces
+exported on tiers already recorded, and 3 more that the old proposal would have
+swept in unasked.
+
+A git remote is evidence that a directory is a repository. It is not evidence
+that its contents may be handed to someone. What the gate buys is not another
+check but a bound: whatever the substitution still misses can only be missed
+inside a workspace that was named by hand, and that is a sentence the manifest
+can carry.
+
+The cost is one typed word per workspace a person actually wants, and the census
+and the refusal both name the rows that carry a remote so the first run is a
+short list rather than 31 questions.
 
 Beyond that, a workspace whose name (or whose per-line `cwd`) contains `private`,
 `identity`, `payroll` or a token you add to `~/.deident-private/denied.json` is

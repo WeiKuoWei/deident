@@ -69,10 +69,14 @@ and exits 0. The reading step in the middle is the one thing deident cannot do
 for itself, which is what the skill is for; `AGENTS.md` is the same contract for
 an agent that reads the repository directly.
 
-Nothing is swept in. A workspace deident has not seen is `unclassified`, which
-means excluded, and one whose name or per-line `cwd` contains `private`,
-`identity`, `payroll` or a token you add to `~/.deident-private/denied.json` needs
-`--include-denied <exact-name>` typed out to include
+Nothing is swept in, and nothing deident proposes is exportable. Every workspace
+starts at `exclude` or `unclassified`, and `redact` or `open` is reached only by
+you typing it into `review.md`, so a session in the archive is always from a
+workspace you named. A git remote makes a row a *candidate*, which the census
+counts and the refusal lists, and never an answer. On top of that, a workspace
+whose name or per-line `cwd` contains `private`, `identity`, `payroll` or a token
+you add to `~/.deident-private/denied.json` needs `--include-denied <exact-name>`
+typed out to include
 ([why](docs/design-rationale.md#opt-in-never-opt-out)). Pseudonyms are
 `sha256(salt + kind + entity)` against a salt in `~/.deident-private`, which is
 **never** written into any output and must never be shared or committed: it is the
@@ -294,7 +298,19 @@ node deident.js review --session <id>        one full transcript, read back out 
 
 That answers "is this spelling replaced 991 times a person's name or an ordinary
 word", which no check can answer, because a wrong replacement that is reversible
-passes every one of them. Both queries refuse until an export has run. The
+passes every one of them. Both queries refuse until an export has run.
+
+`review --session` is also the one path that opens a whole session, so the next
+export counts it. Its manifest says how many of the sessions it is shipping a
+human has actually read, and states the rest as unverified: `9 of 170 sessions
+were opened and read here, 161 are unverified`. Nobody claims recall of 1.0, and
+an archive whose manifest is silent about this reads as one somebody checked. It
+is a stated number and never a gate, a read stops counting once that session file
+changes, and `--entity` and `--preview` do not count towards it because neither
+opens a session ([why](docs/cli-ux.md#6e-the-two-lines-no-internal-check-could-produce)).
+The record is `~/.deident-private/reads.json`, local only for the same reason.
+
+The
 excerpts are the text **before** substitution, so the file pairs pseudonyms with
 real names AND real session ids: it is the most re-identifying thing deident
 writes, it is never an archive entry and never in the output directory, and it
@@ -306,7 +322,7 @@ must not be shared or committed.
 |---|---|---|
 | `--root <path>` | all | Override the resolved session-storage root. Default: `CLAUDE_CONFIG_DIR`, else `~/.claude`. Sessions are read from `<root>/projects/*/*.jsonl`, depth 0 only. |
 | `--out <path>` | all | Output directory. Default: the current directory. |
-| `--salt-dir <path>` | all | Override `~/.deident-private`, which holds the salt, your saved tier decisions, the entity dictionary, `denied.json`, `known-values.json` and the occurrence index. Pointing it at an empty directory starts you over completely, so **copy `denied.json` and `known-values.json` across first**: without the first, none of your deny rules load and a directory you expect to be excluded is proposed at `redact` with every check green; without the second, every value you declared as your own goes back to being something a reader has to spot. deident warns when the directory in use is missing either one and the default one has it. |
+| `--salt-dir <path>` | all | Override `~/.deident-private`, which holds the salt, your saved tier decisions, the entity dictionary, `denied.json`, `known-values.json` and the occurrence index. Pointing it at an empty directory starts you over completely, so **copy `denied.json` and `known-values.json` across first**: without the first, none of your deny rules load, so a directory you expect to be excluded is offered as a candidate to admit and its paths stop being stripped from other workspaces' prose, with every check green; without the second, every value you declared as your own goes back to being something a reader has to spot. deident warns when the directory in use is missing either one and the default one has it. |
 | `--json` | all | Emit the result as JSON instead of padded columns, for an agent driving the tool. |
 | `--html` | `review` | Write one self-contained `review.html`. Cannot be combined with `--entity` or `--session`. |
 | `--entity <ID>` | `review` | Print every occurrence of one entity. Refuses until an export has run. |
