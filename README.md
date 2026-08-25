@@ -470,8 +470,8 @@ candidates.
 
 **That reversal path has one blind spot, and the manifest names it.** Where two
 declared entities overlap in the text, the substituter replaces the union and
-emits both tokens, so the token they shared is gone: `the operator Wang` and
-`the operator Reed Wang` produce the same output. The substitution invariant still
+emits both tokens, so the token they shared is gone: `Ada Wren Wang` and
+`Ada Wren Reed Wang` produce the same output. The substitution invariant still
 passes, because it reverses from the spans the pass produced, but the spans
 live in memory and are never written down, so regenerating the entity list
 cannot tell those two inputs apart. The export prints the count of merged

@@ -671,7 +671,7 @@ const FIXTURES = [
   }],
 
   // F12, I3, and PLAN C4: this fires on the real corpus today, so the test
-  // protects a path Sam hits on his first run.
+  // protects a path the operator hits on his first run.
   ['F12', 'a pre-existing PERSON_1 token aborts, and --namespace X clears it', () => {
     const lines = [
       { file: 'a.jsonl', line: 1, text: '{"text":"the plan says PERSON_1 is Ray"}' },
@@ -1833,10 +1833,10 @@ const FIXTURES = [
   // `known-entity residue  0  ok`. Three gates, all blind to one class.
   ['F53', 'a partially overlapping entity does not ship its tail', () => {
     const t = buildTable([
-      entity('P1', 'person', 'the operator', 'PERSON_1'),
-      entity('P2', 'person', 'Bell Wang Ivy', 'PERSON_2'),
+      entity('P1', 'person', 'Ada Wren', 'PERSON_1'),
+      entity('P2', 'person', 'Wren Wang Ivy', 'PERSON_2'),
     ]);
-    const before = 'intro call: the operator Wang Ivy and the team';
+    const before = 'intro call: Ada Wren Wang Ivy and the team';
     const r = substituteString(before, t);
     assert.ok(!r.out.includes('Wang Ivy'), `the declared name must not survive: ${r.out}`);
     assert.ok(!r.out.includes('Reed'), `no token of either entity may survive: ${r.out}`);

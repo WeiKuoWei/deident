@@ -410,7 +410,7 @@ export function substituteString(s, table, forbidOverride = undefined) {
     // beginning inside it was never examined and its non-overlapping remainder
     // shipped verbatim. Declare `the operator` and `Bell Wang Ivy`, the shape the
     // tier-1 schema example invites, two person entities sharing a token, and
-    // `the operator Wang Ivy` became `PERSON_A Wang Ivy`, with the substitution
+    // `Ada Wren Wang Ivy` became `PERSON_A Wang Ivy`, with the substitution
     // invariant reporting "all reversible" and the residual scan reporting
     // "0 occurrences", because neither looks for a partially present entity.
     //
@@ -449,7 +449,7 @@ export function substituteString(s, table, forbidOverride = undefined) {
         entityId: hit.entityId,
         tier: hit.tier,
         // Two overlapping entities collapsed into one span. The token they
-        // SHARED is gone, so `A: the operator Wang` and `B: the operator Reed Wang` both
+        // SHARED is gone, so `A: Ada Wren Wang` and `B: Ada Wren Reed Wang` both
         // come out as `PERSON_a ORG_b`, identical output from different
         // input. I2 still passes because reverseString is fed the spans, which
         // carry the original text; but BRIEF §3 forbids persisting a map, so

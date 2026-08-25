@@ -34,13 +34,13 @@ abstractions are worth keeping, not which features get built now.
 
 ## 2. Non-negotiable constraints
 
-- **It must not throw when Sam runs it.** A traceback on his machine is a
+- **It must not throw when the operator runs it.** A traceback on his machine is a
   failed delivery regardless of how correct the logic is. Every path he can
   hit needs a handled error and a useful message.
 - **Full git history.** Commit per meaningful step with Conventional Commit
   messages (`feat:`, `fix:`, `docs:`, `test:`, `chore:`). No squashing.
   **No AI attribution trailers of any kind** (`Co-Authored-By: Claude`,
-  `Generated with…`, `Claude-Session:`). Commits are authored by Sam's git
+  `Generated with…`, `Claude-Session:`). Commits are authored by the operator's git
   identity only.
 - **Node only, no npm dependencies.** Node v22. Standard library only.
   A dependency is a supply-chain question for a privacy tool; do not open it.
@@ -53,7 +53,7 @@ abstractions are worth keeping, not which features get built now.
 
 | Question | Decision |
 |---|---|
-| Pseudonyms reversible? | **Stable salted hash, no plaintext map file.** `pseudonym = hash(salt + entity)`, salt at `~/.deident-private/salt`. Reversal is done by regenerating the local entity list and hashing candidates. A plaintext map is a portable re-identification key for data that has already left the machine; the raw logs are not. Do not write one. **Qualified 2026-08-22:** where two declared entities OVERLAP in the text the substituter replaces the union and emits both tokens, so the token they shared is gone and two different inputs (`the operator Wang`, `the operator Reed Wang`) produce identical output. That collapse is not reversible by the documented path, because the spans that would resolve it exist in memory only. The invariant in §4.7(a) is span-relative and still holds; the export prints the count of merged replacements so the caveat is visible rather than implied. |
+| Pseudonyms reversible? | **Stable salted hash, no plaintext map file.** `pseudonym = hash(salt + entity)`, salt at `~/.deident-private/salt`. Reversal is done by regenerating the local entity list and hashing candidates. A plaintext map is a portable re-identification key for data that has already left the machine; the raw logs are not. Do not write one. **Qualified 2026-08-22:** where two declared entities OVERLAP in the text the substituter replaces the union and emits both tokens, so the token they shared is gone and two different inputs (`Ada Wren Wang`, `Ada Wren Reed Wang`) produce identical output. That collapse is not reversible by the documented path, because the spans that would resolve it exist in memory only. The invariant in §4.7(a) is span-relative and still holds; the export prints the count of merged replacements so the caveat is visible rather than implied. |
 | Salt shared across people? | **Per-uploader salt.** Seven teammates uploading to one recipient who also holds the roster is a seven-way guess; a shared salt means cracking one cracks all. AI fluency is scored per person, so cross-uploader entity joins have no consumer. |
 | Semantic (LLM) entity discovery | **Mandatory, not optional.** Without it the tool cannot honestly claim safety (see F1 below). If it did not run, **refuse to emit the zip**. |
 | Code content | **Never exported.** Replaced by a count. There is no per-workspace "is this client code" question and no UI for it. |
@@ -482,7 +482,7 @@ no server, no browser UI.
    `林先生`, `array`/`ray` non-match, an `ls -l` line, a prefix-collision pair, an
    `Edit` record whose net line count is 0 but whose added count is not.
 
-Test data is Sam's own real mixed zh/en sessions, not synthetic fixtures.
+Test data is the operator's own real mixed zh/en sessions, not synthetic fixtures.
 
 **Slice 2 and beyond, do not build until triggered.**
 
@@ -541,7 +541,7 @@ exports carry prose and timestamps only, so they can support Framing / Precision
 ## 9. Definition of done
 
 - `node deident.mjs --selftest` passes.
-- `node deident.mjs --preview` runs to completion on Sam's real corpus with no
+- `node deident.mjs --preview` runs to completion on the operator's real corpus with no
   unhandled exception.
 - A full export produces a zip, and the residual scan reports zero known-entity
   residue.
