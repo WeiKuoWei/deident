@@ -7884,7 +7884,7 @@ const FIXTURES = [
     assert.equal(seen.size, FIXTURES.length);
   }],
 
-  ['F175', 'a git remote proposes exclude, so no workspace exports without a typed admission', () => {
+  ['F184', 'a git remote proposes exclude, so no workspace exports without a typed admission', () => {
     // Two exports shipped with all six gates green and both leaked, and neither
     // leak was in a work repository. The proposal read `redact` for any
     // directory with a remote, `scan` wrote that word into column 1 of
@@ -7919,7 +7919,7 @@ const FIXTURES = [
     assert.match(String(row.note), /1 .*git remote/, `the census hides the admissible row: ${row.note}`);
   }],
 
-  ['F176', 'with nothing admitted the refusal names the file, the word, and the rows to type it on', () => {
+  ['F183', 'with nothing admitted the refusal names the file, the word, and the rows to type it on', () => {
     // The old text for an export with no exportable tier was
     // `Set tiers: deident scan  # then edit review.md`, which is the command
     // the person had just run, and it named none of the 31 rows. An empty
@@ -7947,7 +7947,7 @@ const FIXTURES = [
     assert.equal(nothingAdmittedRefusal(typed, 'C:/out/review.md'), null);
   }],
 
-  ['F177', 'a read counts for the session it opened, and stops counting when that session changes', () => {
+  ['F182', 'a read counts for the session it opened, and stops counting when that session changes', () => {
     // The manifest has to be able to say how many shipped sessions a human
     // actually opened. Nobody in this field claims recall of 1.0, so the number
     // is stated rather than gated, and a stale read is the one way a stated
@@ -7987,7 +7987,7 @@ const FIXTURES = [
     }
   }],
 
-  ['F178', 'the manifest states the sessions a human read against the total, and says zero out loud', () => {
+  ['F181', 'the manifest states the sessions a human read against the total, and says zero out loud', () => {
     // A silent manifest is the failure this exists to fix: two archives shipped
     // with all six gates green and nothing in either of them said that no human
     // had opened a single session. An absent line reads as "not applicable"; a
