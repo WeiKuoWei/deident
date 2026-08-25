@@ -10,7 +10,7 @@ already made** or a **finding already verified**. Do not re-litigate; if you
 believe one is wrong, say so explicitly in your output with evidence rather than
 silently doing something else.
 
-Owner: the operator. Target repo: `northwind-co/deident` (private).
+Target repo: . Published under MIT; see LICENSE.
 
 ---
 
@@ -189,7 +189,7 @@ case, because the variant table generated case variants only for a path's drive
 letter. The org entity is seeded from the git remote `northwind-co/ledger`, the
 company writes itself `Northwind`, and `Northwind` survived **1,804 times** in a
 real export with the scan unaware it existed. Enumerating lower/UPPER/Title does
-not help: `Northwind` is none of them. Spellings of four characters or more are
+not help: `NorthWind` is none of them. Spellings of four characters or more are
 matched case-insensitively, and the span records the text that was actually
 there so reversal stays exact. Fixture F51.
 

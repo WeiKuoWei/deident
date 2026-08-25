@@ -96,10 +96,10 @@ export function leftBoundaryBlocks(s, at, entry) {
 // BRIEF §4.6 lists "case-variant only 7" as an observed form and PLAN §1 says
 // variants.mjs expands case variants. It did not, for anything but a path's
 // drive letter — so the org entity seeded from the git remote `northwind-co/
-// northwind` was the lowercase spelling, the company writes itself `Northwind`
+// northwind` was the lowercase spelling, the company writes itself `NorthWind`
 // everywhere, and `Northwind` survived 1,804 times in a real export while the
 // scan had no idea it existed. Enumerating lower/UPPER/Title does not help:
-// `Northwind` is none of them. Matching case-insensitively does.
+// `NorthWind` is none of them. Matching case-insensitively does.
 //
 // §F7's precision argument does not apply here: matching `Northwind` when
 // `northwind` is a known entity cannot be a false positive.

@@ -1732,9 +1732,9 @@ const FIXTURES = [
   }],
 
   // F51 — the org entity is seeded from the git remote `northwind-co/ledger`,
-  // i.e. lowercase, and the company writes itself `Northwind` everywhere. That
+  // i.e. lowercase, and the company writes itself `NorthWind` everywhere. That
   // spelling survived 1,804 times in a real export and the scan had no idea it
-  // existed. Enumerating lower/UPPER/Title does not help: `Northwind` is none of
+  // existed. Enumerating lower/UPPER/Title does not help: `NorthWind` is none of
   // them. F06 passes today only because both its fixtures are lowercase.
   ['F51', 'a non-path entity matches in any casing, and reversal restores the original', () => {
     const t = buildTable([
@@ -1747,7 +1747,7 @@ const FIXTURES = [
       entity('P2', 'person', 'ray', 'PERSON_2'),
     ]);
     for (const [before, after] of [
-      ['Northwind x KestrelisAI Exchange', 'ORG_1 x KestrelisAI Exchange'],
+      ['NorthWind x KestrelisAI Exchange', 'ORG_1 x KestrelisAI Exchange'],
       ['the NORTHWIND repo', 'the ORG_1 repo'],
       ['northwind', 'ORG_1'],
       ['RENATA delacroix', 'PERSON_1 delacroix'],
@@ -1757,8 +1757,8 @@ const FIXTURES = [
 
     // I2 still holds: the span records the text that was there, not the
     // entity's own spelling, so reversal is exact.
-    const r = substituteString('Northwind and northwind', t);
-    assert.equal(reverseString(r.out, r.spans), 'Northwind and northwind');
+    const r = substituteString('NorthWind and northwind', t);
+    assert.equal(reverseString(r.out, r.spans), 'NorthWind and northwind');
 
     // The residual scan is matched to the substituter, or the pairing that
     // makes I4 meaningful would let the same 1,804 occurrences through.
