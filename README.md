@@ -34,6 +34,26 @@ For an agent that is neither, `AGENTS.md` carries the same contract.
 
 ## Run it
 
+Ask. In a session started after the install, say what you want:
+
+```
+export my session logs
+幫我導出 session log
+```
+
+Any wording, any language. The skill matches on what is being asked for, not on
+a phrase, so a translation of either line is the same request.
+
+It then drives the whole flow and stops to ask you the things it cannot decide:
+which workspaces may leave, which sessions to drop on sight, and it hands you
+the prose to read for the identities no machine can find. Nothing is written
+until the last step, and you are the one who sends the file.
+
+### Or drive it yourself
+
+The CLI is the whole tool and the skill only types into it. `node
+<repo>/deident.js` works from any directory, installed or not:
+
 ```
 node deident.js scan                  # survey, and write review.md
                                       # then edit review.md: give each workspace a
@@ -45,8 +65,9 @@ node deident.js export --entities deident-entities.json
 ```
 
 Only the last line writes an archive. `deident` with no arguments prints usage
-and exits 0. The reading step in the middle is what an agent is for, and its
-instructions are `AGENTS.md`.
+and exits 0. The reading step in the middle is the one thing deident cannot do
+for itself, which is what the skill is for; `AGENTS.md` is the same contract for
+an agent that reads the repository directly.
 
 Nothing is swept in. A workspace deident has not seen is `unclassified`, which
 means excluded, and one whose name or per-line `cwd` contains `private`,

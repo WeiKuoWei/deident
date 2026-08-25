@@ -12,7 +12,7 @@ import path from 'node:path';
 import { DeidentError, ReadError, UsageError } from './errors.mjs';
 import { limitLines } from './limits.mjs';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.1';
 
 // How to type this tool, worked out from how this process was actually started.
 //
