@@ -1,368 +1,167 @@
 # deident
 
-A CLI that exports your AI-coding-agent session logs, de-identifies them, and
-produces a zip you can hand to someone else.
+A CLI that reads your AI-coding-agent session logs, removes the identities from
+them, and produces a zip you can hand to someone else.
 
-Node v22, standard library only, **no npm dependencies and no network calls**.
-It reads local files and writes local files. That property is the product.
+Node v22, standard library only, **no npm dependencies and no network calls**. It
+reads local files and writes local files. That property is the product: nothing
+about your logs leaves the machine unless you are the one who sends the zip.
 
 Status: slice 1. Claude Code logs only, depth-0 sessions only, no server and no
-browser UI.
-
-## Install it as a Claude Code plugin
-
-The CLI runs straight from a checkout (`node <repo>/deident.js --version`) and
-needs no install. The plugin is how you get the skill, which is what drives the
-whole flow in a conversation instead of by hand:
-
-```
-claude plugin marketplace add <repo>
-claude plugin install deident@deident
-claude plugin details deident          # -> Skills (1)  deident
-```
-
-The third line is the check. It is Claude Code's own component inventory, so it
-says the skill was parsed rather than that a file is on disk. The skill appears
-in a session started **after** the install; restart an open one.
-
-**Installing copies the repository into
-`~/.claude/plugins/cache/deident/deident/<version>/`, and that copy does not
-follow your edits.** Verified 2026-08-24 on Windows: after editing
-`skills/deident/SKILL.md`, `plugin marketplace update` and `plugin update` both
-reported "already at the latest version" and left the old copy in place, because
-the check is on the `version` string in `.claude-plugin/plugin.json` and not on
-the content. Two copies of this document have already drifted once, which is why
-a fixture compares `SKILL.md` against `AGENTS.md`. So, after changing anything a
-user of the plugin sees:
-
-```
-# bump "version" in .claude-plugin/plugin.json, then
-claude plugin marketplace update deident
-claude plugin update deident@deident   # says: Restart to apply changes
-```
-
-Working on the repo itself and not cutting a version? Reinstall instead, which
-always re-copies:
-
-```
-claude plugin uninstall deident@deident && claude plugin install deident@deident
-```
-
-To remove it entirely, add `claude plugin marketplace remove deident`.
-
----
+browser UI. MIT licensed.
 
 ## Install
 
-You do not have to install anything. The CLI is `node <repo>/deident.js` from
-any directory, with no harness around it, and that is the whole tool. Installing
-adds the skill that teaches an agent to drive it.
-
-The repository is its own marketplace, and one checkout serves both harnesses:
-they read the same two manifests in `.claude-plugin/` and the same
-`skills/deident/SKILL.md`, so one `git pull` updates both.
-
-Claude Code:
+You do not have to. `node <repo>/deident.js` from any directory is the whole
+tool. Installing adds the skill that teaches an agent to drive it, which is the
+one step deident cannot do for itself. The repository is its own marketplace and
+one checkout serves both harnesses, so one `git pull` updates both:
 
 ```
-claude plugin marketplace add <repo>
+claude plugin marketplace add https://github.com/gitroll-dev/deident
 claude plugin install deident@deident
-claude plugin details deident
-```
+claude plugin details deident            # -> Skills (1)  deident
 
-Codex:
-
-```
-codex plugin marketplace add <repo>
+codex plugin marketplace add https://github.com/gitroll-dev/deident
 codex plugin add deident@deident
-codex debug prompt-input | grep deident
+codex debug prompt-input | grep deident  # -> deident:deident: <description>
 ```
 
-The third command in each block is the verification, not a formality. Both print
-the harness's own view of what it parsed, so they prove the skill was loaded.
-Claude Code answers `Skills (1)  deident`; Codex answers with the line
-`deident:deident:` followed by the skill's description. A file sitting on disk
-proves neither.
+The third command in each block is the verification, not a formality: it prints
+the harness's own view of what it parsed, and a file on disk proves nothing. The
+skill appears in a session started **after** the install, so restart an open one.
+For an agent that is neither, `AGENTS.md` carries the same contract.
 
-Nothing Codex-specific is checked in, because Codex falls back to the Claude
-manifests. It looks for a plugin manifest at `.codex-plugin/plugin.json`, then
-`.claude-plugin/plugin.json`, then `.cursor-plugin/plugin.json`, and for a
-marketplace at `.agents/plugins/marketplace.json`, then
-`.agents/plugins/api_marketplace.json`, then `.claude-plugin/marketplace.json`.
-The second file in each chain is one this repository already needs.
-
-For an agent that reads neither, `AGENTS.md` at the repository root carries the
-same contract. Fixture F103 asserts it has not drifted from the skill, and F151
-asserts the two manifests and the skill still agree on one name.
-
-### Installing copies the repository, and updating does not re-copy it
-
-Both harnesses copy the checkout into a version-keyed cache directory and load
-the skill from the copy, never from your working tree:
+## Run it
 
 ```
-~/.claude/plugins/cache/deident/deident/<version>/
-~/.codex/plugins/cache/deident/deident/<version>/
+node deident.js scan                  # survey, and write review.md
+                                      # then edit review.md: give each workspace a
+                                      # tier. A workspace you do not touch stays out.
+node deident.js triage                # optional, cheap: drop whole sessions on sight
+node deident.js export --preview      # writes deident-candidates.txt, the prose to read
+                                      # then write deident-entities.json from it
+node deident.js export --entities deident-entities.json
 ```
 
-So editing `skills/deident/SKILL.md` changes nothing an agent can see, and the
-commands that look like they would fix that report success while doing nothing.
-`claude plugin update` and `claude plugin marketplace update` leave the copy
-alone unless `version` in `.claude-plugin/plugin.json` changed. `codex plugin
-marketplace upgrade` prints `No configured Git marketplaces to upgrade` and
-exits 0, because it refreshes git-backed marketplaces only and a local path is
-not one.
+Only the last line writes an archive. `deident` with no arguments prints usage
+and exits 0. The reading step in the middle is what an agent is for, and its
+instructions are `AGENTS.md`.
 
-Codex has a way out that works at an unchanged version:
+Nothing is swept in. A workspace deident has not seen is `unclassified`, which
+means excluded, and one whose name or per-line `cwd` contains `private`,
+`identity`, `payroll` or a token you add to `~/.deident-private/denied.json` needs
+`--include-denied <exact-name>` typed out to include
+([why](docs/design-rationale.md#opt-in-never-opt-out)). Pseudonyms are
+`sha256(salt + kind + entity)` against a salt in `~/.deident-private`, which is
+**never** written into any output and must never be shared or committed: it is the
+only thing standing between a pseudonym and the name behind it
+([why, and what reversal cannot do](docs/design-rationale.md#reversal-and-the-salt)).
 
-```
-codex plugin remove deident@deident && codex plugin add deident@deident
-```
+## What deident does NOT protect against
 
-Measured with a marker added to the skill's `description`: `codex debug
-prompt-input` kept showing the old description until that pair ran, then showed
-the new one. Claude Code needs the `version` field bumped before it will re-copy.
+A tool that only lists its strengths gets over-trusted, and the first surprise
+destroys it permanently. So, plainly, before you run this on your own logs:
 
-While editing the skill, the honest move is to skip installing and point the
-agent at the checkout.
+- **The check reads `known-entity residue    0 occurrences of N entity
+  spellings`, not "safe".** It searches only for entities it already knows about.
+  On a 90-file sample of the development corpus there were 230 distinct email
+  addresses, 228 of them not the user's. Emails have a regex and are swept
+  automatically. **Names do not have a regex.** That is what the semantic pass is
+  for, and why it is mandatory.
+- **The semantic pass only ever sees prose, which is 2.30% of the bytes.** The
+  candidates file is built from `text` blocks and nothing else, because feeding a
+  discovery pass the other 97.7% is how it starts inventing entities. A
+  third-party name that appears only in a tool result, a directory listing or a
+  code block never reaches the reader: they cannot declare it, and the residue
+  scan cannot look for what was never declared.
+- **A name touching a letter or a digit is left alone.** The boundary rule is
+  `(?<!\w)X(?!\w)`, with an underscore counting as a boundary for spellings of
+  five characters or more and a camel-case hump always counting, which is what
+  makes `mcp__<server>__tool` and `<Org>AI` real matches while keeping `ray`
+  inside `array` a correct non-match. What survives is a spelling abutting an
+  ordinary letter or digit: `<name>son`, `<org>123`. The manifest reports that
+  count and it is not zero. Scripts written without spaces between words (Chinese,
+  Japanese, Korean, Thai) have no boundary to test at all and are flagged in the
+  manifest instead.
+- **Case-insensitive matching is withheld from a few spellings.** Spellings of
+  four characters or more match in any casing. The exception is one whose case
+  change alters its **length**: Turkish dotted capital I lowercases to two code
+  units, German sharp s uppercases to two. Folding those would consume the wrong
+  span, so they stay literal. A miss rather than a corruption, which is the right
+  way round.
+- **Credentials and phone numbers are matched by shape, and only by shape.**
+  Anything with an unambiguous vendor prefix (`github_pat_`, `ghp_`, `sk-ant-`,
+  `xoxb-`, `AKIA`, `ntn_`, `AIza`, `sk-proj-`, `sk_live_`, `npm_`, `glpat-`,
+  `hf_`, `xapp-`, and the rest of one greppable list in `src/entities/seed.mjs`)
+  is force-replaced, and so is any `+<country code><8-15 digits>` phone number. So
+  is a value whose **label** says what it is: `api_key`, `secret_key`,
+  `access_token`, `auth_token`, `client_secret`, `password`, a `Bearer ` header,
+  an `X-Amz-` parameter in a signed URL, a password inline in a database URL. A
+  `-----BEGIN … PRIVATE KEY-----` block is dropped whole, because half a key is
+  still a key. An entropy heuristic would fire on every hash and uuid in your
+  logs, and a scan that cries wolf is the first thing switched off.
+- **A credential with neither a listed prefix nor a label beside it is not
+  detected, and nothing downstream recovers it.** The semantic pass reads your
+  prose and the model's, never tool output, so a key printed by a command you ran
+  is caught by shape or not at all. The `0 secrets` row means "none of the shapes
+  deident knows", not "no secrets", and the export block says so as you run it.
+- **Identity-document numbers are found by their label, in English and Chinese
+  only**: `passport`, `national id`, `identity card`, `id card`, `driver's
+  licence`, `social security`, `ssn`, `tax id`, `fein`, and 護照, 护照, 身分證,
+  身份證, 台胞證, 居留證. Anchoring on the label is a measured precision decision:
+  a passport-shaped regex on its own matched a thermal-paste part number. **A
+  number labelled in any other language, or with no label near it, is not
+  detected.** Only the semantic pass can catch that one.
+- **`review.md` is full of raw identity, on purpose.** Real absolute paths, real
+  workspace names, real git remotes including other people's handles, and the
+  deny-list token that matched each excluded directory. It has to be, or you could
+  not recognise the rows you are deciding about. Treat it like the salt: local
+  only, never pasted into a ticket, never committed. Same for
+  `deident-candidates.txt`, which holds prose the semantic pass has not seen yet.
+- **Device fingerprint survives.** MCP server names are replaced, but the model
+  mix, the harness version sequence, the tool inventory and localhost ports remain
+  inferable. Timestamps are quantised to the minute, which removes
+  millisecond-level correlation and nothing more.
+- **Verbatim documents you pasted into your own messages are not detected.** A
+  contract, a résumé, a bank statement or someone else's email pasted into a
+  prompt is prose, and the semantic pass will only catch the identities it
+  recognises inside it. Quoted third-party writing survives as writing.
+- **The agent-memory deny-list matches filenames, and it knows one naming
+  convention**: `MEMORY.md`, and files named `reference_*.md`, `feedback_*.md`,
+  `project_*.md`, `user_*.md`. That is one person's memory-index layout, not a
+  Claude Code universal. Harness injections inside `<system-reminder>` spans are
+  stripped whatever they are called, so the gap is narrower than it sounds: it is
+  a memory file a tool **read** for you, under another name, shipping as ordinary
+  prose. Put your own filenames in `~/.deident-private/denied.json`, a JSON array
+  of regex strings or `{"patterns": [...], "tokens": [...]}`. A malformed one
+  refuses the export rather than running with none of your rules.
+- **Fragments of an entity survive.** Tool results are capped head-and-tail, and a
+  cap can land in the middle of an email address or a name. The remaining fragment
+  matches no spelling, so neither the substituter nor the scan sees it.
+- **Four of six upstream scoring axes depend on rules that are not published.**
+  Nobody outside the scoring pipeline knows what `failure_signal` is counted from,
+  what a "decision point" is, whether the prompt-quality run reads only user
+  messages, or whether the expertise classifier reads code content. If truncating
+  `tool_result` pushed `failure_signal` below its threshold, `hits_trouble` would
+  go false, Resilience would go null and the overall score would **rise**: the tool
+  would silently inflate scores. deident therefore caps tool results generously,
+  preserves `is_error` verbatim regardless of truncation, and keeps every
+  threshold named in `src/retain/constants.mjs`. Until those rules are published,
+  treat scores from a deident export as unverified against scores from raw logs.
+- **Subagent and workflow transcripts are not exported.** Only depth-0 human
+  sessions are read; the rest of the corpus is 2.2x the payload with zero human
+  turns. Orchestration stays visible through the parent session's `Agent` and
+  `Workflow` tool calls.
 
----
+### The one list deident cannot infer
 
-## The four-stage funnel
-
-Each stage costs more than the one before it and hands the next one a shorter
-list. That ordering is the design: nothing expensive should ever read a session
-that was never going to be exported.
-
-```
-1.  node deident.js scan                              cheap: one pass, no reader
-       Surveys the corpus and writes review.md. Nothing else.
-       Open review.md and set a tier for each workspace: exclude, count-only,
-       redact or open. A workspace you do not touch stays excluded.
-
-2.  node deident.js triage                            ~7k tokens of reading
-       Writes deident-triage.txt: one block per session still proposed keep,
-       carrying its first user prompt truncated to 300 characters. Only the
-       head of each session file is read.
-       A reader writes deident-triage.json, then:
-         node deident.js triage --apply --verdicts deident-triage.json
-       A verdict can only ever DROP a session. There is no keep verdict and a
-       verdict cannot overturn a drop, which is why a cheap model is the right
-       one here (docs/model-tier.md).
-
-3.  node deident.js export --preview                  ~1M tokens of reading
-       Runs every check, writes deident-candidates.txt (tier-0-cleaned prose)
-       and a before/after .diff. No zip.
-       Then fill in the entity list: hand this step to an agent, or write
-       deident-entities.json by hand. An agent's instructions ship twice,
-       as skills/deident/SKILL.md and as AGENTS.md, with the same text in
-       both.
-
-4.  node deident.js export --entities deident-entities.json
-       The real thing, and the only stage that writes an archive. Every check
-       runs again first; any failure means nothing is written. Measured at
-       more than ten minutes on a few hundred sessions.
-```
-
-Measured 2026-08-24 on a 205-session corpus: stage 2 reads 23 KB and stage 3
-reads 915 KB, a 35x difference for the stage that decides whether a session
-ships at all. Stage 2 is optional; skipping it just means stage 3 reads
-sessions a person would have thrown out.
-
-That 915 KB was measured while the candidates file truncated every prose chunk
-at 400 characters and deduplicated on the first 80 of each. It no longer does
-either, because both losses were silent and neither was counted. Measured over
-the whole depth-0 corpus with the same workspace decisions before and after,
-the change multiplies stage 3 by **3.95** (2,957,659 bytes to 11,684,461), so
-budget stage 3 near 3.5 MB and about 900k tokens on a 205-session corpus.
-Stage 2 got cheaper relative to it by the same factor, so the argument for
-running it is now much stronger than 35x.
-
-A per-chunk limit of 20,000 characters remains, which on that corpus cut
-1,336,271 characters, 10.3% of the prose. **That number is printed** beside the
-file path, written into the file itself and carried as `candidates.omittedChars`
-in `--json`, because a reader handed a short file has to be told it is short.
-
-### The funnel has a memory
-
-Stage 3 is the only stage whose cost grows with the corpus, and it used to be
-paid in full every time. What a person declared is now remembered in
-`~/.deident-private/entities.json`, beside the salt, along with a content hash
-of every session that has been put in front of a reader.
-
-So a second run reads only the sessions that are new or that changed:
-
-```
-   first run    deident-candidates.txt   211.0 KB    every session
-   days later   deident-candidates.txt    12.2 KB    three new sessions
-```
-
-(measured on a synthetic 60-session corpus; on the live 205-session one the
-first read is 915 KB.) And when nothing changed at all, stage 4 is one command
-with no reading in front of it:
-
-```
-   node deident.js export          # --entities is optional once the dictionary exists
-```
-
-The dictionary is plaintext and you may edit it by hand: add a spelling, or
-delete an entry that was wrong. It is local only, it pairs real spellings with
-real session ids, and it is never written into the archive, the output
-directory or this repository. `docs/cli-ux.md` §11b has the shape.
-
-The safety half of the same change: the gate that says a semantic pass ran is
-now **per session**. Every session in an export must have been through one, in
-this run or in a recorded earlier one, and one that is new or changed refuses
-the export by name. That is stricter than what it replaced, including for runs
-that use no dictionary at all: `export --entities an-old-list.json` over a
-corpus that has grown used to ship the new sessions on the strength of a list
-written before they existed. `deident export --full` re-reads everything, for
-when you have changed your mind about what counts as an identity.
-
-`deident` with no arguments prints usage and exits 0. **It never exports by
-default.** The default action of a tool that ships data off a machine is to show
-you what it would do.
-
-## Commands
-
-| Command | Writes | Notes |
-|---|---|---|
-| `scan` | `review.md` | A census plus a proposed tier per workspace. |
-| `review` | `review.html` with `--html` | Read in the browser, decide in the text file. No local server is ever started. |
-| `triage` | `deident-triage.txt`, or `review.md` with `--apply` | One truncated first prompt per still-kept session, and the verdicts on it. A verdict can only ever drop a session. |
-| `export` | the zip and `export-map.txt`, or a `.diff` with `--preview` | Runs every check first. Any failure means nothing is written. |
-
-`export-map.txt` sits beside the zip and holds one `<real session id>  <archive
-entry>` line per exported session. It exists so you can act on the last look:
-every id inside the archive has been rewritten, so without it nothing on your
-machine says which entry is which session. It pairs a local id with a local id,
-never a pseudonym with a name, but treat it like `review.md`: **local only,
-never shared, never committed.** A failed export removes it along with the zip.
-
-A successful export also writes `~/.deident-private/occurrences.json`, beside
-the salt rather than beside the zip. It records every occurrence the
-substituter replaced, with the session it was in and the text around it, so a
-count can be checked instead of believed:
-
-```
-deident review --entity PERSON_11      every occurrence, grouped by session
-deident review --session <id>          one full transcript, read back out of the zip
-```
-
-That is what answers "is this spelling replaced 991 times a person's name or an
-ordinary word", which no check can answer, because a wrong replacement that is
-reversible passes every one of them. The excerpts are the text **before**
-substitution, so this file pairs pseudonyms with real names AND real session
-ids. It is the most re-identifying thing deident writes, it is never an archive
-entry and never in the output directory, and it must not be shared or
-committed. Both queries refuse until an export has run: these counts are what
-the substituter did, not what a search would find.
-
-`review.md` is both the report and the config. The decision is made by editing a
-text file, not by answering prompts: an engineer trusts a file they can grep,
-diff and keep, and a prompt sequence cannot be reviewed by a second person.
-
-## Every flag
-
-| Flag | Commands | Meaning |
-|---|---|---|
-| `--root <path>` | all | Override the resolved session-storage root. Default: `CLAUDE_CONFIG_DIR`, else `~/.claude`. Sessions are read from `<root>/projects/*/*.jsonl`, depth 0 only. |
-| `--triage-chars <n>` | `triage` | Characters of the first user prompt to show per session. Default 300, maximum 2,000. A limit high enough to carry whole sessions turns triage back into the expensive stage. |
-| `--apply` | `triage` | Merge a verdicts file into `review.md` instead of writing the triage file. Needs `--verdicts`. |
-| `--verdicts <file>` | `triage` | The verdicts file to apply. `verdict` is `drop` or `unsure`; `keep` is refused, because a triage verdict may only ever move a session toward `drop`. |
-| `--out <path>` | all | Output directory. Default: the current directory. |
-| `--salt-dir <path>` | all | Override `~/.deident-private`. The salt, your saved tier decisions, the remembered entity dictionary, your own `denied.json`, your own `known-values.json` and the occurrence index all live here. Pointing this at an empty directory is how you start over completely, and **copy `denied.json` and `known-values.json` across first**: without the first, none of your own deny rules load and a directory you expect to be excluded is proposed at `redact` with every check green; without the second, every value you declared as your own goes back to being something a reader has to spot in the prose. deident warns when the directory in use is missing either one and the default one has it. |
-| `--html` | `review` | Write one self-contained `review.html`. Cannot be combined with `--entity` or `--session`. |
-| `--entity <ID>` | `review` | Print the occurrences of one entity. |
-| `--session <id>` | `review` | Print one full redacted transcript. |
-| `--preview` | `export` | Write a `.diff` for inspection in your own editor instead of a zip. |
-| `--entities <file>` | `export` | Supply the tier-1 (semantic) entity list as JSON. Optional once `~/.deident-private/entities.json` holds one: absent, the dictionary supplies the list; present, the file wins on the identities it names and the dictionary supplies the rest. Without either, the export is refused. |
-| `--full` | `export` | Ignore what deident remembers you having read and put the whole corpus in front of a reader again. Refuses the export and writes the full `deident-candidates.txt`. Cannot be combined with `--entities`. |
-| `--namespace <TAG>` | `export` | Shift the pseudonym namespace, e.g. `X` gives `X_PERSON_01`. Must match `[A-Z][A-Z0-9]{0,7}`. Use it when the corpus already contains tokens of the default shape. |
-| `--skip-unclassified` | `export` | Confirm that workspaces you never gave a tier stay out. Without it, an unclassified workspace refuses the export rather than being silently dropped. |
-| `--skip-unreadable` | `scan`, `export` | Continue past a line that is not valid JSON instead of exiting 3. Each skipped line is reported. |
-| `--skip-unknown-types` | `scan`, `export` | Drop records whose type deident has never seen instead of refusing. The dropped types and their counts are printed in the "NOT protected against" block. Refusal stays the default; this exists because Claude Code ships a new record type every few weeks and one such line in one session should not block a whole export. |
-| `--include-denied <name>` | `export` | Typed confirmation for one deny-listed workspace. Exact name, no globs. Repeatable. |
-| `--batch-chars <n>` | `export` | How much prose one run puts in `deident-candidates.txt` before deferring the rest. Default 120,000 characters, roughly 30k tokens. Only the sessions actually in the file are recorded as read, so a smaller number means more rounds, never a weaker claim. |
-| `--selftest` | global | Run the fixture suite and exit. |
-| `--help` | global | Print usage and exit 0. |
-| `--version` | global | Print the version and exit 0. |
-
-A flag that a command does not accept is an error, not a silent no-op. That is
-deliberate: `--preview` quietly ignored by `scan` is how a surprise export
-happens.
-
-## Exit codes
-
-| Code | Meaning |
-|---:|---|
-| 0 | success, or an informational command |
-| 1 | a check failed, or the export was refused. Nothing was written. |
-| 2 | bad usage. Usage text printed. |
-| 3 | an input could not be read and `--skip-unreadable` was not given |
-
-Any non-zero exit leaves no output file behind. Verification happens before
-anything is written, never after.
-
-## The semantic pass is mandatory
-
-Entity discovery from prose is required, and if it did not run the export is
-**refused**. This is not a nag. The residual scan can only find entities it
-already knows about, so without the semantic pass a zero-residue result would be
-meaningless.
-
-deident makes no network calls, so the pass is a **file contract**:
-
-1. `export --preview` writes `deident-candidates.txt`: the prose from your
-   sessions **after** tier-0 substitution has already removed your username,
-   paths, git identity, git remotes, emails and MCP server names.
-2. You, or a host agent, read it and write `deident-entities.json`:
-
-   ```json
-   {
-     "generated": "2026-08-22T06:20:00Z",
-     "entities": [
-       {"kind": "person", "spellings": ["Nora Lund", "NoraLund", "Nora"], "confidence": "high"},
-       {"kind": "org",    "spellings": ["Acme Advisory"],                  "confidence": "low"}
-     ]
-   }
-   ```
-
-   `kind` is one of `person | org | client | workspace | machine`.
-   `confidence` is `high` or `low`; low-confidence entities are listed
-   individually in the review and are never collapsed into a count.
-
-   List every spelling you actually see, including run-together forms that turn
-   up in filenames and handles. The boundary rule treats `Nora Lund` and
-   `NoraLund` as different strings and will not find the second from the first.
-3. `export --entities deident-entities.json`.
-
-An agent can do step 2 for you. What it needs to know is one document shipped in
-two places, because harnesses disagree about where to look: Claude Code loads
-`skills/deident/SKILL.md` as a skill through `.claude-plugin/plugin.json`, and
-every other agent reads `AGENTS.md`. The two carry the same text and a fixture
-checks they have not drifted, so an agent that is not Claude Code is covered by
-pointing it at `AGENTS.md`. Nothing harness-specific has to be installed, and
-there is no slash command to run.
-
-The candidates file carries **cleaned** prose, never the raw records. Handing raw
-text to a discovery pass would ship unredacted paths, your username and your
-emails into the discovery context: a privacy tool leaking inside its own privacy
-step.
-
-A malformed entity list is refused, never silently treated as an empty one. An
-empty list would satisfy "the pass ran" while delivering nothing.
-
-## The one list deident cannot infer
-
-Everything above is inference. Tier 0 works out what it can from this machine,
+All of the above is inference. Tier 0 works out what it can from this machine,
 tier 1 asks a reader to work out the rest from your prose. Neither can be told
 "this exact string is mine", and a finished archive whose six checks were all
 green shipped 21 identity fields in plaintext because of it: document name
-spellings, a date and place of birth, six addresses, a phone number and a
-payment account id. Most of them came out of one browser-automation session that
-had been filling in a booking form.
-
+spellings, a date and place of birth, six addresses, a phone number and a payment
+account id, most out of one browser-automation session filling in a booking form.
 Write them down instead, at `~/.deident-private/known-values.json`:
 
 ```json
@@ -377,254 +176,191 @@ Write them down instead, at `~/.deident-private/known-values.json`:
 }
 ```
 
-A bare string is enough; `kind` is optional and changes only which pseudonym the
-value gets. The file lives beside the salt, is never committed, and never reaches
-the archive or the output directory. No file is missing is the normal case and
-means the two inference tiers alone. A malformed one refuses the run and names
-the row, because an export that silently declared nothing is indistinguishable,
-in every check deident has, from the export that leaked.
+A bare string is enough; `kind` only changes which pseudonym the value gets. No
+file is the normal case and means the two inference tiers alone. A malformed one
+refuses the run and names the row, because an export that silently declared
+nothing is indistinguishable, in every check deident has, from the export that
+leaked. Every export prints the list back with each value's occurrence count: zero
+means a typo or a value the corpus never held, and a high count means a value of
+yours that is also an ordinary word, which is a fact for you and never a refusal.
+deident reads nobody's personal-details file and hardcodes no path to one, so if
+you keep one, turning it into this file is the fastest thing you can do before an
+export.
 
-Every export prints the whole list back with the number of occurrences each
-value claimed. A count of zero means a typo in the list, or a value the corpus
-never contained. A high count means a value of yours that is also an ordinary
-word, which is a fact for you and never a refusal: deident will not argue with a
-deliberate declaration about your own data.
+## The four-stage funnel
 
-deident does not read anybody's personal-details file and no path to one is
-hardcoded. If you keep one, the fastest thing you can do before an export is turn
-it into this file.
+Each stage costs more than the one before and hands the next a shorter list.
+Nothing expensive should ever read a session that was never going to be exported.
 
-## Opt-in, never opt-out
+| Stage | Reads | Writes |
+|---|---|---|
+| `scan` | one pass, no reader | `review.md`: a census and a proposed tier per workspace |
+| `triage` | 23 KB, the head of each session only | `deident-triage.txt`: one first prompt per still-kept session |
+| `export --preview` | about 3.5 MB, roughly 900k tokens | `deident-candidates.txt` and a before/after `.diff` |
+| `export --entities` | the same again | the zip, and `export-map.txt` |
 
-A workspace deident has not seen before is `unclassified`, which means excluded.
-It is never swept in. Beyond that, a workspace whose name (or whose per-line
-`cwd`) contains `private`, `identity`, `payroll` or a token you add to
-`~/.deident-private/denied.json` (`{"tokens": ["私人"]}`, any script) is excluded and needs
-`--include-denied <exact-name>` typed out to include.
+Measured 2026-08-24 on a 205-session corpus. Triage is optional; skipping it just
+means stage 3 reads sessions a person would have thrown out, and it was already
+35x cheaper than stage 3 before the change that made stage 3 four times heavier
+([the arithmetic](docs/design-rationale.md#what-the-stages-cost), which is also
+why stage 3's figure above is a budget rather than a measurement). A per-chunk
+limit of 20,000 characters applies, which on that corpus cut 1,336,271
+characters, 10.3% of the prose. **That number is printed** beside the file path,
+written into the file itself and carried as `candidates.omittedChars` in `--json`,
+because a reader handed a short file has to be told it is short.
 
-The three shipped tokens are English words and match nothing else, and the
-"reads like personal data" check beside them is English words too. So a
-workspace whose name contains any non-ASCII character is proposed
-`unclassified`, which means excluded until you decide it, however ordinary the
-name is: neither list can read it, and silence from an instrument that could
-not look is not a clearance. Decide it once in `review.md`, or put your own
-token in `denied.json` and it is excluded for good. One token there feeds the
-workspace check and the per-line `cwd` check alike.
+At stage 2 a verdict can only ever **drop** a session: there is no keep verdict
+and a verdict cannot overturn a drop, which is why a cheap model is the right one
+here (`docs/model-tier.md`). At stage 3 you, or an agent, read the candidates file
+and write `deident-entities.json`:
 
-The per-line `cwd` filter matters more than it sounds. The largest session file
-on the development machine spans **11 distinct working directories**, two of them
-under `\private`, inside a workspace that is not itself deny-listed. Opting in at
-the directory level alone would have exported payroll material. In the delivery
-run of 2026-08-22, 612 lines were dropped by this filter from workspaces that
-were otherwise included, and a further 32 records were withheld because they
-replay text typed inside an excluded directory and carry no cwd of their own.
+```json
+{
+  "generated": "2026-08-22T06:20:00Z",
+  "entities": [
+    {"kind": "person", "spellings": ["Nora Lund", "NoraLund", "Nora"], "confidence": "high"},
+    {"kind": "org",    "spellings": ["Acme Advisory"],                  "confidence": "low"}
+  ]
+}
+```
+
+`kind` is one of `person | org | client | workspace | machine`. `confidence` is
+`high` or `low`; low-confidence entities are listed individually in the review and
+never collapsed into a count. List every spelling you actually see, including
+run-together forms from filenames and handles: the boundary rule treats `Nora
+Lund` and `NoraLund` as different strings and will not find the second from the
+first.
+
+**The funnel has a memory.** What you declared is remembered in
+`~/.deident-private/entities.json`, beside the salt, with a content hash of every
+session that has been put in front of a reader, so a second run reads only what is
+new or changed: on a synthetic 60-session corpus, 211.0 KB on the first run and
+12.2 KB days later for three new sessions. When nothing changed at all, `node
+deident.js export` is the whole of stage 4, because `--entities` is optional once
+the dictionary exists. The dictionary is plaintext and you may edit it by hand; it
+is local only, it pairs real spellings with real session ids, and it never reaches
+the archive, the output directory or this repository. The semantic-pass gate is
+**per session**, so one that is new or changed refuses the export by name even
+under an entity list written before it existed, and `export --full` re-reads
+everything for when you have changed your mind about what counts as an identity.
+[Why the pass is mandatory at
+all.](docs/design-rationale.md#the-semantic-pass-is-mandatory)
+
+## Commands
+
+| Command | Writes | Notes |
+|---|---|---|
+| `scan` | `review.md` | A census plus a proposed tier per workspace. |
+| `review` | `review.html` with `--html` | Read in the browser, decide in the text file. No local server is ever started. |
+| `triage` | `deident-triage.txt`, or `review.md` with `--apply` | One truncated first prompt per still-kept session, and the verdicts on it. |
+| `export` | the zip and `export-map.txt`, or a `.diff` with `--preview` | Runs every check first. Any failure means nothing is written. |
+
+`export-map.txt` sits beside the zip with one `<real session id>  <archive entry>`
+line per exported session. It exists so you can act on the last look: every id
+inside the archive has been rewritten, so without it nothing on your machine says
+which entry is which session. It pairs a local id with a local id, never a
+pseudonym with a name, but treat it like `review.md`: **local only, never shared,
+never committed.** A failed export removes it along with the zip.
+
+A successful export also writes `~/.deident-private/occurrences.json`, beside the
+salt rather than the zip, recording every occurrence the substituter replaced with
+its session and surrounding text, so a count can be checked instead of believed:
+
+```
+node deident.js review --entity PERSON_11    every occurrence, grouped by session
+node deident.js review --session <id>        one full transcript, read back out of the zip
+```
+
+That answers "is this spelling replaced 991 times a person's name or an ordinary
+word", which no check can answer, because a wrong replacement that is reversible
+passes every one of them. Both queries refuse until an export has run. The
+excerpts are the text **before** substitution, so the file pairs pseudonyms with
+real names AND real session ids: it is the most re-identifying thing deident
+writes, it is never an archive entry and never in the output directory, and it
+must not be shared or committed.
+
+## Every flag
+
+| Flag | Commands | Meaning |
+|---|---|---|
+| `--root <path>` | all | Override the resolved session-storage root. Default: `CLAUDE_CONFIG_DIR`, else `~/.claude`. Sessions are read from `<root>/projects/*/*.jsonl`, depth 0 only. |
+| `--out <path>` | all | Output directory. Default: the current directory. |
+| `--salt-dir <path>` | all | Override `~/.deident-private`, which holds the salt, your saved tier decisions, the entity dictionary, `denied.json`, `known-values.json` and the occurrence index. Pointing it at an empty directory starts you over completely, so **copy `denied.json` and `known-values.json` across first**: without the first, none of your deny rules load and a directory you expect to be excluded is proposed at `redact` with every check green; without the second, every value you declared as your own goes back to being something a reader has to spot. deident warns when the directory in use is missing either one and the default one has it. |
+| `--json` | all | Emit the result as JSON instead of padded columns, for an agent driving the tool. |
+| `--html` | `review` | Write one self-contained `review.html`. Cannot be combined with `--entity` or `--session`. |
+| `--entity <ID>` | `review` | Print every occurrence of one entity. Refuses until an export has run. |
+| `--session <id>` | `review` | Print one full redacted transcript. Refuses until an export has run. |
+| `--triage-chars <n>` | `triage` | Characters of the first user prompt to show per session. Default 300, maximum 2,000. A limit high enough to carry whole sessions turns triage back into the expensive stage. |
+| `--apply` | `triage` | Merge a verdicts file into `review.md` instead of writing the triage file. Needs `--verdicts`. |
+| `--verdicts <file>` | `triage` | The verdicts file to apply. `verdict` is `drop` or `unsure`; `keep` is refused, because a triage verdict may only ever move a session toward `drop`. |
+| `--preview` | `export` | Write a `.diff` to inspect in your own editor instead of a zip. |
+| `--entities <file>` | `export` | The tier-1 (semantic) entity list, as JSON. Optional once `~/.deident-private/entities.json` holds one: absent, the dictionary supplies the list; present, the file wins on the identities it names and the dictionary supplies the rest. Without either, the export is refused. |
+| `--audience <who>` | `export` | `teammate`, `company` or `public`. Default `public`. Decides one thing: whether your own repository name, which is your employer's product vocabulary, becomes an entity. It never holds a session back, and every kept session ships at every audience ([why it used to, and what that measured](docs/design-rationale.md#the-declared-audience-moves-the-entity-list-not-the-sessions)). |
+| `--full` | `export` | Ignore what deident remembers you having read and put the whole corpus in front of a reader again. Refuses the export and writes the full `deident-candidates.txt`. Cannot be combined with `--entities`. |
+| `--namespace <TAG>` | `export` | Shift the pseudonym namespace: `X` gives `X_PERSON_01`. Must match `[A-Z][A-Z0-9]{0,7}`. For a corpus that already contains tokens of the default shape. |
+| `--batch-chars <n>` | `export` | How much prose one run puts in `deident-candidates.txt` before deferring the rest. Default 120,000 characters, roughly 30k tokens. Only the sessions actually in the file are recorded as read, so a smaller number means more rounds, never a weaker claim. |
+| `--skip-unclassified` | `export` | Confirm that workspaces you never gave a tier stay out. Without it, an unclassified workspace refuses the export rather than being silently dropped. |
+| `--skip-unreadable` | `scan`, `export` | Continue past a line that is not valid JSON instead of exiting 3. Each skipped line is reported. |
+| `--skip-unknown-types` | `scan`, `export` | Drop records whose type deident has never seen instead of refusing. The dropped types and counts are printed in the "NOT protected against" block. Refusal stays the default; this exists because a harness ships a new record type every few weeks and one such line should not block a whole export. |
+| `--include-denied <name>` | `export` | Typed confirmation for one deny-listed workspace. Exact name, no globs. Repeatable. |
+| `--selftest` | global | Run the fixture suite and exit. |
+| `--help` | global | Print usage and exit 0. |
+| `--version` | global | Print the version and exit 0. |
+
+A flag a command does not accept is an error, not a silent no-op.
+
+## Exit codes
+
+| Code | Meaning |
+|---:|---|
+| 0 | success, or an informational command |
+| 1 | a check failed, or the export was refused. Nothing was written. |
+| 2 | bad usage. Usage text printed. |
+| 3 | an input could not be read and `--skip-unreadable` was not given |
+
+Any non-zero exit leaves no output file behind. Verification happens before
+anything is written, never after.
 
 ## What is in the zip
 
 One `.jsonl` per session under `sessions/<pseudonym>/<rewritten-uuid>.jsonl`.
-Entry names are de-identified too, and uuids inside them are rewritten. The raw
+Entry names are de-identified too and uuids inside them are rewritten: the raw
 name would carry your username in the directory slug and the real session uuid in
 the filename, neither of which is inside any JSON body.
 
-Kept: user prose, agent prose, thinking blocks, tool names, tool results
+**Kept**: user prose, agent prose, thinking blocks, tool names, tool results
 (head-and-tail capped, with the omission stated), `is_error`, prompts from
 `queue-operation` and `last-prompt` that appear nowhere else, and timestamps
-quantised to the minute.
-
-Dropped: all code content, all images, all pasted documents, account and
-organisation uuids, session titles, harness bookkeeping, hook output, and the
-local skill/agent/MCP inventories.
+quantised to the minute. **Dropped**: all code content, all images, all pasted
+documents, account and organisation uuids, session titles, harness bookkeeping,
+hook output, and the local skill/agent/MCP inventories.
 
 Code is replaced by a **count**. `code_added_lines` is the true added-line count
-taken from `structuredPatch`, and it is `null` when unknown, never `0`. On the
+from `structuredPatch`, and it is `null` when unknown, never `0`. On the
 development corpus the reconstructed net undercounts the true added count by
 44.5%, and 31.9% of edits have added > 0 with net == 0, so a net figure is not a
 substitute.
 
-## Reversal, and the salt
-
-Pseudonyms are `sha256(salt + kind + entity)`. The salt lives at
-`~/.deident-private/salt` and is **never** written into any output, manifest,
-preview or log line. It is 64 hexadecimal characters, and deident refuses to use
-a file that is anything else: a zeroed or truncated salt would silently produce
-predictable pseudonyms, which is this whole mechanism defeated in a way nothing
-downstream could see.
-
-**On Windows the file's protection is the directory it sits in, and nothing
-else.** deident asks for mode `0600`, and NTFS ignores it: `icacls` on the
-created file shows only inherited entries. That is honest rather than fixed
-(`%USERPROFILE%` is already user-scoped and any local administrator can read the
-file regardless), but do not read `mode: 0600` in the source as a guarantee. If
-you want more, set an explicit ACL on `~/.deident-private` yourself.
-
-**Do not share the salt and do not commit it.** Anyone who has both the salt and
-a guess at your entity list can confirm the guess. It is the only thing standing
-between a pseudonym and the name behind it, and it is per-uploader for that
-reason: seven people uploading to one recipient who also holds the roster is a
-seven-way guess, and a shared salt would mean cracking one cracks all.
-
-There is deliberately **no plaintext entity-to-pseudonym map**. Such a file is a
-portable re-identification key for data that has already left the machine, and
-the raw logs are not. To reverse, regenerate the entity list locally and hash the
-candidates.
-
-**That reversal path has one blind spot, and the manifest names it.** Where two
-declared entities overlap in the text, the substituter replaces the union and
-emits both tokens, so the token they shared is gone: `Ada Wren Wang` and
-`Ada Wren Reed Wang` produce the same output. The substitution invariant still
-passes, because it reverses from the spans the pass produced, but the spans
-live in memory and are never written down, so regenerating the entity list
-cannot tell those two inputs apart. The export prints the count of merged
-replacements for exactly this reason.
-
-## Limits: what deident does NOT protect against
-
-A tool that only lists its strengths gets over-trusted, and the first surprise
-destroys it permanently. So, plainly:
-
-**The check reads `known-entity residue    0 occurrences of N entity spellings`,
-not "safe".** It searches for entities it already knows about. A third-party name
-that the seed sources never knew and the semantic pass missed is, by
-construction, undetectable by it. On a 90-file sample of the development corpus
-there were 230 distinct email addresses, 228 of them not the user's. Emails have a
-regex and are swept automatically. **Names do not have a regex.** That is what the
-semantic pass is for, and it is why it is mandatory rather than optional.
-
-**The semantic pass only ever sees prose, which is 2.30% of the bytes.** The
-candidates file is built from `text` blocks and nothing else, because feeding a
-discovery pass the other 97.7% is how it starts inventing entities. So a
-third-party name that appears only inside a tool result, a directory listing or
-a code block never reaches the reader at all: they cannot declare it, and the
-residue scan cannot look for what was never declared. Whole prose chunks now go
-into that file rather than the first 400 characters of each, which closes a
-loss inside the prose. It does not widen what counts as prose.
-
-**A name touching a letter or a digit is left alone.** The boundary rule is
-`(?<!\w)X(?!\w)` where `\w` is every letter and digit in any script except the
-ones written without spaces between words (Chinese, Japanese, Korean, Thai and
-the rest, which have no boundary to test and are flagged in the manifest
-instead), with two exceptions: an underscore is a
-token boundary for spellings of five characters or more, and a camel-case hump
-always is. That is what makes `mcp__<server>__tool`, `project_<org>_notes.md`
-and `<Org>AI` real matches while keeping `ray` inside `array` a correct
-non-match: the case a tool without the rule would get wrong, destroying prose
-and being switched off within a day.
-
-What is still left alone is a spelling abutting an ordinary letter or digit:
-`<name>son`, `<org>123`. The manifest reports that count and it is not zero. If
-your sessions discuss files or handles built out of people's names, read the
-preview before you send the zip.
-
-**Case-insensitive matching is withheld from a few spellings, on purpose.**
-Spellings of four characters or more match in any casing, which is what catches
-`Northwind` when the seeded spelling is `northwind`. The exception is a spelling
-whose case change alters its **length**: Turkish dotted capital I lowercases to
-two code units, German sharp s uppercases to two. The matcher computes its span
-from the spelling's length, so folding those would consume the wrong span and
-reversal would restore the wrong text. They stay on the literal path instead:
-the exact casing still matches, the other casing simply does not. That is a
-miss rather than a corruption, and it is the right way round.
-
-**Credentials and phone numbers are matched by shape, and only by shape.**
-Anything with an unambiguous vendor prefix (`github_pat_`, `ghp_`, `sk-ant-`,
-`xoxb-`, `AKIA`, `ntn_`, `AIza`, `sk-proj-`, `sk_live_`, `npm_`, `glpat-`,
-`hf_`, `xapp-`, and the rest of one greppable list in `src/entities/seed.mjs`)
-is force-replaced, and so is any `+<country code><8-15 digits>` phone number.
-So is a value whose **label** says what it is, which is the rule the prefix
-list cannot be: `api_key`, `secret_key`, `access_token`, `auth_token`,
-`client_secret`, `password`, a `Bearer ` header, an `X-Amz-` parameter in a
-signed URL, a password written inline in a database URL. A
-`-----BEGIN … PRIVATE KEY-----` block is dropped whole rather than replaced,
-because half a key is still a key. All of it is tuned for precision: an entropy
-heuristic would fire on every hash and uuid in your logs, and a scan that cries
-wolf is the first thing switched off.
-
-**A credential with neither a listed prefix nor a label beside it is not
-detected, and nothing downstream recovers it.** The residue scan only searches
-for entities it already knows. The semantic pass reads your prose and the
-model's, never tool output, so a key printed by a command you ran is caught by
-shape or it is not caught at all. The `0 secrets` row in the manifest means
-"none of the shapes deident knows", not "no secrets", and the export block says
-so at the moment you run it.
-
-**Identity-document numbers are found by their label, in English and Chinese
-only.** A number is seeded when a label word sits beside it: `passport`,
-`national id`, `identity card`, `id card`, `driver's licence`, `social
-security`, `ssn`, `tax id`, `fein`, and 護照, 护照, 身分證, 身份證, 台胞證,
-居留證. Anchoring on the label is the same precision decision as the credential
-prefixes, and for the same measured reason: a passport-shaped regex on its own
-matched a thermal-paste part number. **A document number labelled in any other
-language, or written with no label near it, is not detected.** Only the semantic
-pass can catch that one.
-
-**`review.md` is full of raw identity, on purpose.** It lists real absolute
-paths, real workspace names, real git remotes including other people's GitHub
-handles, and the deny-list token that matched each excluded directory. It has to,
-or you could not recognise the rows you are deciding about. Treat it like the
-salt: local only, never pasted into a ticket, never committed. The same goes for
-`deident-candidates.txt`, which holds prose the semantic pass has not seen yet.
-
-**Device fingerprint survives.** MCP server names are replaced, but the model mix,
-the Claude Code version sequence, the tool inventory and localhost ports are all
-still inferable from what remains. Timestamps are quantised to the minute, which
-removes millisecond-level correlation and nothing more. There is no attempt to
-make two machines look alike.
-
-**Verbatim documents you pasted into your own messages are not detected.** If you
-pasted a contract, a résumé, a bank statement or someone else's email into a
-prompt, that text is prose. Only the semantic pass can catch what is inside it,
-and it will only catch the identities it recognises. Quoted third-party writing
-survives as writing.
-
-**The agent-memory deny-list matches filenames, and it knows one naming
-convention.** `MEMORY.md`, and files named `reference_*.md`, `feedback_*.md`,
-`project_*.md`, `user_*.md`. That is one person's memory-index layout, not a
-Claude Code universal. Harness injections inside `<system-reminder>` spans are
-stripped whatever they are called, so the gap is narrower than it sounds: it is
-a memory file a tool **read** for you, under any other name, which ships as
-ordinary prose. Put your own memory filenames in `~/.deident-private/denied.json`
-beside the salt: a JSON array of regex strings, or
-`{"patterns": [...], "tokens": [...]}`. It is never committed, and a malformed
-one refuses the export rather than running with none of your rules.
-
-**Fragments of an entity survive.** Tool results are capped head-and-tail, and a
-cap can land in the middle of an email address or a name. The remaining fragment
-matches no spelling, so neither the substituter nor the scan sees it.
-
-**Four of six upstream scoring axes depend on rules that are not published.**
-Nobody outside the scoring pipeline knows what `failure_signal` is counted from,
-what a "decision point" is, whether the prompt-quality run reads only user
-messages, or whether the expertise classifier reads code content. If truncating
-`tool_result` were to push `failure_signal` below its threshold, `hits_trouble`
-would go false, Resilience would go null and the overall score would **rise**:
-the tool would silently inflate scores. deident therefore caps tool results
-generously rather than tightly, preserves `is_error` verbatim regardless of
-truncation, and keeps every threshold as a named constant in
-`src/retain/constants.mjs` so it can be changed without a rewrite. Until those
-rules are published, treat scores computed from a deident export as unverified
-against scores computed from raw logs.
-
-**Subagent and workflow transcripts are not exported.** Only depth-0 human
-sessions are read; the rest of the corpus is 2.2x the payload with zero human
-turns. Orchestration is still visible through the parent session's `Agent` and
-`Workflow` tool calls.
-
 ## Development
 
 ```
-node deident.js --selftest
+node deident.js --selftest      # 175 fixtures, plain node:assert, no framework
 ```
 
-153 fixtures, plain `node:assert`, no framework and no network. Each one exists
-because it catches a specific bug, named in the fixture. Several carry a negative
-control, because a check that cannot fail proves nothing.
+Each fixture exists because it catches a specific bug, named in the fixture.
+Several carry a negative control, because a check that cannot fail proves nothing.
+Editing the skill and wondering why nothing changed? Installing copies the
+repository into a version-keyed cache, and updating does not re-copy it: [the way
+out](docs/design-rationale.md#installing-copies-the-repository-and-updating-does-not-re-copy-it).
 
-`docs/cli-ux.md` is the interface contract, `docs/privacy-tiers.md` is the
-and `docs/model-tier.md` records which model tiers can do the one step that
-established about other vendors' log formats. `docs/model-tier.md` measures
-which model tiers can do the one step a person or an agent has to do by reading. `BRIEF.md` is the engineering brief
-and `PLAN.md` the slice-1 implementation plan; the section numbers quoted
-throughout the source refer to them.
+[`docs/design-rationale.md`](docs/design-rationale.md) is why the tool refuses
+what it refuses. Beside it, `cli-ux.md` is the interface contract, `scope.md` what
+ships now and what waits, `privacy-tiers.md` the slice-2 tier design,
+`audience-and-floor.md` the measurement that moved the audience axis off the
+session decision, and `model-tier.md` which model tiers can do the one step a
+person or an agent has to do by reading. `BRIEF.md` and `PLAN.md` are the
+engineering brief and the slice-1 plan; the section numbers quoted throughout the
+source refer to them.
 
 Never commit a session log, an export, a preview diff or the salt. `.gitignore`
 covers all of them; do not weaken it.
