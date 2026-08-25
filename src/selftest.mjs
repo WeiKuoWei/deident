@@ -34,7 +34,8 @@ import {
 import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar } from './substitute/engine.mjs';
 import { probeCounts, probeOutliers } from './entities/probe.mjs';
 import { substituteRecord } from './substitute/walker.mjs';
-import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal } from './verify/checks.mjs';
+import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal, unverifiedRemainder } from './verify/checks.mjs';
+import { checkDeclaredValues } from './verify/declared.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from './verify/residual.mjs';
 import { distillToolResult, retainToolUseResult, checkAddedLines } from './retain/toolresult.mjs';
 import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason } from './retain/records.mjs';
@@ -64,6 +65,8 @@ import {
   renderManifest,
   renderProbe,
   renderCandidates,
+  renderChecks,
+  renderDeclaredResidue,
   renderTriageWritten,
   captureOutput,
 } from './cli/report.mjs';
@@ -7340,18 +7343,29 @@ const FIXTURES = [
     // And the reason it was not substituted, not just its absence.
     assert.match(r.out, /3 characters|too collision-prone/, 'the rejected value does not say why');
 
-    // A rejected value must NOT be given a replacement count, because the
-    // number would be a lie in the one direction that matters. Verified against
-    // the shipped modules: buildTable puts an entity with no pseudonym in
-    // `flagged` and never in `entries`, and residualScan sweeps `entries`, so
-    // a rejected value is not scanned for at all. Declaring a two-character
-    // value that occurs twice in the corpus ships it twice while
-    // `known-entity residue: 0` and `archive on disk ... ok` both pass. A row
-    // reading `0` next to it is BRIEF 4.3's zero printed where no check ran.
-    const qi = r.out.split(NL).find((l) => /\bQi\b/.test(l) && !/never substituted/.test(l));
+    // A rejected value must NOT be given a REPLACEMENT count, because the
+    // number would be a lie in the one direction that matters: buildTable puts
+    // an entity with no pseudonym in `flagged` and never in `entries`, so
+    // nothing substituted it and a `0` in that column is BRIEF 4.3's zero
+    // printed where no substitution ran.
+    //
+    // What used to follow this, and no longer does, is that the row also said
+    // "not scanned for either, so this value may still be in the archive".
+    // src/verify/declared.mjs re-derives its needles from known-values.json on
+    // disk and sweeps for exactly the values the table never carried, so the
+    // occurrence count now exists. cli-ux §6: a disclosure that hides an
+    // implemented control is worse than either honest option, so the row must
+    // point at the number rather than claim nobody looked.
+    const declaredBlock = r.out.slice(0, r.out.indexOf('declared-values sweep'));
+    const qi = declaredBlock.split(NL).find((l) => /\bQi\b/.test(l) && !/never substituted/.test(l));
     assert.ok(qi !== undefined, `no row for the rejected value:${NL}${r.out}`);
-    assert.doesNotMatch(qi, /\d/, `the rejected value was given a count it cannot have: ${qi}`);
-    assert.match(r.out, /not scanned|no count/i, 'the report does not say the count is unavailable');
+    assert.doesNotMatch(qi, /\d/, `the rejected value was given a replacement count it cannot have: ${qi}`);
+    assert.match(r.out, /counted below|declared-values sweep/i, 'the report does not say where the count is');
+    assert.doesNotMatch(
+      r.out,
+      /not scanned for either/,
+      'the report still claims nothing scanned for a rejected value, which is no longer true',
+    );
   }],
 
   // F160 - the source is worth nothing if the person cannot fill it in, and the
@@ -7634,6 +7648,210 @@ const FIXTURES = [
     );
     assert.match(text, /No other spelling of the same entity matched either/, `the report does not say what it actually checked:${NL}${text}`);
   }],
+
+  // F175..F178 - the gates were never in a position to catch either shipped
+  // leak, and the source said so in two places while the report said the
+  // opposite in six.
+  //
+  // Both leaks that this tool has ever actually caught were caught by oracles
+  // OUTSIDE it: a grep of the shipped bytes, and a diff against a maintained
+  // identity file. known-values.json imported the second. The six green rows
+  // are all internal-consistency checks against the entity table, and each of
+  // them was CORRECT both times a leak shipped. The defect is that six rows
+  // read to a human as six independent confirmations of something much bigger
+  // than "the table was applied consistently".
+  //
+  // F175 - the presentation half. One line that states the joint claim, and an
+  // explicit remainder line for what nothing here covers.
+  ['F175', 'a passing run states one joint claim and its unverified remainder, and a failing run keeps its rows', () => {
+    const passing = [
+      { label: 'serialization', detail: '27,545 / 27,545 lines byte-identical', ok: true },
+      { label: 'substitution invariant', detail: '1,284 replacements, all reversible', ok: true },
+      { label: 'pseudonym namespace', detail: 'no pre-existing PERSON_n tokens', ok: true },
+      { label: 'known-entity residue', detail: '0 occurrences of 47 entity spellings', ok: true },
+      { label: 'semantic pass', detail: '--entities list.json · 12 entities', ok: true },
+    ];
+    const remainder = unverifiedRemainder(331_000, 14_900_000);
+    const green = captureOutput(() => renderChecks(passing, remainder));
+
+    // Six rows of `ok` is the bug. One statement of what they jointly assert
+    // is the fix, so the per-check details must not each earn their own line.
+    const okRows = green.split(NL).filter((line) => /\sok\s*$/.test(line));
+    assert.equal(okRows.length, 0, `a passing run still prints a row per check:${NL}${green}`);
+    assert.doesNotMatch(green, /27,545 \/ 27,545/, `the collapsed line still carries a per-check detail:${NL}${green}`);
+
+    // It has to say what the checks DO claim, and say what they do not. A
+    // collapsed line that only says "passed" is the same over-reading in
+    // fewer characters.
+    assert.match(green, /entity table/, `the collapsed line does not name what was checked:${NL}${green}`);
+    assert.match(
+      green,
+      /(does not|do not|none of them|not one)/i,
+      `the collapsed line does not state the limit of the claim:${NL}${green}`,
+    );
+    assert.doesNotMatch(green, /\bsafe\b|no leaks|0 leaks/i, `the collapsed line reads as a safety claim:${NL}${green}`);
+
+    // The remainder, in units, on the same screen. Without it the collapsed
+    // line is just a shorter version of the same over-claim.
+    assert.match(green, /unverified/i, `the remainder is not stated:${NL}${green}`);
+    assert.match(green, /97\.8%|97,8%/, `the remainder carries no measured figure:${NL}${green}`);
+
+    // The failure direction, which is the one that must NOT collapse. A green
+    // row that becomes an opaque red row is worse than six rows.
+    const failing = passing.map((c, i) => (i === 3 ? { ...c, ok: false, detail: '3 occurrences of 47 entity spellings' } : c));
+    const red = captureOutput(() => renderChecks(failing, remainder));
+    for (const c of failing) {
+      assert.ok(red.includes(c.label), `a failing run lost the "${c.label}" row:${NL}${red}`);
+      assert.ok(red.includes(c.detail), `a failing run lost the detail for "${c.label}":${NL}${red}`);
+    }
+    assert.match(red, /FAILED/, `a failing run does not say which word:${NL}${red}`);
+  }],
+
+  // F176 - the other two surfaces, and the rows go the OTHER way on purpose.
+  //
+  // Six rows read as six confirmations to a HUMAN skimming a terminal. A
+  // consumer iterates the array and asserts every `ok`, forms no impression,
+  // and needs the per-check attribution the collapsed line gives up: SKILL.md
+  // step 6 tells an agent to name two of them to the person by name. The
+  // preview file is the same kind of surface, a document somebody opens to
+  // inspect detail. So both keep every row.
+  //
+  // The REMAINDER goes on all three, because the blind spot is the same one
+  // whoever is reading. An agent deciding whether to report "it worked" has it
+  // exactly as much as a person skimming green rows.
+  ['F176', 'the JSON document and the preview file keep every check row and carry the unverified remainder too', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    writeCorpus(root);
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
+    primeSemanticPass(root, out, saltDir, CORPUS_USER_ENV);
+    const r = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--json',
+      '--entities', path.join(root, 'ents.json'),
+    ], CORPUS_USER_ENV);
+    assert.equal(r.code, 0, r.out);
+    const doc = JSON.parse(r.out);
+
+    const labels = doc.checks.map((c) => c.label);
+    for (const want of ['serialization', 'substitution invariant', 'pseudonym namespace', 'known-entity residue', 'semantic pass', 'archive on disk']) {
+      assert.ok(labels.includes(want), `--json lost the "${want}" row: ${labels.join(', ')}`);
+    }
+    for (const c of doc.checks) assert.equal(c.ok, true, `${c.label} failed: ${c.detail}`);
+
+    assert.ok(doc.unverified, 'the JSON document has no unverified remainder');
+    assert.equal(typeof doc.unverified.proseBytes, 'number');
+    assert.equal(typeof doc.unverified.archiveBytes, 'number');
+    assert.ok(doc.unverified.archiveBytes > doc.unverified.proseBytes, 'prose cannot be the whole archive');
+    assert.match(String(doc.unverified.note ?? ''), /read/i, 'the remainder does not say what nobody read');
+
+    // The preview file is the third surface printing this block, and a
+    // disclosure that is on two of three surfaces is the shape limits.mjs
+    // exists to stop: `review.html` and the preview both carried a stale "NOT
+    // protected against" block for a run whose entity table had already fixed
+    // it, because the fix landed in report.mjs alone.
+    const preview = runCli([
+      'export', '--preview', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ], CORPUS_USER_ENV);
+    assert.equal(preview.code, 0, preview.out);
+    const diff = fs.readFileSync(
+      path.join(out, fs.readdirSync(out).find((f) => f.endsWith('.diff'))),
+      'utf8',
+    );
+    assert.match(diff, /known-entity residue/, 'the preview file lost its check rows');
+    assert.match(diff, /unverified/i, `the preview file states no unverified remainder:${NL}${diff.slice(0, 400)}`);
+    assert.match(diff, /%/, 'the preview remainder carries no figure');
+  }],
+
+  // F177 - the mechanism half. The verifier re-derives its needles from disk.
+  //
+  // known-values.json is seeded INTO the entity table and residualScan then
+  // checks the archive against that table, so the check and the thing it
+  // checks share a source. cli-ux 12b names the gap exactly: buildTable puts an
+  // entity with a null pseudonym in `flagged` and never in `entries`, and
+  // residualScan sweeps `entries`. A declared value that rejectReason refuses
+  // is therefore never substituted AND never scanned for, and both residue
+  // gates pass over it.
+  //
+  // The needle sets are disjoint by construction, which is the property that
+  // stops this reading as a second opinion on a result it merely repeated.
+  ['F177', 'a declared value the table never carried is scanned for, and the residue scan structurally cannot', () => {
+    // A two-character value: rejectReason refuses it at any count, so it never
+    // reaches `entries`. Written as a needle that does not occur in ordinary
+    // fixture text, so the count below is exact rather than incidental.
+    const declaredValue = 'Qz';
+    const bytes = JSON.stringify({ text: `the account is under ${declaredValue} and stays that way` });
+    const table = buildTable([entity('P1', 'person', 'Aurelio Ferreira-Nkemdirim', 'PERSON_1')]);
+
+    // The negative control, and the whole reason this check exists: the scan
+    // that already runs cannot see it, and reports a clean total.
+    const residue = residualScan(bytes, table, new Set());
+    assert.equal(residue.entityCount, 0, 'the negative control is wrong: residualScan already found it');
+
+    const saltDir = tmpdir();
+    writeKnownValues(saltDir, { values: [declaredValue, 'Aurelio Ferreira-Nkemdirim'] });
+    const check = checkDeclaredValues(bytes, saltDir, table);
+
+    // Per value, not a total. A total is what the residue line already gives
+    // and what a reader cannot act on.
+    assert.equal(check.rows.length, 1, `expected exactly the value the table does not carry: ${JSON.stringify(check.rows)}`);
+    assert.equal(check.rows[0].value, declaredValue);
+    assert.equal(check.rows[0].count, 1, 'the count is not the occurrence count');
+
+    // The value the table DOES carry must not appear here. A check that
+    // repeats another check's needles reads as independent confirmation of a
+    // result it merely repeated, which is worse than no check.
+    assert.ok(
+      !check.rows.some((row) => row.value === 'Aurelio Ferreira-Nkemdirim'),
+      'the check swept a needle the residue scan already carries',
+    );
+
+    // From disk, not from the table it is checking. Rewrite the file and the
+    // answer must change with no other input changing.
+    writeKnownValues(saltDir, { values: ['Aurelio Ferreira-Nkemdirim'] });
+    assert.equal(checkDeclaredValues(bytes, saltDir, table).rows.length, 0, 'the needles did not come from the file');
+
+    // And the report has to say the difference, or a reader takes it for a
+    // second residue figure.
+    writeKnownValues(saltDir, { values: [declaredValue] });
+    const text = captureOutput(() => renderDeclaredResidue(checkDeclaredValues(bytes, saltDir, table)));
+    assert.match(text, new RegExp(declaredValue), `the value is not named:${NL}${text}`);
+    assert.match(text, /never entered the entity table/i, `the report does not say why no other scan looked:${NL}${text}`);
+    assert.match(text, /known-values\.json/, `the report does not name where the needles came from:${NL}${text}`);
+
+    // The silent case. An absent block beside a green residue line reads as a
+    // clean result, which is the same failure limits.mjs records for
+    // gluedNotListed.
+    writeKnownValues(saltDir, { values: ['Aurelio Ferreira-Nkemdirim'] });
+    const quiet = captureOutput(() => renderDeclaredResidue(checkDeclaredValues(bytes, saltDir, table)));
+    assert.match(quiet, /\S/, 'a list with nothing left over printed nothing at all');
+  }],
+
+  // F178 - the third oracle, and the only one that is not code.
+  //
+  // A person reading the finished archive with no context and trying to name
+  // someone is what caught both real leaks. It was done by hand and by luck.
+  // The operator contract is where it becomes a step, and the failure mode is
+  // specific: a reader who already knows the answer cannot run this test at
+  // all, so the instruction has to say the reader must be fresh.
+  ['F178', 'the operator contract makes the cold read a step, and says the reader must be fresh', () => {
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    for (const rel of [['skills', 'deident', 'SKILL.md'], ['AGENTS.md']]) {
+      const where = path.join(repo, ...rel);
+      const text = fs.readFileSync(where, 'utf8');
+      assert.match(text, /cold read/i, `${rel.join('/')} has no cold-read step`);
+      // The question, in a form both a human and a subagent can be handed.
+      assert.match(text, /name the person/i, `${rel.join('/')} does not say what to ask`);
+      // The failure mode. Without this the step runs against a reader who
+      // already knows the answer and always passes.
+      assert.match(text, /fresh/i, `${rel.join('/')} does not require a fresh reader`);
+      // And what to do with each answer, or it is a ritual rather than a step.
+      assert.match(text, /guess/i, `${rel.join('/')} does not separate a guess from an identification`);
+    }
+  }],
+
   ['F174', 'every fixture id is distinct, so a failure message identifies one fixture', () => {
     // Five ids were used twice or three times, and "F151 failed" named two
     // different fixtures. They collided because parallel branches each appended

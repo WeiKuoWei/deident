@@ -414,6 +414,30 @@ worth naming to the person:
 - `archive on disk`: the same scan, over the file that was actually written.
   This is the only check whose subject is the artifact the recipient opens.
 
+**All of them ask one question, and it is smaller than it looks.** Every check
+compares the output against the entity table it was given. Not one asks whether
+the table is complete. The terminal says this in one line for that reason; the
+JSON keeps the rows so you can name the failing one. Do not report a passing
+`checks` array as "no identities leaked". Report it as what it is: everything
+in the table was substituted, everywhere the scan found it.
+
+- `unverified`: what none of the checks covers, on this run. `proseBytes` is
+  the prose a reader was shown, `archiveBytes` is what leaves, and
+  `unreadPercent` is the rest. Prose is the only part of a session a reader is
+  ever shown, so a name that occurs only inside a tool result, a directory
+  listing or a code block was never in front of anyone and no check looks for
+  it. **Carry the percentage into the handover.** It is the honest size of the
+  gap between "every check passed" and "this archive names nobody".
+- `declaredResidue`: values from `known-values.json` that never entered the
+  entity table, swept for anyway. The needles are re-read from the file on disk
+  rather than taken from the run's table, which is the point: a value the safety
+  rules refused is not in the table, so every other check is blind to it by
+  construction. `rows` is per value with a real occurrence count, and a count
+  above zero means that value is in the archive unreplaced. Not a failure and
+  it will not refuse: the person declared a value the tool already told them it
+  cannot safely substitute. Report the row and let them decide. **These rows
+  carry real values**, so treat them the way you treat `declaredValues`.
+
 Also carry back:
 
 - `manifest.audience` and `manifest.heldByFloor`. The audience holds no
@@ -500,7 +524,65 @@ ordinary word for meeting"), not the rows.
 If the export refuses, the JSON has `ok: false` and an `error` with `reason`,
 `why` and runnable `remedies`. Act on the remedy; do not retry the same command.
 
-## 7. Hand it over
+## 7. The cold read
+
+Every check in step 6 compares the archive against the entity table. Nothing
+compares it against a person. Both leaks this tool has actually caught were
+caught by oracles outside it: a grep of the shipped bytes, and a diff against a
+maintained identity file. `known-values.json` imported the second one. This step
+is the third, and it is the only one that can find a name nobody declared.
+
+Run it after the archive exists and before anyone sends it. It costs one
+subagent call.
+
+**What to hand over.** Three sessions, read back out of the archive, not out of
+the corpus:
+
+```
+head -3 <workdir>/export-map.txt          # pick three entry names
+node <repo>/deident.js review --session <id> --salt-dir <same>
+```
+
+Take the first ~2,000 words of each. Prefer the three largest entries: a short
+session carries too little to identify anyone and a pass on it proves nothing.
+Hand over that text and nothing else. No file paths, no entity list, no
+`export-map.txt`, no summary of what the sessions were about.
+
+**Who reads it.** A reader who does not already know the answer. This is the
+whole test and it is the easy thing to get wrong: you have been staring at these
+names for an hour, so you cannot run it, and neither can anyone else in the
+conversation that produced the export. Use a fresh subagent with no inherited
+context, or a person who does not work with the uploader. If the only available
+reader already knows the uploader, say the cold read was not run rather than
+running it and reporting a pass.
+
+**What to ask.** Hand over the sample and this question, verbatim:
+
+> This is a transcript from someone's AI coding assistant. From this text alone,
+> name the person, name the company they work for, and name three of their
+> colleagues. If you cannot name any of them, say what you would need in order
+> to. Do not guess: if a name is not in the text, say so.
+
+**What to do with the answer.**
+
+| Answer | What it means | What to do |
+|---|---|---|
+| A real name, and it is correct | A leak. The reader found a name the table never had. | Get the exact substring they read it from. Add it to the entity list, or to `known-values.json` if it is the uploader's own. Re-export. Do not send the archive. |
+| A real name, and it is wrong | A guess off a pseudonym or a common word. Not a finding. | Nothing. Do not add it to any list: a wrong name in the entity table substitutes text that was never an identity. |
+| "I cannot name them", plus what they would need | The intended result. | Record what they said they would need. If the missing piece is in the archive and they simply did not connect it, that is next run's problem. |
+| A role, not a name ("the person who runs payroll") | Re-identification by role, which substitution does not address and the README already discloses. | Not a leak. Report it to the person as a limit, in the handover. |
+| The employer, from product or repo vocabulary | The `--audience` setting, working as documented or set too low. | If the archive is going outside the company, re-run with `--audience public`. |
+
+Only the person running the export can score this, because only they know the
+real names. Score it yourself against what you know; do not paste the real names
+into the reader's prompt to check. A prompt containing the answer cannot ask the
+question.
+
+Report the cold read in the handover either way: which entries were sampled, who
+read them, and what came back. "Not run" is an acceptable line. "Passed" with no
+reader named is not.
+
+## 8. Hand it over
 
 The archive is a file. The tool does not upload it and has no receiver.
 

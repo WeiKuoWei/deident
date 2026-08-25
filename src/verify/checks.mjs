@@ -363,3 +363,53 @@ export function runAllChecks(state) {
 export function toReportRows(checks) {
   return checks.map((c) => Object.freeze({ label: c.name, detail: c.detail, ok: c.ok }));
 }
+
+/**
+ * What none of the gates above covers, in a unit that moves.
+ *
+ * Every check in this file compares the output against the entity table it was
+ * given. Not one compares it against the sessions, so the question "does the
+ * table name everyone in here" has no answer anywhere in the run, and six green
+ * rows read as though it did. This is the counterweight, and it has to carry a
+ * number or it is a disclaimer rather than a measurement.
+ *
+ * The unit is PROSE AS A FRACTION OF THE ARCHIVE, and the three candidates it
+ * was chosen over each fail for their own reason:
+ *
+ *   sessions nobody read     always 0 here. checkSemanticPass refuses the
+ *                            export while it is not, so by the time this
+ *                            prints it can only ever say zero, and a number
+ *                            that is always zero is decoration.
+ *   classes with no detector  a constant, and already disclosed in the "NOT
+ *                            protected against" block of the same report. Saying
+ *                            it twice is the duplicate-confirmation failure
+ *                            this whole change exists to remove.
+ *   prose bytes              measured on THIS run, and the operator can move
+ *                            it: excluding a workspace, or reading more of
+ *                            what the candidates file offers, changes it.
+ *
+ * Prose is the only part of the corpus a reader is ever shown: the candidates
+ * file is prose, BRIEF §4.10 measured text at 2.30% of depth-0 bytes, and a
+ * name that appears only inside a tool result, a directory listing or a code
+ * block therefore never reaches a reader, cannot be declared, and cannot be
+ * scanned for. The remaining percentage is the size of that blind spot.
+ *
+ * @param {number} proseBytes    prose put in front of a reader, this corpus
+ * @param {number} archiveBytes  the serialized output
+ */
+export function unverifiedRemainder(proseBytes, archiveBytes) {
+  const unread = Math.max(0, archiveBytes - proseBytes);
+  // Guard the empty corpus rather than printing NaN%: the export refuses on an
+  // empty archive anyway, but this runs before that refusal.
+  const percent = archiveBytes > 0 ? Number(((unread / archiveBytes) * 100).toFixed(1)) : 0;
+  return Object.freeze({
+    proseBytes,
+    archiveBytes,
+    unreadBytes: unread,
+    unreadPercent: percent,
+    note:
+      'Prose is the only part of a session a reader is ever shown, so the rest of ' +
+      'the archive was read by nobody and no check looks at it for a name that is ' +
+      'not already in the entity table.',
+  });
+}

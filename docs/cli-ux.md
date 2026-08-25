@@ -332,11 +332,16 @@ never the output directory, never the repository.
 $ deident export
 
   Checks
-    serialization           27,545 / 27,545 lines byte-identical    ok
-    substitution invariant  1,284 replacements, all reversible      ok
-    pseudonym namespace     no pre-existing PERSON_n tokens         ok
-    known-entity residue    0 occurrences of 47 entities            ok
-    semantic pass           ran 2026-08-22 03:41 · 12 entities      ok
+    5 passed. Jointly they assert one thing about the entity table:
+    every spelling in it was substituted wherever the scan found it, and the
+    result reverses. Not one of them asks whether the table is complete, or
+    whether it names everyone in these sessions.
+    the table came from   --entities deident-entities.json · 12 entities · 170/170 sessions read
+
+    unverified   323.2 KB of these sessions is prose, and prose is the only
+                 part a reader is ever shown. The archive is 14.2 MB, so
+                 97.8% of it went in front of nobody and no check here reads
+                 it for a name that is not already in the table.
 
   Leaving this machine
     170 sessions from 17 workspaces
@@ -385,7 +390,8 @@ occurrences each value actually claimed:
   ! 2 of them replaced nothing, so they protect nothing:
       secret    Qi
         never substituted: shorter than 3 characters: too collision-prone to substitute safely
-        and not scanned for either, so this value may still be in the archive
+        so the count above is a dash and not a zero. Whether it is in the
+        archive anyway is counted below, under the declared-values sweep
       secret    1974-04-31
         no occurrence of this string is anywhere in the exported text
 ```
@@ -406,12 +412,13 @@ claim they made. Two of the rows are the ones nothing else prints:
   Its count column is a dash and not a number, and that is the honest state
   rather than a formatting choice. `buildTable` puts an entity with no
   pseudonym in `flagged` and never in `entries`; `residualScan` sweeps
-  `entries`. So a rejected value is never substituted AND never scanned for.
-  Verified against the shipped modules: a declared two-character value
-  occurring twice in a corpus ships twice, while `known-entity residue: 0` and
-  `archive on disk ... ok` both pass. A `0` printed beside it would be a zero
-  where no check ran. See §12 on why this is the one place a seventh gate
-  would earn its keep.
+  `entries`. So a rejected value is never substituted, and a `0` in a
+  replacement-count column would be a zero where no substitution ran.
+
+  It is now scanned for. §12b's seventh check re-derives its needles from
+  `known-values.json` on disk and sweeps the produced bytes for exactly the
+  values the table never carried, so the row points at that sweep for the
+  occurrence count instead of saying nobody looked.
 
 **A high count is reported and never refused.** `src/entities/probe.mjs`
 measured why no threshold works: on one corpus an ordinary noun counted 202, a
@@ -675,6 +682,44 @@ replaced" has always meant.
   knows about; the label must not claim more than the mechanism delivers.
 - No emoji or colour carries meaning on its own. `ok` / `FAILED` in words, because
   colour does not survive a pasted screenshot or a colour-blind reader.
+- **A passing run states the joint claim once; a failing run prints every row.**
+  The six checks are one claim about one thing: round trip, substitution
+  invariant, namespace, residue, semantic pass and the on-disk rescan all ask
+  whether the output is consistent with the entity table they were given, and
+  every one of them was CORRECT on both runs that shipped a leak. Six rows
+  reading `ok` are read by a person as six independent confirmations of
+  something much bigger than the claim they share. That is a presentation
+  defect, so the fix is presentational and the mechanism does not change: the
+  five in-memory checks collapse to one sentence that names what they assert
+  and what they do not.
+
+  It does not collapse on failure. A refusal is followed by a remedy, acting on
+  it starts with knowing which check went red, and a green line that becomes an
+  opaque red line is worse than the six rows it replaced. Any `ok: false` and
+  the old table prints in full.
+
+  `--json` keeps every row in both directions. Six rows read as six
+  confirmations to a human; a consumer iterates the array, asserts every `ok`
+  and forms no impression, and SKILL.md step 6 tells an agent to name two of
+  them to the person by name. Collapsing the array would break every consumer
+  and remove the per-check attribution from the one reader that can use it.
+- **The remainder is stated in the same block, with a number.** The unit is
+  prose as a fraction of the archive: prose is the only part of a session a
+  reader is ever shown, BRIEF §4.10 measured text at 2.30% of depth-0 bytes,
+  and a name occurring only inside a tool result, a directory listing or a code
+  block therefore never reaches a reader, cannot be declared, and cannot be
+  scanned for. The remaining percentage is the size of that blind spot, on this
+  run.
+
+  Three units were rejected for it. **Sessions nobody read** is always zero
+  here, because the semantic-pass gate refuses the export while it is not, and
+  a number that can only ever be zero is decoration. **Entity classes with no
+  detector** is a constant and is already in the "NOT protected against" block
+  six lines below, so stating it here is the duplicate-confirmation failure
+  this whole block exists to remove. **Prose bytes** is measured on this run and
+  the operator can move it.
+
+  It carries `unverified` in `--json`, and it is not a check and cannot fail.
 
 ## 8. Refusals name the reason and the remedy
 
@@ -1048,15 +1093,52 @@ two-character value occurring twice in a corpus ships twice in plaintext, while
 `known-entity residue: 0 occurrences of 51 entity spellings` and `archive on
 disk ... ok` both pass.
 
-That is the only place a seventh check would earn its keep, and it is not the
-check the question proposed. It would be narrow: sweep the produced bytes for
-the declared values that were REJECTED, which are the only needles no existing
-scan carries, and which are already enumerated. Whether it should be a gate is a
-separate call, and probably no: the person declared a value the tool has told
-them it cannot safely substitute, so refusing the export would be refusing over
-a choice they made with the reason in front of them.
+That is the only place a seventh check earns its keep, and it is not the check
+the question proposed. **It is built**, in `src/verify/declared.mjs`, and it is
+narrow in exactly the way the gap is.
 
-What is here now is the smaller half of that: those rows print a dash rather
-than a count, and say in terms that the value was not substituted, was not
-scanned for, and may still be in the archive. A number would have been a lie in
-the one direction that matters.
+It re-reads `known-values.json` **from disk** rather than taking `mergedTable`,
+which is the point rather than an implementation detail: every other check is
+handed the table, and a value that never entered the table is invisible to a
+check derived from it. Then it drops every needle the table already carries and
+sweeps the produced bytes for what is left. Plain substring matching, both the
+decoded and the JSON-escaped form, no boundary rule: the boundary rule decides
+whether to REPLACE and nothing replaced these, so any occurrence at all is the
+finding, and a boundary test would hide the short-value case the gap is made of.
+
+**The needle sets are disjoint by construction**, and that is what stops this
+reading as a second opinion on a result it merely repeated. The report says so
+in as many words, per value rather than as a total:
+
+```
+  ! 1 of the 4 values you declared never entered the entity table, so no
+    check above looked for it. The other 3 were swept by the residue scan.
+    Needles re-read from known-values.json on disk, then swept over the same
+    output the residue scan read. Occurrences found:
+           2  secret    Qz
+              …the payout account is under Qz and stays…
+    A count above zero is that value, in the archive, unreplaced. Declaring a
+    longer spelling that contains it is one fix; accepting it is another.
+    Nothing here will refuse the export over a value you declared yourself.
+```
+
+Three things this can say that the residue scan cannot: it names values that
+scan structurally does not carry, it answers per value instead of as one total,
+and its needles came from the file on disk at the moment of the check rather
+than from the run's own table.
+
+**Not a gate**, and the reason has not changed: the person declared a value the
+tool has already told them it cannot safely substitute, so refusing the export
+would be refusing over a choice they made with the reason in front of them.
+
+The zero case prints too. `renderGluedResidue` returns silently with no rows and
+§6b records what that cost, so a list with nothing left over gets a line saying
+the residue scan covered all of it. An absent block beside a green residue
+figure reads as a clean result when it means not examined.
+
+§6a's rejected rows keep their dash in the count column, because nothing
+substituted those values and a `0` there is a zero where no substitution ran.
+What those rows no longer say is "and not scanned for either, so this value may
+still be in the archive": that stopped being true the moment this check shipped,
+and §6 calls a disclosure that hides an implemented control worse than either
+honest option. They point at this sweep instead.

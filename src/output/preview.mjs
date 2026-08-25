@@ -85,8 +85,25 @@ export function renderPreview(state) {
 
   push('== checks ==');
   push('');
+  // The rows stay here, unlike the terminal. This is a document somebody opens
+  // to inspect detail rather than a screen they skim in three seconds, and the
+  // per-check attribution is the thing they came for.
   for (const c of state.checks) push(`    ${c.label.padEnd(23)} ${c.detail.padEnd(44)} ${c.ok ? 'ok' : 'FAILED'}`);
   push('');
+  // The remainder does NOT stay behind, on any surface. Every row above asks
+  // whether the output is consistent with the entity table; none asks whether
+  // the table is complete, and a block of `ok` with nothing beside it reads as
+  // an answer to the second question. limits.mjs was written because the same
+  // disclosure lived in three renderers and was fixed in one of them: this file
+  // and review.html both printed a stale "NOT protected against" block for a
+  // run whose entity table had already made it false.
+  if (state.unverified) {
+    const u = state.unverified;
+    push(`    unverified: ${u.proseBytes} bytes of these sessions is prose, and prose is the only part`);
+    push(`    a reader is ever shown. The archive is ${u.archiveBytes} bytes, so ${u.unreadPercent}% of it went`);
+    push('    in front of nobody and no check above reads it for a name.');
+    push('');
+  }
 
   push('== leaving this machine ==');
   push('');
