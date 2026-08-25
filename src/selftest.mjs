@@ -281,6 +281,40 @@ function writeLongPromptSession(root, cwd, text) {
 }
 
 /**
+ * A session that opens with a bare slash command and says what it is about
+ * only afterwards.
+ *
+ * The envelope is the one the live corpus writes, character for character:
+ * measured 2026-08-25 over 214 sessions, a `/clear` first prompt is the 106
+ * characters `<command-name>/clear</command-name>` plus an empty
+ * `<command-message>` and an empty `<command-args>`, and nothing else. 17 of
+ * those 214 sessions open with one, 11 of them `/clear`, and the triage stage
+ * showed the reader the envelope and no work.
+ */
+function writeCommandFirstSession(root, cwd, sessionId, command, then = null) {
+  const envelope =
+    `<command-name>${command}</command-name> ` +
+    `<command-message>${command.replace('/', '')}</command-message> ` +
+    '<command-args></command-args>';
+  const turn = (seq, text) => ({
+    type: 'user',
+    uuid: `00000000-0000-4000-8000-9000000000${String(seq).padStart(2, '0')}`,
+    sessionId,
+    timestamp: '2026-08-20T13:00:00.000Z',
+    cwd,
+    message: { role: 'user', content: [{ type: 'text', text }] },
+  });
+  const rows = [turn(1, envelope)];
+  if (then !== null) rows.push(turn(2, then));
+  fs.writeFileSync(
+    path.join(root, 'projects', 'ws', `${sessionId}.jsonl`),
+    rows.map((r) => JSON.stringify(r)).join(NL) + NL,
+    'utf8',
+  );
+  return sessionId;
+}
+
+/**
  * One session carrying the classes of value that leaked from a finished export
  * with all six gates green: a document name ordering, a date of birth, a
  * postal address and a payment-platform account id.
@@ -7268,6 +7302,75 @@ const FIXTURES = [
     for (const [name, text] of [['SKILL.md', skill], ['AGENTS.md', fs.readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8')]]) {
       assert.ok(!text.includes('.identity-private'), `${name} hardcodes one machine's personal-details path`);
     }
+  }],
+
+  // F161..F162 - triage could not see past a first prompt that says nothing.
+  //
+  // Triage reads only the first user prompt, and its entire cost argument rests
+  // on that prompt being representative. One of the two sessions that leaked
+  // the 21 identity fields opened with `/clear`, so the reader was shown a
+  // command envelope and had nothing to judge, and the session shipped.
+  //
+  // Measured 2026-08-25 over the live corpus root, depth 1, the way
+  // resolveCorpus scopes it: 214 sessions, of which 45 (21.0%) have a
+  // contentless first prompt. 28 carry no user prompt in the head at all and 17
+  // open with a bare slash command and no arguments (`/clear` x11, `/model` x2,
+  // `/login`, `/mcp`, `/reload-plugins`, `/doctor`). Of those 17, 15 are
+  // answered by the very next prompt in the SAME 256 KB head that was already
+  // read: 14 at index 1 and 1 at index 2. So the fix costs no extra I/O.
+  //
+  // F161 - show the first prompt that carries content, and say it was not the
+  // first. Not saying so would be worse than the bug: a reader who believes
+  // they are looking at how a session opened would draw conclusions from a
+  // prompt that arrived after a context reset.
+  ['F161', 'triage shows the first prompt with content in it, and says when that was not the first', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const id = '77777777-7777-4777-8777-777777777777';
+    writeCommandFirstSession(root, corpus.cwd, id, '/clear', 'TRIAGE-REAL-WORK reconcile the payout ledger');
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    assert.equal(runCli(['triage', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+
+    const text = fs.readFileSync(path.join(out, 'deident-triage.txt'), 'utf8');
+    const block = text.slice(text.indexOf(id));
+    assert.ok(block.includes('TRIAGE-REAL-WORK'), `the work in the session is not shown:${NL}${block.slice(0, 400)}`);
+    assert.ok(block.includes('/clear'), 'the row does not say what was skipped');
+    // The envelope is structure, not prose, and it is 106 characters of the
+    // budget this stage exists to protect.
+    assert.ok(!block.includes('<command-name>'), 'the raw command envelope was rendered at a reader');
+  }],
+
+  // F162 - a session with nothing to judge at all. 30 of the 214 measured
+  // sessions are in this state even after F161's fix: 28 with no user prompt in
+  // the head and 2 whose every prompt is a bare command. The triage rubric
+  // already says a row you cannot classify is a drop, so the row that cannot be
+  // classified has to be legible AS that, rather than looking like a session
+  // that merely happens to open quietly.
+  ['F162', 'a session whose prompts all say nothing is surfaced as having nothing to judge', () => {
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const corpus = writeCorpus(root);
+    const allCommands = '88888888-8888-4888-8888-888888888888';
+    writeCommandFirstSession(root, corpus.cwd, allCommands, '/model');
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
+    const r = runCli(['triage', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV);
+    assert.equal(r.code, 0, r.out);
+
+    const text = fs.readFileSync(path.join(out, 'deident-triage.txt'), 'utf8');
+    const block = text.slice(text.indexOf(allCommands));
+    const row = block.split(NL)[1];
+    assert.match(row, /nothing/i, `the row does not say there is nothing to judge: ${row}`);
+    assert.ok(row.includes('/model'), `the row does not say what the session does contain: ${row}`);
+    assert.ok(!row.includes('<command-name>'), 'the raw command envelope was rendered at a reader');
+    // The rubric already answers this row, and the header says so. The count
+    // line has to as well, or the number of unjudgeable rows is invisible until
+    // somebody scrolls the file.
+    assert.match(r.out, /nothing to judge|cannot be judged|no prompt/i, `the summary hides the count:${NL}${r.out}`);
   }],
 
   // F163 - the salt directory that silently has none of the person's list.

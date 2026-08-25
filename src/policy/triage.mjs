@@ -71,7 +71,14 @@ function header(chars) {
 #
 # One block per session your review currently proposes to KEEP. Each block is a
 # session id, its date, the directory the sessions ran in, and the first thing
-# the person typed, truncated to ${chars} characters. Nothing else is read.
+# the person typed that says anything, truncated to ${chars} characters. Nothing
+# else is read.
+#
+# It is the first prompt WITH CONTENT IN IT, not literally the first. A session
+# that opens with /clear or /model used to show you the command and nothing
+# else, and 21 identity fields shipped out of a session that opened that way.
+# Where the prompt you are shown was not the first, the row says so above it,
+# and a session whose every prompt is a bare command says that instead.
 #
 # Measured 2026-08-24 on a 205-session corpus: this file is about 23 KB, about
 # 7k tokens. The entity pass that runs after it reads 915 KB, about 250k tokens.
@@ -123,7 +130,7 @@ ${HEADER_RULE}
 /**
  * Render the triage payload.
  *
- * @param {ReadonlyArray<{id, date, workspace, prompt: string|null}>} rows
+ * @param {ReadonlyArray<{id, date, workspace, prompt: string|null, skipped?: ReadonlyArray<string>}>} rows
  * @param {{chars?: number}} opts
  * @returns {string}
  */
@@ -132,14 +139,27 @@ export function renderTriage(rows, opts = {}) {
   const parts = [header(chars)];
   for (const row of rows) {
     parts.push(`${row.id}  ${row.date}  ${row.workspace}`);
-    // A session whose prompt could not be read is still offered, and the row
-    // says so. It is the row most worth a look: nobody can see what is in it,
-    // and hiding it would quietly ship every session that has no first prompt.
-    parts.push(
-      row.prompt === null || row.prompt === ''
-        ? '  (no first user prompt in this session)'
-        : `  ${truncate(row.prompt, chars)}`,
-    );
+    const skipped = row.skipped ?? [];
+    if (row.prompt === null || row.prompt === '') {
+      // A session nobody can see into is still offered, and the row says which
+      // kind of blank it is. Hiding it would quietly ship every session that
+      // opens without a prompt, and the two blanks are different facts: one
+      // session has no prompt in its head at all, the other opens with commands
+      // and no work. Both are what the header's own rubric calls a row you
+      // cannot classify, which it already answers with `drop`.
+      parts.push(
+        skipped.length === 0
+          ? '  (nothing to judge: no user prompt in this session)'
+          : `  (nothing to judge: every prompt here is a bare command, ${skipped.join(' ')})`,
+      );
+    } else {
+      // Said out loud, because a reader who believes they are looking at how a
+      // session opened would otherwise draw conclusions about it from a prompt
+      // that arrived after a context reset. Measured on the live corpus: 15 of
+      // 214 sessions are shown a later prompt, almost always the next one.
+      if (skipped.length > 0) parts.push(`  (not the first prompt: ${skipped.join(' ')} came first)`);
+      parts.push(`  ${truncate(row.prompt, chars)}`);
+    }
     parts.push('');
   }
   return parts.join('\n');

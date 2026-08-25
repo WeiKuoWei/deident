@@ -145,11 +145,64 @@ The same measurement decided the shape: **0 of those 205 sessions carry an
 surface; 161 of 205 have one, and a session that has none says so on its row
 rather than being hidden.
 
+### The prompt shown is the first one that says something
+
+Not literally the first. The whole cost argument above rests on one prompt being
+representative of a session, and a session that opens with `/clear` used to put
+a command envelope in front of the reader and nothing else. One of the two
+sessions that shipped 21 identity fields in plaintext (§12) opened exactly that
+way, so triage had nothing to judge and it went through.
+
+Measured 2026-08-25 over the live corpus root at depth 1, the way
+`resolveCorpus` scopes it:
+
+```
+  session files                              214
+  no user prompt in the head at all           28   13.1%
+  first prompt is a bare slash command        17    7.9%
+  CONTENTLESS FIRST PROMPT, TOTAL             45   21.0%
+
+  a later prompt in the same head has content 15
+  every prompt in the head is contentless      2
+  nothing to judge even after the fix         30
+
+  which bare command:  /clear x11  /model x2  /login  /mcp  /reload-plugins  /doctor
+```
+
+The 15 recoverable ones are answered by the very next prompt, 14 at index 1 and
+1 at index 2, and it is inside the 256 KB head that was already read. **The fix
+costs no extra I/O and reads no further into any file.** Triage stays the cheap
+stage; that is the constraint, not a preference.
+
+Two rules follow:
+
+- **A row whose prompt was not the first says so**, on its own line above the
+  prompt: `(not the first prompt: /clear came first)`. A reader who believes
+  they are looking at how a session opened would otherwise draw conclusions
+  about it from a prompt that arrived after a context reset.
+- **A row with nothing to judge says which kind of nothing it is**: no user
+  prompt in the session at all, or every prompt a bare command. The triage
+  rubric already answers both, and its answer is `drop`.
+
+The test is structural, not a length floor. A slash command arrives as the
+literal 106 characters `<command-name>/clear</command-name>` plus an empty
+`<command-message>` and an empty `<command-args>`; a command WITH arguments
+carries what the person typed and counts as content. A character floor was
+measured and rejected: only 2 plain-prose first prompts on that corpus are under
+12 characters and 13 are under 20, while a complete and perfectly judgeable
+question written in Han script runs to 18. A floor tuned on Latin prose throws
+away the shortest scripts first.
+
+The envelope is also never rendered raw. It is structure, not prose, and it
+spends 106 characters of the budget this stage exists to ration. `/goal ship the
+ledger` is what the reader sees.
+
 ```
 $ deident triage --out <workdir>
 
   164 sessions still proposed keep, 300 characters of first prompt each
-    3 of them carry no first user prompt and say so in the file
+    3 of them have nothing to judge and say so in the file
+    9 of them open with a bare command, so a later prompt is shown and the row says so
 
   → deident-triage.txt    23.4 KB
     Reading this will cost roughly 6,990 tokens.

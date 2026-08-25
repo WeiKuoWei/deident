@@ -130,6 +130,20 @@ above it misses:
 Level 3 is what makes the whole thing safe to use: no classification scheme will
 be right the first time, so there has to be a last look.
 
+**Level 3 only works if the reader can see the session.** Measured 2026-08-25
+over the live corpus at depth 1: of 214 sessions, 45 (21.0%) opened with
+something that told a reader nothing. 28 carried no user prompt at all and 17
+opened with a bare slash command, `/clear` eleven times. Triage showed the
+command envelope, the reader had nothing to judge, and the session went through.
+One of the two sessions that leaked 21 identity fields was one of those.
+
+The last look now shows the first prompt that says something, and says on the row
+when that was not the first. It reads no further into any file to do it: 15 of
+the 17 are answered by the very next prompt in the head that was already read.
+The remaining 30 sessions that still have nothing to judge say so explicitly,
+because the triage rubric already answers a row nobody can classify and its
+answer is `drop`. `docs/cli-ux.md` §4b has the distribution.
+
 ### 4b. Granularity is about what is EXCLUDED. It says nothing about what is FOUND
 
 The three levels above all answer "does this material leave". None of them

@@ -211,6 +211,23 @@ proposes to keep, carrying the session id, its date, the workspace, and the
 first thing the person typed truncated to 300 characters. Nothing else, and only
 the head of each session file is read.
 
+It is the first prompt that says something, not literally the first. A session
+opening with `/clear` or `/model` used to show you the command envelope and
+nothing else, and one of the sessions that shipped 21 identity fields opened
+exactly that way. Measured 2026-08-25 over 214 live sessions, 45 have a
+contentless first prompt and 15 of those are answered by the very next prompt in
+the same head. **Where the prompt you are reading was not the first, the row says
+so above it.** Do not read the opening of a session into a prompt that arrived
+after a context reset.
+
+A row that reads `(nothing to judge: ...)` is a session nobody can see into: 30
+of the 214 are in that state. The rubric in the file already answers those, and
+its answer is `drop`.
+
+Measured 2026-08-24 on a 205-session corpus: 23 KB, about 7k tokens, against
+915 KB and about 250k tokens for step 4. That 35x is the whole reason this step
+exists, and it is why it runs before step 4 rather than after.
+
 Read it and write `deident-triage.json` beside it:
 
 ```json

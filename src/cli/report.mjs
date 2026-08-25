@@ -272,11 +272,20 @@ export function renderTriageWritten(t) {
   say('');
   say(`  ${n(t.sessions)} session${t.sessions === 1 ? '' : 's'} still proposed keep, ${n(t.chars)} characters of first prompt each`);
   if (t.withoutPrompt > 0) {
-    // Not a failure. Measured on the live corpus, 44 of 205 sessions carry no
-    // first user prompt at all, so an absent one is the ordinary case. Said out
-    // loud because a reader who sees the marker on a row should know it is a
-    // property of the corpus and not a truncated read.
-    say(`    ${n(t.withoutPrompt)} of them ${t.withoutPrompt === 1 ? 'carries' : 'carry'} no first user prompt and ${t.withoutPrompt === 1 ? 'says' : 'say'} so in the file`);
+    // Not a failure. Measured 2026-08-25 on the live corpus, 30 of 214 sessions
+    // have nothing a reader can judge even after the shown prompt is allowed to
+    // be a later one: 28 carry no user prompt in the head at all and 2 open with
+    // commands and never say anything else. Said out loud because a reader who
+    // sees the marker on a row should know it is a property of the corpus and
+    // not a truncated read, and because the rubric already answers those rows.
+    say(`    ${n(t.withoutPrompt)} of them ${t.withoutPrompt === 1 ? 'has' : 'have'} nothing to judge and ${t.withoutPrompt === 1 ? 'says' : 'say'} so in the file`);
+  }
+  if ((t.shownLater ?? 0) > 0) {
+    // The first prompt of a session that opens with /clear is a command
+    // envelope, and showing it is how a session with 21 identity fields in it
+    // passed triage. Reported because the reader must not read the OPENING of a
+    // session into a prompt that arrived after a context reset.
+    say(`    ${n(t.shownLater)} of them ${t.shownLater === 1 ? 'opens' : 'open'} with a bare command, so a later prompt is shown and the row says so`);
   }
   say('');
   say(`  → ${t.path}    ${humanBytes(t.bytes)}`);

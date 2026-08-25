@@ -493,7 +493,8 @@ function writeTriage(flags, outDir, reviewText, pathById, rememberedDrops) {
       missingFiles += 1;
       continue;
     }
-    rows.push(Object.freeze({ ...row, prompt: firstUserPrompt(filePath) }));
+    const head = firstUserPrompt(filePath);
+    rows.push(Object.freeze({ ...row, prompt: head.text, skipped: head.skipped }));
   }
 
   const body = renderTriage(rows, { chars: flags.triageChars });
@@ -517,6 +518,11 @@ function writeTriage(flags, outDir, reviewText, pathById, rememberedDrops) {
     path: triagePath,
     sessions: rows.length,
     withoutPrompt: rows.filter((r) => r.prompt === null).length,
+    // Counted separately because they are two different things to do about the
+    // file: a row with nothing to judge is one the rubric already answers, and
+    // a row shown a later prompt is one whose opening the reader should not
+    // read anything into.
+    shownLater: rows.filter((r) => r.prompt !== null && r.skipped.length > 0).length,
     chars: flags.triageChars,
     bytes: Buffer.byteLength(body, 'utf8'),
     // Same estimator as the candidates file. docs/model-tier.md argues triage
