@@ -356,9 +356,13 @@ survives (localhost ports, the model mix, the CLI version sequence).
 ### F5 — account UUIDs match no detector
 
 ```json
-{"type":"bridge-session","bridgeSessionId":"cse_01SuFwJN...",
- "ownerAccountUuid":"7594939e-...","ownerOrganizationUuid":"68c31da2-..."}
+{"type":"bridge-session","bridgeSessionId":"cse_01HZQK4M...",
+ "ownerAccountUuid":"bbbbbbbb-...","ownerOrganizationUuid":"cccccccc-..."}
 ```
+
+The three ids are fabricated. What each has to carry is its shape: `cse_01…` is
+a prefixed ULID, and the other two are bare v4 uuids sitting on a record type
+with no other content.
 
 Not path-shaped, not name-shaped, not high-entropy-secret-shaped. **Drop the
 record type, and seed the residual scan with "any UUID that is not a known

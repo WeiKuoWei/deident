@@ -58,9 +58,9 @@ const TOP_LEVEL = Object.freeze({
   //
   // Both are artifact-comment bookkeeping and neither carries a user turn.
   // `artifact-comment-monitor` holds an artifact uuid, its human title and a
-  // millisecond stamp. `artifact-autoreact-ledger` holds `accountUuid`, and
-  // the value on this machine is the SAME `7594939e-…` that §F5 names
-  // verbatim as the identifier no detector matches — arriving on a record
+  // millisecond stamp. `artifact-autoreact-ledger` holds `accountUuid`, and on
+  // the development machine that was the SAME account uuid that §F5 names as
+  // the identifier no detector matches, arriving on a record
   // type the brief never saw. Dropping `bridge-session` alone would no longer
   // have been enough.
   'artifact-comment-monitor': 'drop',

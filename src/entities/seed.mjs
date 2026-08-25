@@ -287,8 +287,8 @@ export function seedEntities(env, corpus, opts = {}) {
   // the uploader's own), a DM channel id, a shared channel id, and five Notion
   // page ids sharing one workspace prefix. §F5 seeds the residual scan with
   // "any UUID that is not a known message or session uuid" and catches none of
-  // them, because none is UUID-shaped — the same gap §F5 names for
-  // cse_01SuFwJN. They are stable cross-corpus join keys for named people: the
+  // them, because none is UUID-shaped: the same gap §F5 names for the
+  // `cse_01…` bridge-session id. They are stable cross-corpus join keys for named people: the
   // pair (pseudonym, Slack id) re-identifies someone whose name never appears.
   for (const id of sweepPlatformIds(opts.texts ?? [])) {
     add('account', id, 'account or workspace id in session text');
