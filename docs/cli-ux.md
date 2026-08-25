@@ -145,11 +145,64 @@ The same measurement decided the shape: **0 of those 205 sessions carry an
 surface; 161 of 205 have one, and a session that has none says so on its row
 rather than being hidden.
 
+### The prompt shown is the first one that says something
+
+Not literally the first. The whole cost argument above rests on one prompt being
+representative of a session, and a session that opens with `/clear` used to put
+a command envelope in front of the reader and nothing else. One of the two
+sessions that shipped 21 identity fields in plaintext (§12) opened exactly that
+way, so triage had nothing to judge and it went through.
+
+Measured 2026-08-25 over the live corpus root at depth 1, the way
+`resolveCorpus` scopes it:
+
+```
+  session files                              214
+  no user prompt in the head at all           28   13.1%
+  first prompt is a bare slash command        17    7.9%
+  CONTENTLESS FIRST PROMPT, TOTAL             45   21.0%
+
+  a later prompt in the same head has content 15
+  every prompt in the head is contentless      2
+  nothing to judge even after the fix         30
+
+  which bare command:  /clear x11  /model x2  /login  /mcp  /reload-plugins  /doctor
+```
+
+The 15 recoverable ones are answered by the very next prompt, 14 at index 1 and
+1 at index 2, and it is inside the 256 KB head that was already read. **The fix
+costs no extra I/O and reads no further into any file.** Triage stays the cheap
+stage; that is the constraint, not a preference.
+
+Two rules follow:
+
+- **A row whose prompt was not the first says so**, on its own line above the
+  prompt: `(not the first prompt: /clear came first)`. A reader who believes
+  they are looking at how a session opened would otherwise draw conclusions
+  about it from a prompt that arrived after a context reset.
+- **A row with nothing to judge says which kind of nothing it is**: no user
+  prompt in the session at all, or every prompt a bare command. The triage
+  rubric already answers both, and its answer is `drop`.
+
+The test is structural, not a length floor. A slash command arrives as the
+literal 106 characters `<command-name>/clear</command-name>` plus an empty
+`<command-message>` and an empty `<command-args>`; a command WITH arguments
+carries what the person typed and counts as content. A character floor was
+measured and rejected: only 2 plain-prose first prompts on that corpus are under
+12 characters and 13 are under 20, while a complete and perfectly judgeable
+question written in Han script runs to 18. A floor tuned on Latin prose throws
+away the shortest scripts first.
+
+The envelope is also never rendered raw. It is structure, not prose, and it
+spends 106 characters of the budget this stage exists to ration. `/goal ship the
+ledger` is what the reader sees.
+
 ```
 $ deident triage --out <workdir>
 
   164 sessions still proposed keep, 300 characters of first prompt each
-    3 of them carry no first user prompt and say so in the file
+    3 of them have nothing to judge and say so in the file
+    9 of them open with a bare command, so a later prompt is shown and the row says so
 
   → deident-triage.txt    23.4 KB
     Reading this will cost roughly 6,990 tokens.
@@ -309,6 +362,64 @@ $ deident export
   → deident-export-2026-08-22.zip    14.2 MB
     salt stays at ~/.deident-private/salt — do not share it, do not commit it
 ```
+
+### 6a. The declared list, printed back with what it did
+
+`~/.deident-private/known-values.json` is the third source of entities, and the
+only one that is not inference. Tier 0 infers from machine state, tier 1 infers
+from prose; neither can be told "this exact string is mine". §12 has the file
+and the reason it exists.
+
+Every export that had a list prints the whole list back, with the number of
+occurrences each value actually claimed:
+
+```
+  4 values you declared in known-values.json, and what each replaced.
+  A high count on a value of yours is not an error: it is a word that is also
+  yours, and only you can tell those apart.
+          31  person    Aurelio Ferreira-Nkemdirim   (deident found this one too)
+          12  secret    Flat 6B, 219 Marlowe Crescent, Ashford Bay
+           4  account   pm-8842-31770
+           -  secret    Qi
+
+  ! 2 of them replaced nothing, so they protect nothing:
+      secret    Qi
+        never substituted: shorter than 3 characters: too collision-prone to substitute safely
+        and not scanned for either, so this value may still be in the archive
+      secret    1974-04-31
+        no occurrence of this string is anywhere in the exported text
+```
+
+The whole list and not the outliers, which is the opposite of `renderProbe`
+three lines above it and is deliberate. The probe reports both tails of a list
+the tool assembled, where the middle is unremarkable by construction. This list
+was written by hand, by the person, about themselves, and every row in it is a
+claim they made. Two of the rows are the ones nothing else prints:
+
+- **count 0**, which means the string is nowhere in the corpus. Usually a typo
+  in the list; occasionally a value that genuinely never came up.
+- **`never substituted`**, which means the existing safety rules refuse to
+  substitute it at any count: shorter than three characters, a single CJK
+  character, a bare filesystem root. Before this it was visible only in
+  `export-map.txt`, which is read after the archive already exists.
+
+  Its count column is a dash and not a number, and that is the honest state
+  rather than a formatting choice. `buildTable` puts an entity with no
+  pseudonym in `flagged` and never in `entries`; `residualScan` sweeps
+  `entries`. So a rejected value is never substituted AND never scanned for.
+  Verified against the shipped modules: a declared two-character value
+  occurring twice in a corpus ships twice, while `known-entity residue: 0` and
+  `archive on disk ... ok` both pass. A `0` printed beside it would be a zero
+  where no check ran. See §12 on why this is the one place a seventh gate
+  would earn its keep.
+
+**A high count is reported and never refused.** `src/entities/probe.mjs`
+measured why no threshold works: on one corpus an ordinary noun counted 202, a
+real brokerage 255 and a personal name 17, in that order. A threshold that
+caught the first would refuse the third. And this is the one list where a false
+alarm does structural damage, because a source that argues with a person's
+deliberate declaration about their own data is a source that stops being filled
+in.
 
 ### 6b. Two findings that print beside the gate and are not gates
 
@@ -682,3 +793,128 @@ no longer exists the moment it is written into it: the line itself changes the
 size it is measuring, and a self-referential estimate is one more thing to be
 subtly wrong. The person deciding whether to pay is at the terminal, and the
 agent orchestrating the read has it in `--json` before it opens the file.
+
+## 12. `~/.deident-private/known-values.json`, the third source
+
+deident had two sources of entities and both of them were inference:
+
+```
+tier 0   inferred from machine state:  username, paths, git config, credential shapes
+tier 1   inferred from prose:          what a reader can see
+```
+
+There was no third: a list of literal values the person KNOWS are theirs. So the
+only way a value got protected was for the tool, or a model reading the prose,
+to work it out unaided.
+
+What that cost, measured on a delivered archive whose six checks were all green:
+21 identity fields shipped in plaintext. Passport name orderings and three name
+spellings used across visa documents, a date and place of birth, a household
+registration address in two languages, three country addresses, a driving
+licence address, two banks' address of record, a phone number and a
+payment-platform account id. Concentrated in two sessions, one of them a
+browser-automation session filling a booking form with passport data. Every one
+of those values was already enumerated, by hand, in a personal-details file the
+same person maintained: the tool was performing semantic discovery to find a
+list that already existed.
+
+```json
+{
+  "_note": "Values that are mine. Local only. Never commit this, never share it.",
+  "values": [
+    "1974-11-03",
+    "Flat 6B, 219 Marlowe Crescent, Ashford Bay",
+    {"kind": "person", "value": "Aurelio Ferreira-Nkemdirim"},
+    {"kind": "account", "value": "pm-8842-31770"}
+  ]
+}
+```
+
+Beside the salt and `denied.json`, with the same properties: local, never
+committed, never written into the archive, never into `--out`. Read at tier 0
+and seeded as entities like any other.
+
+**Shape.** A bare string is the common case, so a bare array is accepted as the
+whole file, the way `denied.json` accepts one for its patterns. `kind` is
+optional and changes only which pseudonym the value gets; it defaults to
+`secret`, for the reason `src/entities/tier1.mjs` gives for having that kind at
+all, which is that it exists so a VALUE can be named rather than only an
+identity. A date of birth, a postal address and an account handle are values.
+The default also keeps them out of the single-word path in
+`src/entities/probe.mjs`, which proposes bare words only from a `person` and
+would otherwise offer `Road`, `Crescent` and `Bay` out of every declared
+address.
+
+A declared value whose string was already seeded takes the kind it was seeded
+under rather than its own. `buildEntities` keys on `(kind, canonical)`, so the
+same string under two kinds is two entities sharing one spelling; `buildTable`
+sorts them together, the loser matches nothing, and the probe then reports that
+a declared spelling protects nothing about a value that is in fact protected.
+Borrowing the kind collapses them into one entity carrying both sources, which
+is also the truer record: the tool found it AND was told about it.
+
+**Failure direction.** Missing is the normal case and means the two inference
+tiers alone. Malformed REFUSES, naming the row (`known-values.json values[3]`),
+the way `loadUserDeny` refuses, and for a sharper version of the same reason: an
+export that silently loaded none of this list is indistinguishable, in every
+check the tool has, from the export that leaked.
+
+The load happens before anything reads a session, so a malformed file refuses in
+the first second rather than at step 8 of an export that has already spent
+twenty minutes in the retention pass.
+
+**A fresh `--salt-dir` is the same trap `denied.json` has**, so it gets the same
+warning: this file lives IN the salt directory, and the documented way to run as
+if for the first time is a directory that does not have it. Narrow for the same
+reason, too. A machine with no list anywhere is a genuine first run and is not
+nagged.
+
+**Short and ordinary values are reported, never refused.** See §6a. A person will
+put a three-character string in this file, or an ordinary word, because they are
+asserting that this specific string is theirs, and a source whose answer to a
+deliberate declaration is "no" is a source nobody fills in.
+
+**deident does not read anybody's personal-details file.** No path to one is
+hardcoded and none is searched for. That convention is one person's, and
+hardcoding it is the overfitting the per-person deny rules were moved out of the
+repository to remove. The operator contract does the equivalent portably: it
+tells the agent to ask whether such a file exists anywhere, and to ask the
+person directly when it does not.
+
+### 12b. Does a seventh check belong here?
+
+The six gates are all internal-consistency checks: round trip, substitution
+invariant, namespace, known-entity residue, semantic pass, on-disk rescan. Not
+one compares against an external oracle, so none of them can answer "was
+everything that should have been substituted, substituted". `known-values.json`
+is the tool's first oracle for one class of value, which makes the question live.
+
+**A seventh gate that re-scans the archive for the declared list would add
+nothing, and adding nothing is not neutral here.** Declared values are seeded as
+entities, so they are in the table `residualScan` is given, so checks 4 and 6
+already sweep the produced bytes for every one of them. A second pass over the
+same bytes with the same needles would read, in the report, as independent
+confirmation of a result it merely repeated. That is worse than no check.
+
+**There is exactly one gap, and it is narrow enough to name.** `buildTable`
+skips an entity whose `pseudonym` is null into `flagged` and never into
+`entries`, and `residualScan` sweeps `entries`. A declared value that
+`rejectReason` refuses (shorter than three characters, a single CJK character, a
+bare filesystem root) is therefore never substituted AND never scanned for.
+Verified against the shipped modules rather than reasoned about: a declared
+two-character value occurring twice in a corpus ships twice in plaintext, while
+`known-entity residue: 0 occurrences of 51 entity spellings` and `archive on
+disk ... ok` both pass.
+
+That is the only place a seventh check would earn its keep, and it is not the
+check the question proposed. It would be narrow: sweep the produced bytes for
+the declared values that were REJECTED, which are the only needles no existing
+scan carries, and which are already enumerated. Whether it should be a gate is a
+separate call, and probably no: the person declared a value the tool has told
+them it cannot safely substitute, so refusing the export would be refusing over
+a choice they made with the reason in front of them.
+
+What is here now is the smaller half of that: those rows print a dash rather
+than a count, and say in terms that the value was not substituted, was not
+scanned for, and may still be in the archive. A number would have been a lie in
+the one direction that matters.

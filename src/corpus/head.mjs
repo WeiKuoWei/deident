@@ -1,5 +1,5 @@
-// Read only the HEAD of a session file, and pull the first thing the person
-// typed out of it.
+// Read only the HEAD of a session file, and pull out the first thing the person
+// typed that a reader can judge.
 //
 // This exists for the triage stage, and the constraint is the whole reason it
 // is a separate module: a triage that reads the whole session is the expensive
@@ -32,22 +32,87 @@ import { INJECTED_SPANS } from '../retain/constants.mjs';
 export const HEAD_BYTES = 256 * 1024;
 
 /**
- * The first authored user prompt in a session, whitespace collapsed, or null.
+ * A slash command as it actually arrives in a session record.
+ *
+ * Measured 2026-08-25 on the live corpus: `/clear` is stored as the 106
+ * characters `<command-name>/clear</command-name>` followed by an empty
+ * `<command-message>` and an empty `<command-args>`, and nothing else. It is
+ * not a bare `/clear` string, which is why a triage stage looking for one found
+ * none and showed the reader the raw envelope instead.
+ */
+const COMMAND_TAG = /<command-(?:name|message|args|contents)>([^]*?)<\/command-(?:name|message|args|contents)>/g;
+const COMMAND_NAME = /<command-name>([^]*?)<\/command-name>/;
+const COMMAND_ARGS = /<command-args>([^]*?)<\/command-args>/;
+
+/**
+ * The command envelope rendered as what the person typed: `/goal ship it`, or
+ * `/clear`.
+ *
+ * The envelope itself is structure, not prose. Rendering it raw spends 106 of
+ * the characters this stage exists to ration on XML that says nothing, and a
+ * reader who sees it cannot tell a session that opened with a context reset
+ * from one whose first sentence happened to contain angle brackets.
+ */
+function unwrapCommand(text) {
+  if (!COMMAND_NAME.test(text)) return text;
+  const name = (text.match(COMMAND_NAME)?.[1] ?? '').replace(/\s+/g, ' ').trim();
+  const args = (text.match(COMMAND_ARGS)?.[1] ?? '').replace(/\s+/g, ' ').trim();
+  // Whatever the person typed OUTSIDE the envelope. A command invoked with a
+  // sentence after it puts the sentence here.
+  const rest = text.replace(COMMAND_TAG, ' ').replace(/\s+/g, ' ').trim();
+  return [name, args, rest].filter((s) => s !== '').join(' ');
+}
+
+/**
+ * Whether a prompt gives a triage reader nothing to judge.
+ *
+ * Only two shapes qualify: empty, and a bare command name with no arguments
+ * after it. Deliberately NOT a length rule. Measured 2026-08-25 on 214 live
+ * sessions, a character floor buys almost nothing and costs real prompts: only
+ * 2 plain-prose first prompts are under 12 characters and 13 are under 20,
+ * while a complete, perfectly judgeable question written in Han script runs to
+ * 18. A floor tuned on Latin prose throws away the shortest scripts first.
+ */
+function contentless(text) {
+  const unwrapped = unwrapCommand(text);
+  return unwrapped === '' || /^\/[^\s]*$/.test(unwrapped);
+}
+
+/**
+ * The first user prompt in a session that a reader can actually judge.
+ *
+ * NOT literally the first one. Triage reads one prompt per session and its
+ * whole cost argument rests on that prompt being representative, so a session
+ * that opens with `/clear` used to put a command envelope in front of the
+ * reader and nothing else. One of the two sessions that shipped 21 identity
+ * fields in plaintext opened exactly that way.
+ *
+ * Measured 2026-08-25 over the live corpus root at depth 1, the way
+ * resolveCorpus scopes it: 214 sessions, 45 of them (21.0%) with a contentless
+ * first prompt. 28 carry no user prompt in the head at all; 17 open with a bare
+ * slash command (`/clear` x11, `/model` x2, `/login`, `/mcp`,
+ * `/reload-plugins`, `/doctor`). Of those 17, 15 are answered by the next
+ * prompt in the SAME head that was already read, 14 at index 1 and 1 at index
+ * 2. So this costs no extra I/O and reads no further into any file: the stage
+ * stays the cheap one.
  *
  * Returns null rather than throwing for every failure a corpus can produce: a
  * file that vanished between the directory listing and here, a file that cannot
  * be opened, a head with no user record in it. Triage is the cheap stage and it
  * runs over every session at once, so one unreadable file must not end the run.
- * Measured on the live corpus: 161 of 205 sessions carry a first user prompt at
- * all, so an absent one is the ordinary case, not an error.
+ * An absent prompt is the ordinary case, not an error.
  *
  * @param {string} filePath
  * @param {{headBytes?: number}} opts
- * @returns {string|null}
+ * @returns {{text: string|null, skipped: ReadonlyArray<string>}} `skipped` is
+ *   what came before the returned prompt, already unwrapped, so the caller can
+ *   say the shown prompt was not the first. Both empty means the head held no
+ *   authored prompt at all.
  */
 export function firstUserPrompt(filePath, opts = {}) {
+  const nothing = Object.freeze({ text: null, skipped: Object.freeze([]) });
   const head = readHead(filePath, opts.headBytes ?? HEAD_BYTES);
-  if (head === null) return null;
+  if (head === null) return nothing;
 
   const lines = head.text.split('\n');
   // The last line of a truncated read is half a record, and half a record is
@@ -56,6 +121,7 @@ export function firstUserPrompt(filePath, opts = {}) {
   // appears after 256 KB is not the first one.
   if (!head.complete) lines.pop();
 
+  const skipped = [];
   for (const rawLine of lines) {
     const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
     if (line.trim() === '') continue;
@@ -70,9 +136,19 @@ export function firstUserPrompt(filePath, opts = {}) {
       continue;
     }
     const text = authoredText(value);
-    if (text !== null) return text;
+    if (text === null) continue;
+    if (contentless(text)) {
+      // Recorded, not discarded. A reader shown the third prompt of a session
+      // without being told so would draw conclusions about how the session
+      // opened from a prompt that arrived after a context reset.
+      skipped.push(unwrapCommand(text));
+      continue;
+    }
+    return Object.freeze({ text: unwrapCommand(text), skipped: Object.freeze(skipped) });
   }
-  return null;
+  // Every prompt in the head said nothing, or there were none. The caller
+  // renders those differently: `skipped` distinguishes them.
+  return Object.freeze({ text: null, skipped: Object.freeze(skipped) });
 }
 
 /** The first `limit` bytes of a file, or null if it cannot be read at all. */

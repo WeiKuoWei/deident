@@ -272,11 +272,20 @@ export function renderTriageWritten(t) {
   say('');
   say(`  ${n(t.sessions)} session${t.sessions === 1 ? '' : 's'} still proposed keep, ${n(t.chars)} characters of first prompt each`);
   if (t.withoutPrompt > 0) {
-    // Not a failure. Measured on the live corpus, 44 of 205 sessions carry no
-    // first user prompt at all, so an absent one is the ordinary case. Said out
-    // loud because a reader who sees the marker on a row should know it is a
-    // property of the corpus and not a truncated read.
-    say(`    ${n(t.withoutPrompt)} of them ${t.withoutPrompt === 1 ? 'carries' : 'carry'} no first user prompt and ${t.withoutPrompt === 1 ? 'says' : 'say'} so in the file`);
+    // Not a failure. Measured 2026-08-25 on the live corpus, 30 of 214 sessions
+    // have nothing a reader can judge even after the shown prompt is allowed to
+    // be a later one: 28 carry no user prompt in the head at all and 2 open with
+    // commands and never say anything else. Said out loud because a reader who
+    // sees the marker on a row should know it is a property of the corpus and
+    // not a truncated read, and because the rubric already answers those rows.
+    say(`    ${n(t.withoutPrompt)} of them ${t.withoutPrompt === 1 ? 'has' : 'have'} nothing to judge and ${t.withoutPrompt === 1 ? 'says' : 'say'} so in the file`);
+  }
+  if ((t.shownLater ?? 0) > 0) {
+    // The first prompt of a session that opens with /clear is a command
+    // envelope, and showing it is how a session with 21 identity fields in it
+    // passed triage. Reported because the reader must not read the OPENING of a
+    // session into a prompt that arrived after a context reset.
+    say(`    ${n(t.shownLater)} of them ${t.shownLater === 1 ? 'opens' : 'open'} with a bare command, so a later prompt is shown and the row says so`);
   }
   say('');
   say(`  → ${t.path}    ${humanBytes(t.bytes)}`);
@@ -530,6 +539,70 @@ export function renderProbe({ hits, zeros }) {
     warn(`  ! ${n(zeros.length)} declared spelling${zeros.length === 1 ? '' : 's'} matched nothing, so ${zeros.length === 1 ? 'it protects' : 'they protect'} nothing:`);
     for (const z of zeros.slice(0, 12)) warn(`      ${pad(z.kind, 9)} ${z.spelling.slice(0, 60)}`);
     if (zeros.length > 12) warn(`      ... and ${n(zeros.length - 12)} more`);
+  }
+  warn('');
+}
+
+/** How many declared values are printed with a count before the tail is summarised. */
+const DECLARED_SHOWN = 12;
+
+/**
+ * The values the person declared as their own, and what each one replaced.
+ *
+ * Printed for every export that had a list, including the rows where the answer
+ * is "nothing", because those are the two ways a declaration silently does
+ * nothing: a value the corpus never contained, and a value the safety rules
+ * refuse to substitute. Both currently pass every gate.
+ *
+ * No verdict and no threshold. The person wrote this list by hand about
+ * themselves; if one of their own values turns out to be an ordinary word
+ * occurring five hundred times, that is a fact for them to act on and not a
+ * reason for the tool to argue with a deliberate declaration. renderProbe makes
+ * the same argument for the same measurement.
+ */
+export function renderDeclared(rows) {
+  if (machine !== null) { machineAdd({ declaredValues: rows }); return; }
+  if (rows.length === 0) return;
+  const silent = rows.filter((r) => r.count === 0 || r.rejected);
+  warn('');
+  warn(`  ${n(rows.length)} value${rows.length === 1 ? '' : 's'} you declared in known-values.json, and what each replaced.`);
+  warn('  A high count on a value of yours is not an error: it is a word that is also');
+  warn('  yours, and only you can tell those apart.');
+  for (const r of rows.slice(0, DECLARED_SHOWN)) {
+    // A rejected value gets no number, because every number available here
+    // would be a lie in the one direction that matters. buildTable puts an
+    // entity with no pseudonym in `flagged` and never in `entries`, and
+    // residualScan sweeps `entries`, so a rejected value is never substituted
+    // AND never scanned for. Verified against the shipped modules: a declared
+    // two-character value occurring twice in the corpus ships twice, while
+    // known-entity residue and the on-disk rescan both report ok. Printing `0`
+    // beside it is a zero where no check ran, which is the shape of failure
+    // BRIEF 4.3 names.
+    const count = r.rejected ? padLeft('-', 6) : String(r.count).padStart(6);
+    warn(`      ${count}  ${pad(r.kind, 9)} ${r.value.slice(0, 46)}${r.alsoInferred ? '   (deident found this one too)' : ''}`);
+  }
+  const hidden = rows.length - Math.min(rows.length, DECLARED_SHOWN);
+  if (hidden > 0) warn(`      ... and ${n(hidden)} more, every one of them replaced at least once`);
+  if (silent.length > 0) {
+    warn('');
+    warn(`  ! ${n(silent.length)} of them replaced nothing, so ${silent.length === 1 ? 'it protects' : 'they protect'} nothing:`);
+    for (const r of silent) {
+      warn(`      ${pad(r.kind, 9)} ${r.value.slice(0, 60)}`);
+      // The two cases read the same on the row above and are not the same
+      // problem: one is a value the corpus never contained, usually a typo in
+      // the list; the other is a value deident will not substitute at any
+      // count, which the person asked for and did not get.
+      if (r.rejected) {
+        warn(`        never substituted: ${r.rejected}`);
+        // The sentence that makes the dash in the count column mean something.
+        // A value the substituter refused is also a value the residue scan
+        // never looks for, so "not scanned" is the whole state and the archive
+        // may well still carry it.
+        warn('        and not scanned for either, so this value may still be in the archive');
+      } else {
+        warn('        no occurrence of this string is anywhere in the exported text');
+      }
+    }
   }
   warn('');
 }

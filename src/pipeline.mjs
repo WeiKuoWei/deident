@@ -40,7 +40,7 @@ import {
   TRIAGE_FILENAME,
 } from './policy/triage.mjs';
 import { firstUserPrompt } from './corpus/head.mjs';
-import { seedEntities } from './entities/seed.mjs';
+import { seedEntities, DECLARED_SOURCE } from './entities/seed.mjs';
 import {
   loadOrCreateSalt,
   readSalt,
@@ -82,6 +82,7 @@ import { writeZip, readZipFile, safeUnlink } from './output/zip.mjs';
 import { writePreview } from './output/preview.mjs';
 import { EXAMPLES_PER_REPORT, MIN_REPLAY_MATCH_CHARS } from './retain/constants.mjs';
 import { loadUserDeny, setUserDeny, missingDenyWarning } from './policy/userdeny.mjs';
+import { loadKnownValues, missingKnownValuesWarning } from './policy/knownvalues.mjs';
 import {
   loadDictionary,
   saveDictionary,
@@ -113,18 +114,28 @@ import {
  * relative argument, so `--out ./here` lands on the same corner.
  */
 /**
- * Load the person's own deny rules, and say so when this run has none.
+ * Load the two per-person files that live beside the salt, and say so when this
+ * run has neither.
  *
  * One helper rather than a check at each command, because all three commands
  * that classify a workspace route through here and the failure it guards is
  * silent in every one of them. See missingDenyWarning.
  *
+ * Called BEFORE anything reads a session, and that position is the whole point
+ * for known-values.json: a malformed one refuses in the first second rather
+ * than at step 8 of an export that has already spent twenty minutes in the
+ * retention pass.
+ *
  * `defaultSaltDir` is called only when --salt-dir was given, and its throw is
  * swallowed: on a machine with no HOME, naming --salt-dir is the documented fix
  * for that, so the run must not then fail inside a warning about it.
+ *
+ * @returns {ReadonlyArray<{value: string, kind: string}>} the declared values,
+ *   which the caller threads into seedEntities
  */
-function applyUserDeny(flags, env, saltDir) {
+function loadPrivateRules(flags, env, saltDir) {
   const rules = loadUserDeny(saltDir);
+  const knownValues = loadKnownValues(saltDir);
   if (flags.saltDir !== null) {
     let fallback = null;
     try {
@@ -132,10 +143,12 @@ function applyUserDeny(flags, env, saltDir) {
     } catch {
       fallback = null;
     }
-    const warning = missingDenyWarning(saltDir, fallback);
-    if (warning !== null) report.renderWarning(warning);
+    for (const warning of [missingDenyWarning(saltDir, fallback), missingKnownValuesWarning(saltDir, fallback)]) {
+      if (warning !== null) report.renderWarning(warning);
+    }
   }
   setUserDeny(rules);
+  return knownValues;
 }
 
 export function resolveOutDir(flags) {
@@ -200,7 +213,7 @@ export async function runScan(flags, env) {
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
   // the very directory it exists to protect.
-  applyUserDeny(flags, env, saltDir);
+  const knownValues = loadPrivateRules(flags, env, saltDir);
   const corpus = resolveCorpus(env, flags.root);
 
   const loaded = surveyCorpus(corpus, flags);
@@ -217,7 +230,7 @@ export async function runScan(flags, env) {
   const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
 
   const model = buildReviewModel(
-    decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe, reviewProblems),
+    decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe, knownValues, reviewProblems),
     // Both remembered and local, for the same reason the tiers are: a person
     // should not answer the same question twice. Scanning into a fresh
     // directory used to render every session as `keep` while the salt
@@ -366,7 +379,7 @@ export async function runReview(flags, env) {
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
   // the very directory it exists to protect.
-  applyUserDeny(flags, env, saltDir);
+  const knownValues = loadPrivateRules(flags, env, saltDir);
   const corpus = resolveCorpus(env, flags.root);
   const loaded = surveyCorpus(corpus, flags);
   const reviewPath = path.join(outDir, REVIEW_FILENAME);
@@ -376,7 +389,7 @@ export async function runReview(flags, env) {
   const saved = { byKey: remembered.workspaces, byName: readReview(reviewPath, lenient) };
   const { decisions, workspaceOf, probe } = classify(loaded, saved, flags);
   const model = buildReviewModel(
-    decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe, problems),
+    decisions, loaded, workspaceOf, scanEntities(corpus, env, loaded, saltDir, probe, knownValues, problems),
     nowStamp(),
     new Set([...remembered.sessionDrops, ...readSessionDrops(reviewPath, lenient).drops]),
   );
@@ -480,7 +493,8 @@ function writeTriage(flags, outDir, reviewText, pathById, rememberedDrops) {
       missingFiles += 1;
       continue;
     }
-    rows.push(Object.freeze({ ...row, prompt: firstUserPrompt(filePath) }));
+    const head = firstUserPrompt(filePath);
+    rows.push(Object.freeze({ ...row, prompt: head.text, skipped: head.skipped }));
   }
 
   const body = renderTriage(rows, { chars: flags.triageChars });
@@ -504,6 +518,11 @@ function writeTriage(flags, outDir, reviewText, pathById, rememberedDrops) {
     path: triagePath,
     sessions: rows.length,
     withoutPrompt: rows.filter((r) => r.prompt === null).length,
+    // Counted separately because they are two different things to do about the
+    // file: a row with nothing to judge is one the rubric already answers, and
+    // a row shown a later prompt is one whose opening the reader should not
+    // read anything into.
+    shownLater: rows.filter((r) => r.prompt !== null && r.skipped.length > 0).length,
     chars: flags.triageChars,
     bytes: Buffer.byteLength(body, 'utf8'),
     // Same estimator as the candidates file. docs/model-tier.md argues triage
@@ -571,7 +590,7 @@ export async function runExport(flags, env) {
   // Before anything proposes a tier: matchDenyToken consults these, and a
   // token loaded after classify would silently propose the wrong tier for
   // the very directory it exists to protect.
-  applyUserDeny(flags, env, saltDir);
+  const knownValues = loadPrivateRules(flags, env, saltDir);
   // Read here rather than at step 11, so a dictionary somebody broke while
   // hand-editing refuses in the first second instead of after the corpus has
   // been read, which is more than ten minutes on a few hundred sessions.
@@ -739,6 +758,9 @@ export async function runExport(flags, env) {
     // employer's own product vocabulary is an identity or a word the reader
     // uses daily; it does not decide which sessions ship.
     audience: reviewSessions.audience,
+    // Read at the top of the command, not here: a malformed list must refuse
+    // before the retention pass, not after it.
+    knownValues,
   });
 
   //  9  pseudonyms
@@ -916,6 +938,24 @@ export async function runExport(flags, env) {
     ...probeCounts(cleanedTexts, tier1Table, occurrenceIndex.sink),
   ]);
   report.renderProbe(probeOutliers(replacementCounts));
+
+  //  12a  The values the person DECLARED, printed back with what each one
+  //       actually replaced.
+  //
+  //       Not a gate and not a threshold. src/entities/probe.mjs measured that
+  //       frequency does not separate a noun from a name (202, 17 and 255 on
+  //       one corpus, in the wrong order), and a declared value is where a
+  //       false alarm would do the most damage: the person wrote this file by
+  //       hand about themselves, and a source that argues with them is a source
+  //       that stops being filled in. So a declared value that turns out to be
+  //       an ordinary word occurring hundreds of times is REPLACED, and its
+  //       count is printed beside it for the person to act on.
+  //
+  //       The rows nobody else prints are the two that mean a declaration did
+  //       nothing: a value the corpus never contained (usually a typo in the
+  //       list), and a value the existing safety rules refuse to substitute at
+  //       all, which today is visible only in the export map.
+  report.renderDeclared(declaredValueRows(seeded.entities, replacementCounts));
 
   //  12b  Pieces of a declared spelling that still stand alone in the text: a
   //       surname of a declared person, and a contiguous run of words from a
@@ -1998,9 +2038,44 @@ function classify(loaded, saved, flags, probe = makeRemoteProbe()) {
  *   - occurrences are not counted here for the same reason. `export --preview`
  *     counts them.
  */
-function scanEntities(corpus, env, loaded, saltDir, probe, warnings = []) {
+/**
+ * One row per declared value: what it was, and how many occurrences it claimed.
+ *
+ * The count is summed over an entity's spellings rather than read off one of
+ * them, because expandVariants turns a declared address with a path-shaped
+ * fragment in it into several needles and a reader asked "how many" about the
+ * value they typed, not about one escaping twin of it.
+ *
+ * A rejected entity has no spellings at all, so it appears with a count of zero
+ * and carries its own reason. That is the row this function exists for: today
+ * a declared value the tool refuses to substitute is announced nowhere except
+ * export-map.txt, which is read after the archive already exists.
+ */
+function declaredValueRows(entities, counts) {
+  const total = new Map();
+  for (const c of counts) total.set(c.entityId, (total.get(c.entityId) ?? 0) + c.count);
+  return Object.freeze(
+    entities
+      .filter((e) => (e.sources ?? []).includes(DECLARED_SOURCE))
+      .map((e) =>
+        Object.freeze({
+          value: e.canonical,
+          kind: e.kind,
+          count: total.get(e.id) ?? 0,
+          rejected: e.rejected ?? null,
+          // A value the tool had already found on its own is a different fact
+          // from one only the list knew about, and it is the honest answer to
+          // "did writing this file change anything".
+          alsoInferred: (e.sources ?? []).some((s) => s !== DECLARED_SOURCE),
+        }),
+      )
+      .sort((a, b) => b.count - a.count || (a.value < b.value ? -1 : 1)),
+  );
+}
+
+function scanEntities(corpus, env, loaded, saltDir, probe, knownValues, warnings = []) {
   const cwds = [...allCorpusCwds(loaded)];
-  const seeded = seedEntities(env, corpus, { cwds, repoDirs: cwds.slice(0, 200), probeRemote: probe, texts: [] });
+  const seeded = seedEntities(env, corpus, { cwds, repoDirs: cwds.slice(0, 200), probeRemote: probe, texts: [], knownValues });
   // The seed warnings were dropped on the floor here, on the two commands a
   // person runs FIRST. `export` renders them; scan and review did not, so an
   // environment that could not read the OS username or the git identity said

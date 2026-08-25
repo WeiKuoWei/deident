@@ -19,6 +19,17 @@ export const KINDS = Object.freeze([
 ]);
 
 /**
+ * The `source` string a declared value carries.
+ *
+ * Defined here rather than in src/policy/knownvalues.mjs, which is where the
+ * rest of that feature lives, because knownvalues.mjs imports KINDS from this
+ * file and the other direction would be a cycle. It is the token the report
+ * filters on to print the declared list back with its counts, so it has to be
+ * one string in one place.
+ */
+export const DECLARED_SOURCE = 'declared in known-values.json';
+
+/**
  * The OS username, or null. NEVER throws.
  *
  * This was written `os.userInfo?.().username`, which guards nothing that
@@ -290,6 +301,30 @@ export function seedEntities(env, corpus, opts = {}) {
   // two exports from the same laptop after every name has been replaced.
   for (const uid of sweepUnixUid(opts.texts ?? [], username)) {
     add('machine', uid, 'owner id beside your username in ls -l output');
+  }
+
+  // --- Values the person DECLARED, from known-values.json beside the salt.
+  //
+  // The only source in this file that is not inference, and the last one to
+  // run, which is what lets it borrow a kind. Every other seed above answers
+  // "what can this machine work out"; this one answers "what has this person
+  // written down as theirs". A finished export with all six gates green shipped
+  // 21 identity fields that no rule above could reach: document name orderings,
+  // a date and place of birth, six addresses, a phone number, a payment-platform
+  // account id. See src/policy/knownvalues.mjs.
+  //
+  // A declared value whose canonical string was ALREADY collected takes the
+  // kind it was collected under, rather than its own. buildEntities keys on
+  // (kind, canonical), so the same string under two kinds is two entities with
+  // one spelling between them; buildTable then sorts them together and the
+  // loser matches nothing, which the probe reports as "this declared spelling
+  // protects nothing" about a value that is in fact protected. Borrowing the
+  // kind collapses them into one entity carrying both sources instead, which is
+  // also the honest record: the tool found it AND was told about it.
+  const collectedKind = new Map(collected.map((c) => [c.canonical, c.kind]));
+  for (const declared of opts.knownValues ?? []) {
+    if (typeof declared?.value !== 'string') continue;
+    add(collectedKind.get(declared.value) ?? declared.kind, declared.value, DECLARED_SOURCE);
   }
 
   return Object.freeze({
