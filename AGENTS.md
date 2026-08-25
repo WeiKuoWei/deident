@@ -122,25 +122,22 @@ the measured way this tool used to lose most of its corpus.
 Write decisions back by editing `review.md` in place: column 1 of the
 `## workspaces` and `## sessions` sections.
 
-### Ask who will be able to read it
+### Say what the export cannot protect, and do not ask about the audience
 
-One question, asked here and passed in step 5. It is about who can read the
-archive once they have it, not who it is addressed to.
+**Do not ask who the archive is for.** Pass `--audience public` and move on.
 
-| Their answer | Pass |
-|---|---|
-| Anyone, I am publishing it, or I do not know where it ends up | `public` |
-| Only people who work where they work | `company` |
-| One named colleague on their own team | `teammate` |
+Public is the safe reading of every recipient and it costs no sessions: under
+the current axis the setting decides only whether the person's own employer
+name and product words are substituted along with everything else. At `public`
+they are. The cost is prose quality, where a sentence reads `ORG_4471` and a
+colleague would have read a word they know, and that is not worth stopping the
+person to ask about. Use `teammate` or `company` only if they say so
+themselves, unprompted.
 
-`public` is the default and it is the right answer for anyone with no employer,
-or exporting work that is their own. It costs prose quality and nothing else:
-their own company's name and product words get replaced along with everything
-else, so some sentences read `ORG_4471` where a reader would have read a word
-they know. It costs no sessions.
-
-**Say both of these before they answer.** Neither is fixed by any setting, and
-after the archive exists it is too late to weigh them:
+**Say both of these, here, before anything expensive runs.** Neither is fixed
+by any setting, and they are the reason someone might decide not to export at
+all, which is a decision worth reaching before the work rather than after the
+archive exists:
 
 - Substitution replaces names, not roles. "The person who runs finance and
   payroll" resolves to one human at a small company however it is spelled.
