@@ -38,7 +38,8 @@ import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal,
 import { checkDeclaredValues } from '../src/verify/declared.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from '../src/verify/residual.mjs';
 import { distillToolResult, retainToolUseResult, checkAddedLines } from '../src/retain/toolresult.mjs';
-import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason } from '../src/retain/records.mjs';
+import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason, flattenContent,
+} from '../src/retain/records.mjs';
 import { resolveLineCwd, cwdChangeFrom } from '../src/corpus/cwdtrack.mjs';
 import { allowLine } from '../src/policy/linefilter.mjs';
 import {
@@ -8124,6 +8125,44 @@ const FIXTURES = [
       assert.deepEqual(written.workspaces, { 'c:/w/alpha': 'redact' });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }],
+
+  ['F186', 'a document block is dropped on the nested path too, not only the top-level one', () => {
+    // Found on the live corpus during a verification run: an embedded PDF, as
+    // a base64 document block nested inside a user message, refused the whole
+    // export with "deident has never seen a nested content block of type
+    // document". BLOCK_DECISIONS already listed it as drop-counted, so the
+    // type WAS reviewed; only this second path had its own list and had not
+    // been told. Two lists for one question is the bug.
+    //
+    // SHAPE: the smallest thing that reaches flattenContent, with a text
+    // sibling so the assertion can prove the text survived rather than the
+    // whole block being dropped.
+    const content = [
+      { type: 'text', text: 'here is the form' },
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0x' } },
+    ];
+
+    const out = flattenContent(content, 'F186');
+    assert.equal(out, 'here is the form', 'the document must vanish and the prose must stay');
+
+    // Negative control: a type nobody has reviewed still refuses, because
+    // refusing to guess is the property this must not weaken.
+    assert.throws(
+      () => flattenContent([{ type: 'sculpture', data: 'x' }], 'F186'),
+      /never seen/,
+      'an unreviewed type must still refuse',
+    );
+
+    // And the two lists agree, which is the actual fix. Anything the top-level
+    // path drops without reading must be droppable here too, or the same
+    // refusal returns under a different type name.
+    for (const t of ['document', 'image']) {
+      assert.doesNotThrow(
+        () => flattenContent([{ type: t, source: { data: 'x' } }], 'F186'),
+        `${t} is reviewed at the top level and unknown when nested`,
+      );
     }
   }],
 

@@ -552,9 +552,13 @@ function snapBack(buf, at) {
  * blocks today, carrying only an MCP tool name, and any new sub-block type
  * tomorrow, carrying whatever Claude Code decides to put there.
  */
-const NESTED_BLOCK_DROP = Object.freeze(['tool_reference']);
+// Every type the top-level path drops without reading must be droppable here
+// too. Measured on the live corpus: an embedded PDF arrived as a nested
+// document block and refused the whole export, while BLOCK_DECISIONS had
+// already reviewed that same type as drop-counted. Two lists for one question.
+const NESTED_BLOCK_DROP = Object.freeze(['tool_reference', 'document']);
 
-function flattenContent(content, where = null) {
+export function flattenContent(content, where = null) {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return content === null || content === undefined ? null : JSON.stringify(content);
   const parts = [];
