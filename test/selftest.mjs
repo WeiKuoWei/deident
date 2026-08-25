@@ -6461,8 +6461,13 @@ const FIXTURES = [
 
     // And the same sentence is in README, because the terminal block is one
     // line and a person deciding what to put in denied.json needs the list.
+    //
+    // Line breaks joined first. README is hard-wrapped prose, so which two
+    // words a wrap falls between is not a fact about the disclosure, and this
+    // fired once on a paragraph that was reflowed with the sentence still in it
+    // and still correct.
     const readme = fs.readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8');
-    assert.match(readme, /Claude Code universal/, 'README still implies the list is universal');
+    assert.match(readme.split(NL).join(' '), /Claude Code universal/, 'README still implies the list is universal');
   }],
 
   // F147 - a session is hashed over its whole retained prose, so appending one
@@ -7913,6 +7918,7 @@ const FIXTURES = [
     assert.equal(seen.size, FIXTURES.length);
   }],
 
+<<<<<<< HEAD
   ['F184', 'a git remote proposes exclude, so no workspace exports without a typed admission', () => {
     // Two exports shipped with all six gates green and both leaked, and neither
     // leak was in a work repository. The proposal read `redact` for any
@@ -8123,6 +8129,55 @@ const FIXTURES = [
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+=======
+  // F175 - README stopped carrying the limits list and the flag table and
+  // started pointing at docs/limits.md and docs/flags.md for them.
+  //
+  // Nothing in this suite had ever looked at a link, which was survivable while
+  // README held its own claims: a broken link cost a reader a paragraph of
+  // argument. It is not survivable now. The disclosure a person needs before
+  // deciding to send their logs is one hop away, and a link that resolves to
+  // nothing removes it silently, from the file whose whole job is to be read
+  // by someone who has never seen this repository.
+  //
+  // Anchors are checked too, against the target's own headings under GitHub's
+  // slug rule, because a renamed heading is the half of this that leaves the
+  // file present and the link dead.
+  ['F175', 'every relative link in README resolves to a file, and to a heading when it names one', () => {
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const readme = fs.readFileSync(path.join(repo, 'README.md'), 'utf8');
+
+    // GitHub's rule: lowercase, drop everything that is not a letter, a digit,
+    // a space or a hyphen, then spaces become hyphens. Backticks in a heading
+    // disappear rather than becoming separators, which is why `review.md` in a
+    // heading slugs as reviewmd.
+    const slug = (heading) =>
+      heading.toLowerCase().replace(/[^a-z0-9 -]/g, '').trim().replace(/ /g, '-');
+
+    const broken = [];
+    for (const m of readme.matchAll(/\]\(([^)]+)\)/g)) {
+      const target = m[1];
+      if (/^[a-z]+:/i.test(target) || target.startsWith('#')) continue;
+      const [rel, anchor] = target.split('#');
+      const file = path.join(repo, ...rel.split('/'));
+      if (!fs.existsSync(file)) { broken.push(`${target}: no such file`); continue; }
+      if (anchor === undefined) continue;
+      const headings = fs
+        .readFileSync(file, 'utf8')
+        .split(NL)
+        .filter((line) => line.startsWith('#'))
+        .map((line) => slug(line.replace(/^#+/, '')));
+      if (!headings.includes(anchor)) broken.push(`${target}: no heading slugs to that anchor`);
+    }
+
+    // Negative control. A link checker that silently matches nothing passes on
+    // a README of pure garbage, and this one walks a regex over prose.
+    assert.ok(
+      readme.includes('](docs/limits.md)'),
+      'README no longer links to the limits list, so this fixture is checking nothing',
+    );
+    assert.deepEqual(broken, [], `dead links in README: ${broken.join('; ')}`);
+>>>>>>> 514b626 (docs: cut README to a three-minute read, and fix four numbers in it)
   }],
 
 ];
