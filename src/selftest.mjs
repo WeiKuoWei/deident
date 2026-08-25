@@ -62,6 +62,7 @@ import {
   renderRefusal,
   renderReadError,
   renderManifest,
+  renderProbe,
   renderCandidates,
   renderTriageWritten,
   captureOutput,
@@ -7510,6 +7511,81 @@ const FIXTURES = [
     }
   }],
 
+  // F166 - a zero row that means something.
+  //
+  // The first export happened with declared strings that matched zero times and
+  // the zero row stopped nothing, because the row was one of hundreds. Measured
+  // against the shipped modules: one declared path expands to seven spellings
+  // and six of them match nothing, so the "matched nothing" block was a wall of
+  // escaping twins nobody typed and the one row that mattered sat inside it.
+  //
+  // Two classes now, and they are different animals: a spelling the person
+  // TYPED that matched nothing while another spelling of the same entity
+  // matched (they wrote a form this corpus does not use, which is the Export 1
+  // shape), and one where nothing of the entity matched anywhere (it is simply
+  // not here, which is what a passport number legitimately looks like).
+  ['F166', 'a declared spelling that matched nothing says which kind of nothing it is', () => {
+    // Fabricated. Shape: a Traditional org name declared over a corpus that
+    // writes Simplified, which is exactly what shipped.
+    const table = buildTable([
+      entity('O1', 'org', '遠帆投資', 'ORG_1'),
+      entity('S1', 'secret', 'K7719284', 'SECRET_1'),
+    ]);
+    const rows = probeCounts(['客户是远帆投资的顾问'], table);
+    const by = Object.fromEntries(rows.map((r) => [r.spelling, r]));
+    assert.equal(by['远帆投资'].count, 1, 'the twin is what actually matched');
+    assert.equal(by['遠帆投資'].count, 0, 'the declared form matched nothing');
+
+    const out = probeOutliers(rows);
+    const zeros = Object.fromEntries(out.zeros.map((z) => [z.spelling, z]));
+
+    // The declared form, with the spelling that matched in its place. Without
+    // this the reader is told a redaction did nothing and is given no way to
+    // tell that from a typo.
+    assert.ok(zeros['遠帆投資'], 'the declared spelling has no zero row');
+    assert.equal(zeros['遠帆投資'].matchedAs, '远帆投资', 'the row does not say what matched instead');
+
+    // The genuinely absent value: no spelling of that entity matched anything.
+    assert.ok(zeros.K7719284, 'a value that is simply not in the corpus has no row');
+    assert.equal(zeros.K7719284.matchedAs, null, 'a benign absence was reported as a near miss');
+
+    // And the noise class is gone. A spelling deident GENERATED that matched
+    // nothing, while the entity matched through another one, is the variant
+    // generator working, not a finding.
+    const paths = buildTable([entity('W1', 'workspace', `C:${BS}Users${BS}devuser`, 'WORKSPACE_1')]);
+    const pathRows = probeOutliers(probeCounts([`at C:${BS}Users${BS}devuser${BS}app`], paths));
+    assert.equal(pathRows.zeros.length, 0, `generated variants are still a wall: ${pathRows.zeros.map((z) => z.spelling).join(' ')}`);
+    assert.ok(paths.size > 1, 'the table really does carry generated variants');
+
+    // What the null class must NOT be allowed to claim.
+    //
+    // Two entities can cover the same text, and then one of them matches
+    // nothing while the identity is replaced perfectly well under the other's
+    // pseudonym. Reachable long before the Han fold: `GitRoll` and `gitroll`
+    // declared separately do it, because matching is case-insensitive and only
+    // one entry can win an offset. The probe breaks at the first matching entry
+    // by design, so it never learns that a loser would also have matched, and a
+    // row reading "this string is nowhere in the corpus" would be false.
+    //
+    // The wording therefore claims only what the sweep knows: nothing of THIS
+    // entity matched. The row below is the one that used to be reported as an
+    // absence.
+    const shadowed = buildTable([
+      entity('A1', 'org', 'GitRoll', 'ORG_A'),
+      entity('A2', 'org', 'gitroll', 'ORG_B'),
+    ]);
+    const shadowRows = probeOutliers(probeCounts(['we use GitRoll daily'], shadowed));
+    const loser = shadowRows.zeros.find((z) => z.spelling === 'gitroll');
+    assert.ok(loser, 'the shadowed entity has no row at all');
+    assert.equal(loser.matchedAs, null, 'nothing of that entity matched, so there is nothing to name');
+    const text = captureOutput(() => renderProbe(shadowRows));
+    assert.doesNotMatch(
+      text,
+      /is anywhere in the corpus|nowhere in the corpus/,
+      `the report claims an absence the probe cannot know:${NL}${text}`,
+    );
+    assert.match(text, /No other spelling of the same entity matched either/, `the report does not say what it actually checked:${NL}${text}`);
+  }],
 ];
 
 export function selftest() {

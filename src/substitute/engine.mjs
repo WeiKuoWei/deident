@@ -276,6 +276,19 @@ export function buildTable(entities, opts = {}) {
       ...e.spellings.map((spelling) => ({ spelling, loose: false })),
       ...(e.looseSpellings ?? []).map((spelling) => ({ spelling, loose: true })),
     ];
+    // The spellings a PERSON supplied, as against the ones expandVariants
+    // generated from them. Nothing about matching turns on this; the probe
+    // does, because "the string you typed matched nothing" and "an escaping
+    // twin of it matched nothing" are not the same finding and one of them is
+    // not a finding at all. Measured against the shipped modules: one declared
+    // path expands to seven spellings, six of which match nothing, so the
+    // report's "matched nothing" block was six parts noise.
+    //
+    // `canonical` is the fallback because tier 0 infers rather than reads, and
+    // its canonical IS the inferred string. An entity with neither field is a
+    // hand-built table, and there every spelling counts as supplied, which
+    // keeps the honest direction: report rather than suppress.
+    const typed = new Set(e.declared ?? (typeof e.canonical === 'string' ? [e.canonical] : e.spellings));
     for (const { spelling, loose } of all) {
       if (typeof spelling !== 'string' || spelling.length === 0) continue;
       entries.push(
@@ -301,6 +314,7 @@ export function buildTable(entities, opts = {}) {
           // with every gate green and nothing in the manifest saying so.
           cjk: isCjkOnly(spelling),
           lower: caseInsensitive(spelling) ? foldLower(spelling) : null,
+          declared: typed.has(spelling),
         }),
       );
     }

@@ -526,9 +526,74 @@ Three blocks do the work:
   hiding an implemented-but-inert control, which is worse than either honest
   option.
 
+### 6c. A zero row that means something
+
+`renderProbe` prints both tails of the replacement counts. The top tail is the
+noun-shaped hazard. The bottom tail is a spelling that matched nothing, and
+until 2026-08-25 that block was mostly noise: `expandVariants` turns one
+declared path into seven spellings, six of which are escaping twins nobody
+typed and nobody expected to occur, and every one of them earned a row saying
+it protected nothing. The first export shipped with declared strings that
+matched zero times, and the zero row stopped nothing, because the one row that
+mattered was sitting inside a wall of rows that did not.
+
+Two changes, and neither is a gate.
+
+**A zero on a spelling deident GENERATED is not reported at all.** `buildTable`
+marks each entry `declared`: true for a spelling a person supplied or a seeder
+inferred, false for one `expandVariants` derived from it. A derived twin that
+did not occur is the variant generator working.
+
+**A zero on a spelling a person supplied is split by whether the entity
+matched anything else**, because those are different animals:
+
+```
+  ! 1 spelling you declared matched nothing, but the same entity matched
+    through a spelling deident generated. This corpus writes it the other way:
+      org       <Traditional company name>   matched as   <Simplified twin>
+    Harmless for a path written with the other separator. Not harmless for a
+    name or a company: anything else you declare in that form will be missed.
+
+  ! 1 declared spelling matched nothing, so it protected nothing:
+      secret    K7719284
+    No other spelling of the same entity matched either.
+    Usually a typo in your list, or a value you have never typed here. If the
+    same identity is also declared as a separate entity, that one may already
+    be covering it.
+```
+
+The first block is the Export 1 shape exactly: the declared strings were
+Traditional and the corpus wrote them in Simplified. The second is what an
+unused passport number legitimately looks like, and refusing on it would be a
+permanently red gate.
+
+The second block claims only what the sweep knows, and the difference is not
+pedantry. Two entities can cover the same text, and then one of them matches
+nothing while the identity is replaced perfectly well under the other's
+pseudonym. `GitRoll` and `gitroll` declared as two entities do it, which is
+reachable long before any Han fold, because matching is case-insensitive and
+only one entry can win an offset. The sweep breaks at the first matching entry
+by design, so it never learns that a loser would also have matched. So the block
+says that no other spelling of the same entity matched either, and names the
+shadowing possibility, rather than asserting the string is nowhere in the
+corpus, which it cannot know.
+
+**Neither block is a gate, and the first is the one that invites being made
+one.** It must not be, because the same shape covers a path typed with the
+other separator: there the entity was replaced everywhere it occurs and nothing
+is wrong. No test orders those two, so a refusal would turn correct behaviour
+into a red gate, which is §F7 arriving on schedule. The row names the spelling
+that matched instead, and a reader separates them in a second.
+
+A zero on a value from `known-values.json` needs no separate rule here. §6a
+already prints that list back entity by entity with its own "replaced nothing"
+block, and `declaredValueRows` sums across every spelling, so a declared value
+whose twin matched shows its true total there and its typed form shows up in
+the first block above.
+
 ### 6d. Simplified and Traditional Han are one entity
 
-A person's declared redaction strings were
+The reason 6c's first block exists. A person's declared redaction strings were
 Traditional; the corpus contained the Simplified twins of the same words. The
 substituter did not match them and the residue scan did not find them **in
 agreement**, because both read `table.entries` and the entries carried one
