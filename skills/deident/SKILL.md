@@ -402,9 +402,11 @@ node <repo>/deident.js export --out <workdir> --json \
   --namespace <two letters nobody has used yet>
 ```
 
-**Run this detached and poll.** On a corpus of a few hundred sessions it takes
-more than ten minutes, which is longer than most command timeouts. Launch it in
-the background rather than waiting on it.
+**Just run it.** Measured on 219 session files: scan 22s, triage under a
+second, preview 15s, and the export with every gate and the zip 14s. The whole
+machine side is under a minute, so wait on it rather than backgrounding it.
+The stage that costs anything is the one where a reader reads, and that one is
+not a command.
 
 `--namespace` needs a fresh value each run. The tool prints its namespace, the
 terminal is logged into the session, and the session is part of the next run's
