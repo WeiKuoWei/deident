@@ -42,12 +42,12 @@ export function renderReview(model) {
   // gets a line so any single one can be held back without excluding the
   // directory it ran in.
   push('## sessions');
-  push('# Column 1: keep | drop | drop:audience');
-  push('#   drop            held whatever the recipient knows: someone else’s');
-  push('#                   documents, health, private messages, live credentials.');
-  push('#   drop:audience   held only because of who this is going to. Released by');
-  push('#                   deident export --audience teammate|company.');
+  push(`# Column 1: ${SESSION_DECISIONS.join(' | ')}`);
+  push('#   drop   held back. Someone else’s documents, health, private messages,');
+  push('#          live credentials, or anything else you will not send.');
   push('# A session whose workspace is excluded is already out; this is on top of that.');
+  push('# --audience does NOT move these rows. It decides what gets substituted;');
+  push('# every kept session ships at every audience.');
   for (const s of model.sessions ?? []) {
     push(`${s.decision.padEnd(6)} ${s.date}  ${s.workspace.padEnd(26)} ${s.id}`);
   }
@@ -155,21 +155,39 @@ export function parseReview(text, opts = {}) {
 }
 
 /**
- * A held session records WHY it is held, because one of the two reasons can be
- * moved by a setting and the other cannot.
+ * A session is kept or it is held. There is no third decision and no floor
+ * taxonomy: a taxonomy is a second thing to keep correct, and the failure
+ * direction of getting it wrong is a release.
  *
- * `drop` unqualified IS the floor, and that is deliberate: another person's
- * identity documents, their health, a private message archive, live
- * credentials. There is no floor taxonomy, because a taxonomy is a second thing
- * to keep correct and the failure direction of getting it wrong is a release.
+ * There WAS a third, `drop:audience`, held at `public` and released for a
+ * declared insider. Measured on the live corpus at audience=teammate:
+ * heldByFloor 151, heldByAudience 0, and zero occurrences of the token in the
+ * review.md the tool produced. Nothing writes it (buildReviewModel emits keep
+ * or drop; triage only moves a row toward drop), so it asked the operator to
+ * classify every held row against a distinction that changed nothing, while
+ * defining `public` as the setting that ships the FEWEST sessions. The expected
+ * user publishes publicly, so the design gave its main case the worst archive,
+ * using the instrument journey-and-pitfalls §1 measured as the expensive
+ * mistake: whole-session removal took that funnel from 35 to 17, and removing
+ * parts of a session instead took it back to 76.
  *
- * `drop:audience` is held only because of who the archive is going to.
- * audience-and-floor.md records the measurement that made this necessary: of 28
- * sessions still held after a full review, 20 moved on the single fact that the
- * recipient was a colleague. Without somewhere to write that down, changing one
- * fact means re-adjudicating every row.
+ * The axis now moves what goes INTO the entity list (seed.mjs, `audience`) and
+ * never which sessions ship, so more privacy and more sessions stop competing.
  */
-export const SESSION_DECISIONS = Object.freeze(['keep', 'drop', 'drop:audience']);
+export const SESSION_DECISIONS = Object.freeze(['keep', 'drop']);
+
+/**
+ * Read, never written, never offered. A review.md written before the change
+ * above still has these rows: refusing would strand the file, and reading the
+ * value as unknown would RELEASE a session someone held. It is the drop its
+ * author meant.
+ */
+const LEGACY_AUDIENCE_DROP = 'drop:audience';
+
+/** Every column-1 value the parser accepts, including the retired one. */
+function isSessionDecision(value) {
+  return SESSION_DECISIONS.includes(value) || value === LEGACY_AUDIENCE_DROP;
+}
 
 /**
  * Who the archive is for, which is a claim about what the reader already knows.
@@ -228,13 +246,10 @@ export function parseSessionDrops(text, opts = {}) {
       remedies: [{ label: 'Declare one', command: `deident export --audience ${AUDIENCES[0]}` }],
     });
   }
-  // Anything below `public` is a claim that the reader already knows the
-  // company's business, which is what an audience-held row was held for.
-  const releasesAudience = audience !== 'public';
   const drops = new Set();
   const known = new Set();
   let heldByFloor = 0;
-  let heldByAudience = 0;
+  let legacyAudienceRows = 0;
   let inSessions = false;
 
   for (const rawLine of text.split('\n')) {
@@ -250,7 +265,7 @@ export function parseSessionDrops(text, opts = {}) {
     const parts = trimmed.split(/\s+/);
     const decision = parts[0];
     const id = sessionRowId(parts);
-    if (!SESSION_DECISIONS.includes(decision)) {
+    if (!isSessionDecision(decision)) {
       if (onProblem !== null) {
         onProblem(`${REVIEW_FILENAME}: "${decision}" is not a session decision, so that line was ignored`);
         continue;
@@ -265,23 +280,22 @@ export function parseSessionDrops(text, opts = {}) {
     }
     if (!id) continue;
     known.add(id);
-    if (decision === 'drop') {
+    if (decision === LEGACY_AUDIENCE_DROP) legacyAudienceRows += 1;
+    if (decision !== 'keep') {
       heldByFloor += 1;
       drops.add(id);
-    } else if (decision === 'drop:audience') {
-      heldByAudience += 1;
-      if (!releasesAudience) drops.add(id);
     }
   }
 
-  // Counted apart, because the second number is the only one that changes if
-  // the person turns the knob, and a merged total hides the actionable half.
+  // `audience` rides along because the manifest records it (privacy-tiers §6),
+  // not because it moved anything here. It cannot: it is an entity-list
+  // setting now.
   return Object.freeze({
     drops: Object.freeze(drops),
     known: Object.freeze(known),
     audience,
     heldByFloor,
-    heldByAudience: releasesAudience ? 0 : heldByAudience,
+    legacyAudienceRows,
   });
 }
 
@@ -313,7 +327,7 @@ export function parseSessionRows(text) {
     const trimmed = line.trim();
     if (trimmed === '' || trimmed.startsWith('#')) continue;
     const parts = trimmed.split(/\s+/);
-    if (parts.length < 4 || !SESSION_DECISIONS.includes(parts[0])) continue;
+    if (parts.length < 4 || !isSessionDecision(parts[0])) continue;
     rows.push(Object.freeze({ decision: parts[0], date: parts[1], workspace: parts[2], id: sessionRowId(parts) }));
   }
   return Object.freeze(rows);
@@ -338,7 +352,7 @@ export function readSessionDrops(filePath, opts = {}) {
         known: Object.freeze(new Set()),
         audience: opts.audience ?? 'public',
         heldByFloor: 0,
-        heldByAudience: 0,
+        legacyAudienceRows: 0,
       });
     }
     throw new RefusalError(`could not read ${filePath}`, {

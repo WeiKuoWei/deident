@@ -1,7 +1,8 @@
 # The tightness knob: a declared audience, over a floor
 
-**Status: design, from a live export on 2026-08-22.** Nothing here ships yet. It replaces
-the assumption in privacy-tiers §5 that there is no dial at all.
+**Status: shipped, rewritten 2026-08-25 after the first version was measured.** The
+first version put the audience on the session decision and it never fired once. §2
+records the measurement; §3 onward describes what replaced it.
 
 ---
 
@@ -22,41 +23,111 @@ line between release and hold sits genuinely does, and refusing to expose it doe
 remove it. It just means the tool picks a point on the axis silently and calls it the
 only one.
 
-## 2. The axis is the audience, not a number
+## 2. The first version, and the measurement that killed it
 
-A 1-to-10 slider would be the obvious shape and it is the wrong one. A number cannot be
-audited, cannot explain itself, and gives the person no way to know what moved between 6
-and 7.
+The axis was built as a third session decision. `drop:audience` in `review.md` meant
+"held only because of who this is going to", and declaring `teammate` or `company`
+released those rows while plain `drop` held whatever the recipient knew.
 
-Declare the recipient instead:
+Measured on the live corpus:
 
-| Setting | Recipient | What it assumes |
+```
+audience=teammate   heldByFloor=151   heldByAudience=0
+occurrences of "drop:audience" in the produced review.md:  0
+```
+
+Zero, on both counts. Nothing in the tool writes the value: the scan proposes `keep` or
+`drop`, and `triage --apply` only ever moves a row toward `drop`. So the setting asked
+the operator to sort every held row into two buckets, and the sort changed nothing.
+
+Worse than useless, it pointed the wrong way. `public` was defined as the setting under
+which the most sessions are held. The expected user of this tool publishes publicly, so
+the design handed its main case the worst archive, and privacy and usefulness were in
+direct competition: the more careful the recipient claim, the fewer sessions shipped.
+
+They were only in competition because the axis removed whole sessions. That instrument is
+already measured in this repository, in journey-and-pitfalls §1:
+
+| Step | Sessions |
+|---|---|
+| Full-text read of the archive | 35 |
+| Grep of the shipped bytes | **17** |
+| Block-level denial added | 40 |
+| Value-level redaction added | 48 |
+
+It went to 17 because whole-session removal was the only instrument, and back up once
+parts of a session could be removed instead. Nothing about the corpus changed between
+those two numbers. The audience axis was repeating that mistake with a new door.
+
+## 3. What the setting moves now
+
+**The audience changes what goes INTO the entity list. It never changes which sessions
+ship.**
+
+| audience | the employer's own name and product vocabulary | sessions |
 |---|---|---|
-| `teammate` | a named colleague on the same team | Knows the projects, the people and who does what. |
-| `company` | anyone inside the organisation | Knows the org exists and who works there, not every deal. |
-| `public` | anyone, forever, including after a re-share | Knows nothing, and the archive may outlive the relationship. |
+| `teammate` | stays out of the list | all kept |
+| `company` | stays out | all kept |
+| `public` | **goes in, and is substituted** | all kept |
+
+Each setting is still a claim about what the reader already knows, which is what makes it
+checkable. "Is this something a colleague already knows?" is a question the owner can
+answer in two seconds. "Is this a 6 or a 7?" is not.
 
 Default `public`, because an archive that leaves a machine has left it, and the person who
-receives it is not the last person who will hold it.
+receives it is not the last person who will hold it. Under the new mechanism the default
+is also the safe one in both directions at once: `public` substitutes the most and keeps
+every session.
 
-Each setting is a claim about what the reader already knows, which is what makes it
-checkable. "Is this something Nora already knows?" is a question the owner can answer in
-two seconds per row. "Is this a 6 or a 7?" is not.
+### The clause this replaces
 
-## 3. What the setting moves
+The operator contract's list of what stays OUT of the entity list carried:
 
-At `teammate` and `company`, these stop being disclosures:
+> The user's own employer and its product vocabulary, when the recipient works there too.
+> Substituting words the reader already knows wrecks the prose and hides nothing.
 
-- Company-confidential business: deals, finances, strategy, cap-table structure, org
-  changes, who is handing over which duties.
-- **Re-identification by role.** This is the important one and it is invisible until you
-  look for it. Substitution replaces the name, so the archive says `PERSON_6891158`, and
-  the tool's residual scan correctly reports zero. But "the person who runs finance,
-  payroll, investor relations and legal" resolves to exactly one human at a small company.
-  Tokenisation does not anonymise a role. At `public` that is a leak; at `company` the
-  reader already knew.
-- The owner's own affairs that his employer already sees: his payroll arrangement, the
-  company accounts he administers, a work visa that this employer sponsors.
+"When the recipient works there too" *is* the audience question. It was enforced only by
+a human reading a document, and it reached that human only if the operator had loaded the
+skill and remembered a conditional buried in a bullet list. It is now the flag.
+
+### How the tool knows the employer's name
+
+It does not ask, and it should not have to. Tier 0 already seeds every git remote of every
+exported workspace (`src/entities/seed.mjs`), which gives it two things for free:
+
+- `owner` from `owner/repo`. This is the employer identifier in most cases. It is seeded
+  at **every** audience and is deliberately not on the axis: tier 0 cannot tell an
+  employer's own org from a client's org the person has a checkout under, and the failure
+  direction of guessing wrong is shipping a client's name to a stranger.
+- `repo`, the bare repository name. This is the product vocabulary, literally: the names
+  of the things the employer builds, spelled the way they are spelled in the prose. This
+  is what `public` promotes, and it is the whole mechanical difference between the
+  settings.
+
+The repo name is gated by `projectShaped` (it carries a hyphen, a digit or a non-ASCII
+character) and a four-character floor, which are the gates the project-directory seed
+already uses. Without them a repository called `dashboard`, `references` or `migration`
+becomes an entity and ordinary prose gets substituted, which is §F7's "a scan that cries
+wolf is the first thing switched off" arriving as over-substitution.
+
+**The gap, stated rather than papered over.** A company's written-out trading name is not
+its GitHub handle, and tier 0 has no source for it. This is the same shape as the display
+name: `git config user.name` is a handle on many machines, so the written-out name had no
+tier-0 source and survived 293 times in a real export. So at `public` the candidates file
+asks the reader for it directly, in a header the run generates:
+
+```
+# DECLARED AUDIENCE: public. Your own employer IS an identity here.
+# Declare its written-out name, its products and its internal service names
+# alongside the third-party ones. A reader who does not work there learns
+# where you work, and what it sells, from those words alone.
+```
+
+and at `teammate` or `company` it says the opposite, in the same place. The header states
+the rule and never the employer's name: this is the one artifact meant to be handed to a
+model, tier-0 substitution has already taken the remote out of the prose, and writing the
+company back into the header would put a plaintext identity in the file whose header
+claims there is none.
 
 ## 4. What the setting must never move
 
@@ -76,25 +147,40 @@ force-replaced with no opt-out; this is the same principle applied to inclusion.
 - The owner's personal finances outside the employment relationship: brokerage positions,
   personal mortgage, personal tax-residency strategy, personal purchases.
 
-The floor is why the setting is safe to expose. Loosening it cannot reach anything that
-belongs to someone who is not in the room.
+A session carrying any of that is `drop`, which is the only session decision that holds
+anything, at every audience. The floor is why the setting is safe to expose: loosening it
+cannot reach anything that belongs to someone who is not in the room, because the setting
+no longer touches sessions at all.
 
 ## 5. Consequences for the report
 
 The manifest already has to state how much each uploader withheld (privacy-tiers §6), or a
-privacy choice reads downstream as a skill gap. Add one line to that: **the declared
-audience**. A corpus exported at `teammate` and one exported at `public` are not
+privacy choice reads downstream as a skill gap. It carries the **declared audience** for
+the same reason: a corpus exported at `teammate` and one exported at `public` are not
 comparable, and the recipient has no way to tell them apart from the contents.
 
-A row should also separate the two reasons a session was held:
+Beside it, the number that says what the setting did:
 
 ```
-held back    12 sessions  by the floor
-             19 sessions  by the audience setting (public)
+declared audience: public  (14 employer names substituted because of it)
+declared audience: teammate  (employer vocabulary left in place)
 ```
 
-The second number is the one that changes if the person turns the knob. Showing them
-merged hides the only actionable half.
+`manifest.heldByAudience` is gone. It was 0 on every measured run, and a zero printed
+where no check ran is BRIEF §4.3's mistake landing in the block whose whole job is being
+believed. `manifest.audienceEntities` replaces it and can be non-zero.
+
+Zero `audienceEntities` at `public` on a machine with no git remote is a gap, not a clean
+bill. The entity list from the semantic pass is the only thing that can carry the
+employer there.
+
+### Migration
+
+`SESSION_DECISIONS` is `keep | drop`. A `review.md` written before this change still has
+`drop:audience` rows, and those are read as the drop their author meant, at every
+audience, and counted in `heldByFloor`. Refusing would strand the file; reading the value
+as unknown would release a session someone held. The export warns once, names the count,
+and says to rewrite them.
 
 ## 6. When to ask, which is not the same as where it lives
 
@@ -103,29 +189,26 @@ the reason is worth keeping.
 
 The owner did not know his own answer until he had seen four concrete rows. Asked
 cold, before any reading, he would have guessed, and a guess about a privacy line
-is worse than no setting because it looks like a decision. What actually happened
-is that four rows in a row got released for the same reason, and only then did he
-name the axis himself.
+is worse than no setting because it looks like a decision.
 
-So: **a setting that re-decides many rows belongs at the moment its effect can be
-counted, not at the moment it is first needed.**
+The rewrite makes this cheaper rather than solving it. The setting no longer decides
+whether a session ships, so getting it wrong costs prose quality in one direction and
+some substitution in the other, not a corpus. It is asked at the review step, before the
+entity list is written, and it is re-askable: the whole pipeline downstream is
+deterministic given the classifications.
 
-Three stages, and all three are cheap:
+Two things must be said at the moment it is asked, not after the archive exists, because
+no setting fixes either and both bear directly on the answer:
 
-1. **At scan, as an envelope field.** Who is this for? Default `public`. It costs
-   one line and it prevents the tool from spending a review pass holding things
-   that a declared insider already knows.
-2. **After classification, with the count.** "This setting is holding 28 sessions.
-   20 of them move if you say `company`. Here are three of them." That is when the
-   question is answerable, because the answer now has a size.
-3. **From behaviour, mid-review.** After several consecutive releases that all
-   trip the same held-for reason, propose the setting rather than asking the next
-   row. Calibration by example costs the person nothing and is how they discovered
-   the axis in the first place.
+- **Re-identification by role.** Substitution replaces the name, so the archive says
+  `PERSON_6891158` and the residual scan correctly reports zero. But "the person who runs
+  finance, payroll, investor relations and legal" resolves to exactly one human at a small
+  company. Tokenisation does not anonymise a role.
+- **The shape of the log itself.** A published work log shows the domain the person works
+  in and the kind of client they work for, whatever the names are replaced with.
 
-The whole pipeline downstream of the setting is deterministic given the
-classifications, so re-asking is nearly free. Treat the setting as re-askable at
-any point rather than as a thing chosen once at the top.
+They are in the limits block that ships with the archive. That is too late to be part of
+the decision, so the operator contract puts them beside the question.
 
 ## 7. What is still open
 
@@ -133,5 +216,11 @@ any point rather than as a thing chosen once at the top.
   and much more state to keep.
 - Whether the floor should be per-person-configurable at all, or whether allowing anyone
   to lower it defeats it. Current position: not configurable.
-- Where the setting lives: a flag, a line in `review.md`, or saved in `workspaces.json`
-  next to the tier decisions. `review.md` is the file the decision is already made in.
+- The employer's own email domain. Correlating the local git address against the remote
+  owner would identify it without a list of consumer mail providers, but `gitConfig` has
+  no injection point, so it cannot be put under a fixture as it stands. An unfixtured
+  seeding path in a privacy tool is worth less than the leak it closes.
+- `--audience` is an `export` flag. `scan` takes none, so the entity list `review.md`
+  shows is rendered as if `public`: for an insider export it lists repository names that
+  the export will not substitute. It overstates rather than understates, which is the safe
+  direction for a report, but it is still a report that does not match the run.

@@ -315,9 +315,9 @@ export function applyVerdicts(reviewText, verdicts) {
 
     const decision = parts[0];
     // `unsure` never moves anything, and a row already at the floor is where a
-    // verdict was going to put it anyway. `drop:audience` IS moved, because
-    // that direction is toward drop: it releases under --audience teammate and
-    // the floor does not.
+    // verdict was going to put it anyway. A retired `drop:audience` row from an
+    // older review.md IS rewritten to a plain `drop`, which is where it already
+    // resolves and is the spelling the file now uses.
     if (verdict.verdict !== 'drop' || decision === 'drop') {
       unchanged.push(id);
       return rawLine;

@@ -71,8 +71,41 @@ const HEADER = `# deident tier-1 candidates
 #
 # Then:  deident export --entities ${ENTITIES_FILENAME}
 #
+`;
+
+/**
+ * The one rule in this file that depends on who the archive is for.
+ *
+ * The operator contract used to carry it as a conditional in prose ("the user's
+ * own employer and its product vocabulary, WHEN THE RECIPIENT WORKS THERE
+ * TOO"), which reached the reader only if the operator had loaded the skill and
+ * remembered the clause. This file is what the reader actually has in front of
+ * them and the run already knows the answer, so the run states it.
+ *
+ * It states the RULE and never the employer's name. Tier-0 substitution has
+ * already taken the git remote out of this prose, and this is the one artifact
+ * meant to be handed to a model: naming the company in the header would put a
+ * plaintext identity in the file whose header claims there is none.
+ */
+function audienceRule(audience) {
+  const lines = audience === 'public'
+    ? [
+        '# DECLARED AUDIENCE: public. Your own employer IS an identity here.',
+        '# Declare its written-out name, its products and its internal service names',
+        '# alongside the third-party ones. A reader who does not work there learns',
+        '# where you work, and what it sells, from those words alone.',
+      ]
+    : [
+        `# DECLARED AUDIENCE: ${audience}. Your own employer is NOT an identity here.`,
+        '# Leave its name, its products and its internal service names out of the',
+        '# list: the reader uses those words daily, so replacing them wrecks the prose',
+        '# and hides nothing. Everyone else still goes in, clients included.',
+      ];
+  return `${lines.join(String.fromCharCode(10))}
+#
 # ---------------------------------------------------------------------------
 `;
+}
 
 /**
  * Write the candidates file. Prose only: tool output, harness bookkeeping and
@@ -166,7 +199,7 @@ export function writeCandidates(proseChunks, outPath, opts = {}) {
           '',
         ].join(NEWLINE)
       : '');
-  const body = HEADER + note + prose;
+  const body = HEADER + audienceRule(opts.audience ?? 'public') + note + prose;
 
   // The same gate the zip gets. This file's header states that the username,
   // paths, git identity, git remotes and MCP server names have already been
