@@ -165,7 +165,7 @@ counts are targets; 800 is the hard ceiling.
 | `src/verify/residual.mjs` | ~200 | `residualScan(bytes, entities)` | Scan the **final serialized bytes** for every entity spelling and variant, plus "any UUID that is not a known message or session uuid" (§F5). Reports `known-entity residue: N`, never "safe". Tuned for precision (§F7), no passport-shaped or generic-ID regexes. |
 | `src/output/zip.mjs` | ~260 | `writeZip(entries, outPath)` | Minimal ZIP writer over `node:zlib.deflateRawSync`: local headers, central directory, EOCD, UTF-8 name flag, fixed DOS timestamp so cli-ux §11 idempotence holds. Writes `outPath + '.part'`, then renames; the `.part` is unlinked on any throw. |
 | `src/output/preview.mjs` | ~170 | `writePreview(state, outPath)` | `--preview`: a plain-text before/after diff over a sample of every replacement class, for the user's own editor, with the same "leaving this machine" accounting as a real export. |
-| `src/selftest.mjs` | ~340 | `selftest()` | The `--selftest` fixture suite (§5). Plain `node:assert`, no framework, no fixture files outside `test/fixtures/`. |
+| `test/selftest.mjs` | ~340 | `selftest()` | The `--selftest` fixture suite (§5). Plain `node:assert`, no framework, no fixture files outside `test/fixtures/`. |
 
 **22 files.** No interface with one implementation, no factory, no config for a value that
 never changes. Each file is a distinct algorithm, a distinct I/O boundary, or the wording

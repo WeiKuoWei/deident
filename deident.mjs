@@ -44,7 +44,7 @@ export async function main(argv, env) {
         report.renderVersion();
         return 0;
       case 'selftest': {
-        const { selftest } = await import('./src/selftest.mjs');
+        const { selftest } = await import('./test/selftest.mjs');
         return report.renderSelftest(selftest()) ? 0 : 1;
       }
       case 'command': {

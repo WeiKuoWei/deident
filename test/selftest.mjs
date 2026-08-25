@@ -14,8 +14,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
-import { expandVariants, looseVariants, squashedForm, isCjkOnly, backslashUEscape } from './entities/variants.mjs';
-import { hanVariants, foldTable } from './entities/hanfold.mjs';
+import { expandVariants, looseVariants, squashedForm, isCjkOnly, backslashUEscape } from '../src/entities/variants.mjs';
+import { hanVariants, foldTable } from '../src/entities/hanfold.mjs';
 import {
   seedEntities,
   rejectReason,
@@ -30,17 +30,17 @@ import {
   projectShaped,
   basenameOf,
   buildEntities,
-} from './entities/seed.mjs';
-import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar } from './substitute/engine.mjs';
-import { probeCounts, probeOutliers } from './entities/probe.mjs';
-import { substituteRecord } from './substitute/walker.mjs';
-import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal, unverifiedRemainder } from './verify/checks.mjs';
-import { checkDeclaredValues } from './verify/declared.mjs';
-import { residualScan, startsInsideEscape, jsonEscaped } from './verify/residual.mjs';
-import { distillToolResult, retainToolUseResult, checkAddedLines } from './retain/toolresult.mjs';
-import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason } from './retain/records.mjs';
-import { resolveLineCwd, cwdChangeFrom } from './corpus/cwdtrack.mjs';
-import { allowLine } from './policy/linefilter.mjs';
+} from '../src/entities/seed.mjs';
+import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar } from '../src/substitute/engine.mjs';
+import { probeCounts, probeOutliers } from '../src/entities/probe.mjs';
+import { substituteRecord } from '../src/substitute/walker.mjs';
+import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal, unverifiedRemainder } from '../src/verify/checks.mjs';
+import { checkDeclaredValues } from '../src/verify/declared.mjs';
+import { residualScan, startsInsideEscape, jsonEscaped } from '../src/verify/residual.mjs';
+import { distillToolResult, retainToolUseResult, checkAddedLines } from '../src/retain/toolresult.mjs';
+import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason } from '../src/retain/records.mjs';
+import { resolveLineCwd, cwdChangeFrom } from '../src/corpus/cwdtrack.mjs';
+import { allowLine } from '../src/policy/linefilter.mjs';
 import {
   classifyWorkspaces,
   matchDenyToken,
@@ -51,16 +51,16 @@ import {
   orphanedDecisions,
   exportableTiers,
   nothingAdmittedRefusal,
-} from './policy/workspaces.mjs';
-import { recordRead, loadReads, countReads, readsPath } from './policy/reads.mjs';
-import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from './policy/grouping.mjs';
-import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from './policy/signals.mjs';
-import { setUserDeny } from './policy/userdeny.mjs';
-import { limitLines } from './cli/limits.mjs';
-import { readSession } from './corpus/reader.mjs';
-import { probeCaseFolding, setCaseFolding, caseFolding, normalizeCwd } from './corpus/cwdtrack.mjs';
-import { uncoveredNameParts } from './entities/probe.mjs';
-import { resolveRoot } from './corpus/root.mjs';
+} from '../src/policy/workspaces.mjs';
+import { recordRead, loadReads, countReads, readsPath } from '../src/policy/reads.mjs';
+import { groupSessions, tailSegments, HOME_NAME, UNKNOWN_NAME } from '../src/policy/grouping.mjs';
+import { proposeTier, personalDataShape, GIT_UNAVAILABLE } from '../src/policy/signals.mjs';
+import { setUserDeny } from '../src/policy/userdeny.mjs';
+import { limitLines } from '../src/cli/limits.mjs';
+import { readSession } from '../src/corpus/reader.mjs';
+import { probeCaseFolding, setCaseFolding, caseFolding, normalizeCwd } from '../src/corpus/cwdtrack.mjs';
+import { uncoveredNameParts } from '../src/entities/probe.mjs';
+import { resolveRoot } from '../src/corpus/root.mjs';
 import {
   setCommand,
   renderRefusal,
@@ -72,7 +72,7 @@ import {
   renderDeclaredResidue,
   renderTriageWritten,
   captureOutput,
-} from './cli/report.mjs';
+} from '../src/cli/report.mjs';
 import {
   namespaceCollisions,
   namespaceRefusal,
@@ -82,9 +82,9 @@ import {
   pseudonymScanPattern,
   loadOrCreateSalt,
   defaultSaltDir,
-} from './entities/pseudonym.mjs';
-import { buildZip, readZip, readZipFile, MAX_ENTRIES } from './output/zip.mjs';
-import { renderPreview } from './output/preview.mjs';
+} from '../src/entities/pseudonym.mjs';
+import { buildZip, readZip, readZipFile, MAX_ENTRIES } from '../src/output/zip.mjs';
+import { renderPreview } from '../src/output/preview.mjs';
 import {
   parseReview,
   parseSessionDrops,
@@ -93,15 +93,15 @@ import {
   renderReview,
   renderReviewHtml,
   SESSION_DECISIONS,
-} from './policy/reviewfile.mjs';
-import { readEntities, writeCandidates } from './entities/tier1.mjs';
-import { estimateTokens, roundEstimate, tokenCost } from './cli/tokens.mjs';
-import { CANDIDATE_CHUNK_CHARS } from './retain/constants.mjs';
-import { DICTIONARY_FILENAME, mergeEntities } from './policy/dictionary.mjs';
-import { parseCliArgs } from './cli/args.mjs';
-import { checkRuntime, REQUIRED_NODE } from './cli/runtime.mjs';
-import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings } from './pipeline.mjs';
-import { RefusalError, ReadError, UsageError } from './cli/errors.mjs';
+} from '../src/policy/reviewfile.mjs';
+import { readEntities, writeCandidates } from '../src/entities/tier1.mjs';
+import { estimateTokens, roundEstimate, tokenCost } from '../src/cli/tokens.mjs';
+import { CANDIDATE_CHUNK_CHARS } from '../src/retain/constants.mjs';
+import { DICTIONARY_FILENAME, mergeEntities } from '../src/policy/dictionary.mjs';
+import { parseCliArgs } from '../src/cli/args.mjs';
+import { checkRuntime, REQUIRED_NODE } from '../src/cli/runtime.mjs';
+import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings } from '../src/pipeline.mjs';
+import { RefusalError, ReadError, UsageError } from '../src/cli/errors.mjs';
 
 // Both sides of every fold pair must be Han and nothing else. A pair that
 // slipped in a lookalike from another block would fold text nobody asked about.
