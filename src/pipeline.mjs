@@ -77,7 +77,9 @@ import {
   coverageRefusal,
   runAllChecks,
   toReportRows,
+  unverifiedRemainder,
 } from './verify/checks.mjs';
+import { checkDeclaredValues } from './verify/declared.mjs';
 import { writeZip, readZipFile, safeUnlink } from './output/zip.mjs';
 import { writePreview } from './output/preview.mjs';
 import { EXAMPLES_PER_REPORT, MIN_REPLAY_MATCH_CHARS } from './retain/constants.mjs';
@@ -1006,9 +1008,39 @@ export async function runExport(flags, env) {
     semantic,
   });
 
-  report.renderChecks(toReportRows(checks));
+  // The counterweight to the block above, and it is measured on this run
+  // rather than quoted. Every check in `checks` compares the output against the
+  // entity table; nothing compares it against the sessions. `perSession` is the
+  // prose that has been put in front of a reader (the semantic-pass gate above
+  // refuses while any of it has not been), and the archive is what leaves, so
+  // the difference is the part of the export no person read and no check reads
+  // for names. Bytes on both sides, so the percentage means what it says.
+  const proseBytes = perSession.reduce(
+    (a, s) => a + s.chunks.reduce((b, c) => b + (typeof c === 'string' ? Buffer.byteLength(c, 'utf8') : 0), 0),
+    0,
+  );
+  const remainder = unverifiedRemainder(proseBytes, Buffer.byteLength(serialized.allBytes, 'utf8'));
+  report.renderChecks(toReportRows(checks), remainder);
 
-  //  15a  The occurrences the boundary rule refused, per spelling, for the
+  //  15a  The declared values the table never carried, swept with needles
+  //       re-derived from known-values.json on disk.
+  //
+  //       Run here rather than beside the on-disk rescan so it also runs under
+  //       --preview, which is the run where the person can still fix their list
+  //       before anything is packed. cli-ux §6a prints these rows with a dash
+  //       and the sentence "may still be in the archive"; this is the answer to
+  //       that sentence.
+  //
+  //       It re-reads the file, so a malformed list throws a RefusalError here
+  //       rather than returning a clean result. That is the right outcome and
+  //       not a second validation pass: loadPrivateRules read the same file
+  //       successfully at the top of the command, so a failure at this point
+  //       means somebody edited it mid-run, and a check whose needles came from
+  //       a file that changed under it cannot say anything. Nothing is written
+  //       yet, so cli-ux §10 holds.
+  report.renderDeclaredResidue(checkDeclaredValues(serialized.allBytes, saltDir, mergedTable));
+
+  //  15b  The occurrences the boundary rule refused, per spelling, for the
   //       tier-0 spellings that identify the uploader. Measured 2026-08-24: the
   //       OS username shipped inside cloud resource names (`stdevuser-prod`,
   //       `kv-devuser37557093578778`) while this same scan printed
@@ -1077,6 +1109,9 @@ export async function runExport(flags, env) {
         entities,
         manifest,
         checks: toReportRows(checks),
+        // Same object the terminal and --json got, so the three surfaces
+        // cannot disagree about the size of what nobody checked.
+        unverified: remainder,
       },
       path.join(outDir, `deident-preview-${today()}.diff`),
     );

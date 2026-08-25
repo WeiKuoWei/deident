@@ -334,13 +334,69 @@ export function renderProgress(done, total, noun) {
   say(`    ${n(done)} / ${n(total)} ${noun}`);
 }
 
-export function renderChecks(checks) {
-  if (machine !== null) { machineAdd({ checks }); return; }
+/**
+ * The gate block. One statement on the way through, every row on the way down.
+ *
+ * This printed one green row per check, and the rows were CORRECT on both runs
+ * that shipped a leak. Each of them asserts the same thing about a different
+ * surface: that the output is consistent with the entity table it was given.
+ * None of them asks whether the table is complete, and six rows reading `ok`
+ * are read by a person as six independent confirmations of something much
+ * bigger than the one claim they actually share. A presentation bug, and the
+ * fix is presentational: say the joint claim once, in the words that bound it,
+ * and put the remainder on the same screen.
+ *
+ * The failure direction does NOT collapse. A green row that turns into an
+ * opaque red row is worse than what it replaced: a refusal is followed by a
+ * remedy the reader has to act on, and acting starts with knowing which of the
+ * five went red. So a run with any failure prints all of them, labelled, in
+ * the old shape.
+ *
+ * `--json` keeps every row in both directions, and gains `unverified`. See
+ * machineAdd below and F176 for why the two surfaces diverge here.
+ *
+ * @param {ReadonlyArray<{label,detail,ok}>} checks
+ * @param {object|null} remainder  from unverifiedRemainder()
+ */
+export function renderChecks(checks, remainder = null) {
+  if (machine !== null) { machineAdd({ checks, unverified: remainder }); return; }
   say('');
   say('  Checks');
-  for (const c of checks) {
-    say(`    ${pad(c.label, 23)} ${pad(c.detail, 44)} ${c.ok ? 'ok' : 'FAILED'}`);
+  const failed = checks.filter((c) => !c.ok);
+  if (failed.length > 0) {
+    for (const c of checks) {
+      say(`    ${pad(c.label, 23)} ${pad(c.detail, 44)} ${c.ok ? 'ok' : 'FAILED'}`);
+    }
+  } else {
+    // cli-ux §7: the word, never a colour and never a tick. "passed" carries
+    // it here the way `ok` carries it in the rows above.
+    say(`    ${n(checks.length)} passed. Jointly they assert one thing about the entity table:`);
+    say('    every spelling in it was substituted wherever the scan found it, and the');
+    say('    result reverses. Not one of them asks whether the table is complete, or');
+    say('    whether it names everyone in these sessions.');
+    // The one detail the collapsed line must not swallow. F126: a repeat run
+    // supplies no --entities and the report has to say the entities came from
+    // the remembered dictionary, or a run that read something new is
+    // indistinguishable from one that read nothing. It also answers the
+    // question the sentence above provokes, which is whose table this was.
+    const source = checks.find((c) => c.label === 'semantic pass');
+    if (source !== undefined) say(`    the table came from   ${source.detail}`);
   }
+  if (remainder !== null) renderRemainder(remainder);
+}
+
+/**
+ * The line the six rows never had. See unverifiedRemainder() for the unit and
+ * for the three units it was chosen over.
+ */
+function renderRemainder(r) {
+  // Set apart, or it reads as one more row of the block above, which is the
+  // exact misreading this whole block was rewritten to stop.
+  say('');
+  say(`    unverified   ${humanBytes(r.proseBytes)} of these sessions is prose, and prose is the only`);
+  say(`                 part a reader is ever shown. The archive is ${humanBytes(r.archiveBytes)}, so`);
+  say(`                 ${r.unreadPercent}% of it went in front of nobody and no check here reads`);
+  say('                 it for a name that is not already in the table.');
 }
 
 export function renderManifest(m) {
@@ -636,10 +692,18 @@ export function renderDeclared(rows) {
       if (r.rejected) {
         warn(`        never substituted: ${r.rejected}`);
         // The sentence that makes the dash in the count column mean something.
-        // A value the substituter refused is also a value the residue scan
-        // never looks for, so "not scanned" is the whole state and the archive
-        // may well still carry it.
-        warn('        and not scanned for either, so this value may still be in the archive');
+        // The dash is still right: nothing replaced this, so a replacement
+        // count of 0 would be a zero where no substitution ran.
+        //
+        // What it used to say after that was "and not scanned for either, so
+        // this value may still be in the archive", and that stopped being true
+        // when src/verify/declared.mjs started re-deriving its needles from
+        // known-values.json on disk. cli-ux §6 calls a disclosure that hides an
+        // implemented control worse than either honest option, so the row now
+        // points at the sweep that does have the number instead of claiming
+        // nobody looked.
+        warn('        so the count above is a dash and not a zero. Whether it is in the');
+        warn('        archive anyway is counted below, under the declared-values sweep');
       } else {
         warn('        no occurrence of this string is anywhere in the exported text');
       }
@@ -712,6 +776,58 @@ export function renderGluedResidue(rows) {
   warn('');
   warn('    Decide per row. A resource name you can rename before exporting is one');
   warn('    fix; declaring the glued spelling itself in the entity list is another.');
+  warn('');
+}
+
+/**
+ * The declared values no other scan carried, said so a reader can tell it from
+ * the residue line above it.
+ *
+ * The wording does the load-bearing work here. Two scans printing a figure
+ * about the same archive read as two opinions, and cli-ux §12b says a check
+ * that merely repeats another "would read, in the report, as independent
+ * confirmation of a result it merely repeated. That is worse than no check."
+ * So every shape below states which set of needles it covered and where they
+ * came from, and the two sets are disjoint in the code (src/verify/declared.mjs).
+ *
+ * The zero case prints too. `renderGluedResidue` returns silently with no rows
+ * and limits.mjs records what that cost: an absent list beside a green residue
+ * figure reads as a clean result when it means not examined.
+ */
+export function renderDeclaredResidue(check) {
+  if (machine !== null) { machineAdd({ declaredResidue: check }); return; }
+  // No list at all is the ordinary case and is not a finding.
+  // missingKnownValuesWarning covers the trap of a salt directory that lost one.
+  if (check.declared === 0) return;
+  // stderr, and beside renderDeclared rather than inside the Checks block. It
+  // is the answer to a row renderDeclared prints, it is not a gate, and this
+  // tool puts findings on stderr.
+  warn('');
+  if (check.rows.length === 0) {
+    warn(`  ${n(check.declared)} values you declared were all in the entity table, so the residue scan`);
+    warn('  above already swept the archive for every one of them.');
+    warn('');
+    return;
+  }
+  const missing = check.rows.length;
+  warn(`  ! ${n(missing)} of the ${n(check.declared)} values you declared never entered the entity table, so no`);
+  warn(`    check above looked for ${missing === 1 ? 'it' : 'them'}. The other ${n(check.swept)} ${check.swept === 1 ? 'was' : 'were'} swept by the residue scan.`);
+  warn('    Needles re-read from known-values.json on disk, then swept over the same');
+  warn('    output the residue scan read. Occurrences found:');
+  for (const r of check.rows.slice(0, 12)) {
+    warn(`      ${padLeft(n(r.count), 6)}  ${pad(r.kind, 9)} ${r.value.slice(0, 46)}${r.capped ? '   (capped)' : ''}`);
+    if (r.count > 0 && r.excerpt) warn(`              ${r.excerpt.slice(0, 96)}`);
+  }
+  if (missing > 12) warn(`      ... and ${n(missing - 12)} more`);
+  if (check.found > 0) {
+    // Not a refusal, and cli-ux §12b makes that call: the person declared a
+    // value the tool has already told them it cannot safely substitute, so
+    // refusing here would refuse over a choice they made with the reason in
+    // front of them. The remedy is theirs, so it is stated rather than taken.
+    warn('    A count above zero is that value, in the archive, unreplaced. Declaring a');
+    warn('    longer spelling that contains it is one fix; accepting it is another.');
+    warn('    Nothing here will refuse the export over a value you declared yourself.');
+  }
   warn('');
 }
 
