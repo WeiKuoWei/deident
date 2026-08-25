@@ -318,7 +318,15 @@ export function jsonEscaped(s) {
   return quoted.slice(1, -1);
 }
 
-function excerptAt(bytes, at, len) {
+/**
+ * `…text around the hit…`, with whitespace flattened.
+ *
+ * Exported so src/verify/declared.mjs reuses it rather than growing a second
+ * copy. This file's header records what two copies of one rule cost last time:
+ * both had the same bug, agreed with each other, and a leak was reported as
+ * `known-entity residue: 0`.
+ */
+export function excerptAt(bytes, at, len) {
   const start = Math.max(0, at - EXCERPT_CONTEXT);
   const end = Math.min(bytes.length, at + len + EXCERPT_CONTEXT);
   return bytes.slice(start, end).replace(/\s+/g, ' ');
