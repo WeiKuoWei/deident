@@ -4181,26 +4181,55 @@ const FIXTURES = [
     walk(root);
     assert.deepEqual(offenders, [], `harness-specific remedies: ${offenders.join('; ')}`);
 
-    // The operator contract ships in two places because harnesses disagree
-    // about where to look. They must not drift: a reader following the stale
-    // one is exactly how the entity-kind list fell 62 commits behind.
+    // AGENTS.md used to carry a second copy of the operator contract, and this
+    // fixture asserted the two bodies matched byte for byte. It caught one real
+    // drift, the entity-kind list 62 commits behind, which is the evidence that
+    // the duplication was the bug rather than the drift. So the copy is gone
+    // and AGENTS.md is a pointer.
+    //
+    // A pointer needs its own check, because a pointer to a file that moved is
+    // worse than a copy that is stale: it fails at the moment an agent is being
+    // told where the contract is. Three things, and the last is the one that
+    // rots quietly.
     const repo = fileURLToPath(new URL('..', import.meta.url));
-    const skill = fs.readFileSync(path.join(repo, 'skills', 'deident', 'SKILL.md'), 'utf8');
     const agents = fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8');
-    const bodyOf = (text) => text.slice(text.indexOf('# deident')).trim();
-    assert.equal(bodyOf(skill), bodyOf(agents), 'SKILL.md and AGENTS.md have drifted');
+
+    // 1. The pointer names a path, and 2. that path is there.
+    const CONTRACT = 'skills/deident/SKILL.md';
+    assert.ok(agents.includes(CONTRACT), `AGENTS.md no longer names ${CONTRACT}`);
+    const contractPath = path.join(repo, ...CONTRACT.split('/'));
+    assert.ok(fs.existsSync(contractPath), `AGENTS.md points at a file that is not there: ${CONTRACT}`);
+
+    // And the file it names has to BE the contract, not merely exist. These two
+    // headings are the halves an operator cannot work without: the flow, and
+    // the disclosure it has to put in front of the person.
+    const skill = fs.readFileSync(contractPath, 'utf8');
+    assert.match(skill, /^# deident$/m, 'the file AGENTS.md points at is not the operator contract');
+    assert.ok(
+      skill.includes('## What it does not protect against'),
+      'the contract AGENTS.md points at has lost its limits section',
+    );
+
+    // 3. AGENTS.md has not quietly become a copy again. SKILL.md's body is
+    // 27 KB, so anything past 4 KB here is somebody re-pasting a section of it,
+    // which is exactly how the duplication started.
+    const pointerBytes = Buffer.byteLength(agents, 'utf8');
+    assert.ok(
+      pointerBytes < 4096,
+      `AGENTS.md is ${pointerBytes} bytes: a pointer that size is a copy again`,
+    );
 
     // And the skill must not restate a constant it can read at runtime, which
     // is the drift that already happened once.
     assert.doesNotMatch(skill, /person \| org \| client \| workspace \| machine/);
 
-    // The frontmatter is the half the body comparison above cannot see, and it
-    // drifted there: SKILL.md's `description` listed two Chinese trigger
-    // phrases, AGENTS.md has no frontmatter and so listed none. Same contract,
+    // The frontmatter is the half the old body comparison could not see, and it
+    // drifted there too: SKILL.md's `description` listed two Chinese trigger
+    // phrases, AGENTS.md had no frontmatter and so listed none. Same contract,
     // different activation on the two harnesses, with the drift check green.
     //
-    // The fix is not to compare frontmatter, because AGENTS.md legitimately has
-    // none. It is that the description must carry no language-specific literal
+    // The fix was never to compare frontmatter. It is that the description must
+    // carry no language-specific literal
     // at all: a literal list serves exactly the languages someone remembered to
     // add, so "English plus the author's own language" is what it always
     // becomes. Non-ASCII in the description is that mistake, detectably.
@@ -4219,7 +4248,7 @@ const FIXTURES = [
   // because nothing looked at the file. The scope is exactly the two contract
   // files: source comments and the design docs quote outside text, and a check
   // over those would fail on punctuation the source actually used.
-  ['F156', 'the operator contract carries no em dash, in either of its two copies', () => {
+  ['F156', 'the operator contract carries no em dash, in the skill or in the pointer to it', () => {
     const repo = fileURLToPath(new URL('..', import.meta.url));
     const EM_DASH = String.fromCharCode(0x2014);
     for (const rel of [path.join('skills', 'deident', 'SKILL.md'), 'AGENTS.md']) {

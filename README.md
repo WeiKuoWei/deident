@@ -30,7 +30,7 @@ codex debug prompt-input | grep deident  # -> deident:deident: <description>
 The third command in each block is the verification, not a formality: it prints
 the harness's own view of what it parsed, and a file on disk proves nothing. The
 skill appears in a session started **after** the install, so restart an open one.
-For an agent that is neither, `AGENTS.md` carries the same contract.
+For an agent that is neither, `AGENTS.md` points at the same skill file.
 
 ## Run it
 
@@ -66,8 +66,8 @@ node deident.js export --entities deident-entities.json
 
 Only the last line writes an archive. `deident` with no arguments prints usage
 and exits 0. The reading step in the middle is the one thing deident cannot do
-for itself, which is what the skill is for; `AGENTS.md` is the same contract for
-an agent that reads the repository directly.
+for itself, which is what the skill is for; `AGENTS.md` sends an agent reading
+this repository directly to the same file.
 
 Nothing is swept in, and nothing deident proposes is exportable. Every workspace
 starts at `exclude` or `unclassified`, and `redact` or `open` is reached only by
