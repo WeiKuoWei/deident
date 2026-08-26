@@ -1,8 +1,8 @@
 # What deident does not protect against, in full
 
 A tool that only lists its strengths gets over-trusted, and the first surprise
-destroys it permanently. README carries the two limits that decide whether you
-should run this at all. This is the whole list.
+destroys it permanently. README lists every one of these, one line each. This
+file is the argument and the measurement behind each.
 
 The same disclosure is printed at the moment of export, in
 `src/cli/limits.mjs`, so the person deciding to send a file sees it there and
@@ -47,7 +47,7 @@ Measured on an archive built from the live corpus, before and after:
 |---|---|---|
 | archive, uncompressed | 12.28 MB | 9.08 MB |
 | tool result payload | 3.54 MB (28.8%) | 0 |
-| tool result shape | — | 0.32 MB (3.6%) |
+| tool result shape | n/a | 0.32 MB (3.6%) |
 | prose a reader was shown | 2.69 MB (21.9%) | 2.69 MB (29.6%) |
 | tool call parameters | 1.48 MB (12.0%) | 1.48 MB (16.3%) |
 | record scaffolding and minted ids | 4.40 MB (35.8%) | 4.40 MB (48.4%) |
@@ -214,3 +214,38 @@ always the load-bearing half of that hedge, and a consumer that read
 Only depth-0 human sessions are read; the rest of the corpus is 2.2x the payload
 with zero human turns. Orchestration stays visible through the parent session's
 `Agent` and `Workflow` tool calls.
+
+## deident cannot infer the list of your own literal values
+
+Everything above is inference, and inference cannot be told "this exact string
+is mine". A finished archive whose six checks were all green shipped 21 identity
+fields in plaintext for want of that: passport name orderings and three name
+spellings used across visa documents, a date and place of birth, a household
+registration address in two languages, three country addresses, a driving
+licence address, two banks' address of record, a phone number and a
+payment-platform account id. Every one of those values was already enumerated,
+by hand, in a personal-details file the same person maintained.
+
+So write yours down, in `~/.deident-private/known-values.json`:
+
+```json
+{ "values": ["1974-11-03", {"kind": "person", "value": "Aurelio Ferreira-Nkemdirim"}] }
+```
+
+Local only, never committed. A bare string is enough, `kind` only changes which
+pseudonym the value gets, and no file at all is the normal case. A malformed one
+refuses the run and names the row, because an export that silently declared
+nothing is indistinguishable, in every check deident has, from one that leaked.
+The full design is in [`cli-ux.md`](cli-ux.md), section 12.
+
+## The check deident cannot run on itself
+
+Both real leaks were found the same way: someone opened the finished archive and
+compared it against something they already held. Nothing inside the tool does
+that, and no check it has can, because every one of them compares the output
+against the same table the substitution used.
+
+So the last step is a person, or a fresh agent that has not seen the corpus:
+hand it a sample of the archive and ask it to name the person, the employer and
+three colleagues from that alone. What comes back is the finding. The skill
+carries this as a step; if you are driving the CLI yourself, it is yours to run.
