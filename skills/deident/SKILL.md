@@ -163,25 +163,22 @@ else's identity documents, health, private messages, live credentials, or
 anything else the person will not send. Getting this wrong in the safe
 direction costs nothing; a row you cannot classify is a `drop`.
 
-**The audience does not move these rows.** Every kept session ships at every
-audience. Never hold a session back on the grounds that the archive is going
-out publicly: that is what substitution is for, and removing whole sessions is
-the measured way this tool used to lose most of its corpus.
+**Nothing but the floor moves these rows.** Never hold a session back on the
+grounds that the archive is going out publicly: that is what substitution is
+for, and removing whole sessions is the measured way this tool used to lose most
+of its corpus.
 
 Write decisions back by editing `review.md` in place: column 1 of the
 `## workspaces` and `## sessions` sections.
 
-### Say what the export cannot protect, and do not ask about the audience
+### Say what the export cannot protect, and do not ask who it is for
 
-**Do not ask who the archive is for.** Pass `--audience public` and move on.
-
-Public is the safe reading of every recipient and it costs no sessions: under
-the current axis the setting decides only whether the person's own employer
-name and product words are substituted along with everything else. At `public`
-they are. The cost is prose quality, where a sentence reads `ORG_4471` and a
-colleague would have read a word they know, and that is not worth stopping the
-person to ask about. Use `teammate` or `company` only if they say so
-themselves, unprompted.
+**Do not ask who the archive is for.** There is no setting for it and no
+decision to take: the person's own employer name and product words are
+substituted along with everything else, on every run. That is the safe reading
+of every recipient, and it costs no sessions. The cost is prose quality, where a
+sentence reads `ORG_4471` and a colleague would have read a word they know,
+which is not worth stopping the person to ask about.
 
 **Say both of these, here, before anything expensive runs.** Neither is fixed
 by any setting, and they are the reason someone might decide not to export at
@@ -353,6 +350,10 @@ What goes in the list:
 - Every named human: colleagues, clients, accountants, candidates, family.
   Third parties never consented, so include them; do not ask which to skip.
 - External organisations, banks and services tied to an account.
+- **The user's own employer**: its written-out name, its products and its
+  internal service names. Those words alone say where the person works and what
+  it sells, and the written-out name has no tier-0 source, so this list is the
+  only thing that can carry it.
 - Real host names.
 - Every spelling you actually see for one identity, in ONE entity's
   `spellings` array: full name, given name, surname, the run-together forms that
@@ -362,13 +363,6 @@ What goes in the list:
 
 What stays out:
 
-- The user's own employer and its product vocabulary, at `--audience teammate`
-  or `company` only. Substituting words the reader already knows wrecks the
-  prose and hides nothing. **At `public` the employer goes IN**: declare its
-  written-out name, its products and its internal service names, because those
-  words alone say where the person works and what it sells. The candidates file
-  states which rule is in force for the run in its own header; follow the
-  header, not this line.
 - Generic technology and platforms mentioned as technology.
 - Ordinary words. **This is the one that has actually gone wrong**: a common
   noun was declared once and replaced 202 times across a corpus that had already
@@ -398,7 +392,6 @@ not fix this one session, which will change again while the reader is reading.
 ```
 node <repo>/deident.js export --out <workdir> --json \
   --entities <workdir>/deident-entities.json \
-  --audience <teammate|company|public> \
   --namespace <two letters nobody has used yet>
 ```
 
@@ -448,12 +441,11 @@ in the table was substituted, everywhere the scan found it.
 
 Also carry back:
 
-- `manifest.audience` and `manifest.heldByFloor`. The audience holds no
-  sessions back, so `heldByFloor` is the whole held count.
-- `manifest.audienceEntities`, the count of employer names that are in the table
-  because the declared audience is `public`. Zero at `teammate` and `company` by design.
-  Zero at `public` on a machine with no git remote is a GAP, not a clean bill:
-  the employer's written-out name has no tier-0 source, so only the entity list
+- `manifest.heldByFloor`, which is the whole held count: nothing else holds a
+  session back.
+- Whether the employer's own name is in the entity table at all. On a machine
+  with no git remote nothing seeds it, and its absence is a GAP rather than a
+  clean bill: the written-out name has no tier-0 source, so only the entity list
   from step 4 can carry it.
 - `replacementCounts.hits`: how many times each spelling was replaced, highest
   first. **Read the top rows.** A common word near the top is a false positive
@@ -579,7 +571,7 @@ running it and reporting a pass.
 | A real name, and it is wrong | A guess off a pseudonym or a common word. Not a finding. | Nothing. Do not add it to any list: a wrong name in the entity table substitutes text that was never an identity. |
 | "I cannot name them", plus what they would need | The intended result. | Record what they said they would need. If the missing piece is in the archive and they simply did not connect it, that is next run's problem. |
 | A role, not a name ("the person who runs payroll") | Re-identification by role, which substitution does not address and the README already discloses. | Not a leak. Report it to the person as a limit, in the handover. |
-| The employer, from product or repo vocabulary | The `--audience` setting, working as documented or set too low. | If the archive is going outside the company, re-run with `--audience public`. |
+| The employer, from product or repo vocabulary | A name the entity list never had. The repo name is seeded from the git remote; the written-out company name is not seeded by anything. | Add the exact spellings they read it from to the entity list and re-export. |
 
 Only the person running the export can score this, because only they know the
 real names. Score it yourself against what you know; do not paste the real names
@@ -594,9 +586,8 @@ reader named is not.
 
 The archive is a file. The tool does not upload it and has no receiver.
 
-Tell the person: the file, its size, the session count, the declared audience,
-and what was held back. Then let them send it. A privacy decision is theirs to
-execute, not yours.
+Tell the person: the file, its size, the session count, and what was held back.
+Then let them send it. A privacy decision is theirs to execute, not yours.
 
 `export-map.txt` is written beside the archive and maps each original session id
 to its entry inside. It is local, it is not in the archive, and it must not be

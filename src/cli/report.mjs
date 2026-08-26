@@ -410,19 +410,6 @@ export function renderManifest(m) {
   if (machine !== null) { machineAdd({ manifest: m }); return; }
   say('');
   say('  Leaving this machine');
-  // The recipient claim, in the block whose whole job is being believed.
-  // privacy-tiers 6: a corpus exported for a teammate and one for the public
-  // are not comparable, and nothing in the contents says which is which.
-  //
-  // Said with what it DID. This line used to be followed by "held back N by the
-  // floor, 0 by the audience setting", and the second number was 0 on every
-  // measured run because nothing ever wrote the decision it counted: a check
-  // that never ran, printed as a passing one.
-  const audience = m.audience ?? 'public';
-  const did = audience === 'public'
-    ? `${n(m.audienceEntities ?? 0)} employer names substituted because of it`
-    : 'employer vocabulary left in place';
-  say(`    declared audience: ${audience}  (${did})`);
   say(`    ${n(m.sessions)} sessions from ${n(m.workspaces)} workspaces`);
   // The bound the entry gate buys, and the first sentence in this block that is
   // about what CANNOT have gone wrong rather than about what was counted. Every
@@ -480,8 +467,7 @@ export function renderManifest(m) {
     }
   }
   say(`    ${n(m.userMessages)} user messages`);
-  // Sessions are held by the floor and by nothing else. The audience setting
-  // cannot reach them: it moves what goes into the entity list.
+  // Sessions are held by the floor and by nothing else.
   if ((m.heldByFloor ?? 0) > 0) {
     say(`    held back  ${n(m.heldByFloor)} by the floor`);
   }

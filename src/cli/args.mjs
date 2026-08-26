@@ -42,9 +42,6 @@ const FLAGS = Object.freeze({
   // rest. A knob rather than a constant because the right value is the
   // reader's context window, which the tool cannot see.
   'batch-chars': { type: 'string', commands: ['export'] },
-  // Who the archive is for. A claim about what the reader already knows, which
-  // is what makes it checkable; a number would not be.
-  audience: { type: 'string', commands: ['export'] },
   // Global, command-less.
   help: { type: 'boolean', commands: null },
   version: { type: 'boolean', commands: null },
@@ -194,7 +191,6 @@ export function parseCliArgs(argv) {
       skipUnknownTypes: values['skip-unknown-types'] === true,
       includeDenied: Object.freeze([...includeDenied]),
       json: values.json === true,
-      audience: values.audience ?? null,
       apply: values.apply === true,
       verdicts: values.verdicts ?? null,
       triageChars,

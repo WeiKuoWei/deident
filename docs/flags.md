@@ -4,8 +4,7 @@
 reason attached where the reason is what you need. A flag a command does not
 accept is an error, not a silent no-op.
 
-`--json`, `--audience` and `--batch-chars` are real flags that `--help` does not
-yet list.
+`--json` and `--batch-chars` are real flags that `--help` does not yet list.
 
 | Flag | Commands | Meaning |
 |---|---|---|
@@ -21,7 +20,6 @@ yet list.
 | `--verdicts <file>` | `triage` | The verdicts file to apply. `verdict` is `drop` or `unsure`; `keep` is refused, because a triage verdict may only ever move a session toward `drop`. |
 | `--preview` | `export` | Write a `.diff` to inspect in your own editor instead of a zip. |
 | `--entities <file>` | `export` | The tier-1 (semantic) entity list, as JSON. Optional once `~/.deident-private/entities.json` holds one: absent, the dictionary supplies the list; present, the file wins on the identities it names and the dictionary supplies the rest. Without either, the export is refused. |
-| `--audience <who>` | `export` | `teammate`, `company` or `public`. Default `public`. Decides one thing: whether your own repository name, which is your employer's product vocabulary, becomes an entity. It never holds a session back, and every kept session ships at every audience ([why it used to, and what that measured](design-rationale.md#the-declared-audience-moves-the-entity-list-not-the-sessions)). |
 | `--full` | `export` | Ignore what deident remembers you having read and put the whole corpus in front of a reader again. Refuses the export and writes the full `deident-candidates.txt`. Cannot be combined with `--entities`. |
 | `--namespace <TAG>` | `export` | Shift the pseudonym namespace: `X` gives `X_PERSON_01`. Must match `[A-Z][A-Z0-9]{0,7}`. For a corpus that already contains tokens of the default shape. |
 | `--batch-chars <n>` | `export` | How much prose one run puts in `deident-candidates.txt` before deferring the rest. Default 120,000 characters, roughly 30k tokens. Only the sessions actually in the file are recorded as read, so a smaller number means more rounds, never a weaker claim. |

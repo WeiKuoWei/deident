@@ -691,19 +691,7 @@ export async function runExport(flags, env) {
   // tier. workspaces.json is memory, not output: cli-ux §10's "no output file
   // behind" is about the zip, and forgetting what the person told you is the
   // failure that ends with an excluded workspace shipping.
-  // Declared before anything is read, so an unknown value refuses at the flag
-  // rather than after twenty minutes of work.
-  const reviewSessions = readSessionDrops(reviewPath, { audience: flags.audience ?? 'public' });
-  // A row spelled the way review.md used to spell it. It is still held, and
-  // saying so is the difference between a silent migration and one the person
-  // can finish: the value is no longer offered, so nothing else will mention it.
-  if (reviewSessions.legacyAudienceRows > 0) {
-    report.renderWarning(
-      `${reviewSessions.legacyAudienceRows} row(s) in ${REVIEW_FILENAME} say drop:audience, which deident no longer ` +
-        'offers. They are held, the same as drop, and the decision is remembered. To rewrite the file in the ' +
-        'current shape: deident scan',
-    );
-  }
+  const reviewSessions = readSessionDrops(reviewPath);
   const sessionDrops = new Set([...remembered.sessionDrops, ...reviewSessions.drops]);
   // A review file that lists sessions is a decision about THOSE sessions. Any
   // session written since it was generated appears in no row, and treating an
@@ -790,10 +778,6 @@ export async function runExport(flags, env) {
     // question: git costs ~85 ms per spawn and 200 workspaces paid it twice.
     probeRemote: probe,
     texts: collectRetainedStrings(retained.records),
-    // The whole of what the declared audience moves. It decides whether the
-    // employer's own product vocabulary is an identity or a word the reader
-    // uses daily; it does not decide which sessions ship.
-    audience: reviewSessions.audience,
     // Read at the top of the command, not here: a malformed list must refuse
     // before the retention pass, not after it.
     knownValues,
@@ -893,11 +877,7 @@ export async function runExport(flags, env) {
       // It is the one artifact intended to be read by an LLM, i.e. the one most
       // likely to leave the machine, and its own header states that the
       // username, paths, git identity and remotes have already been replaced.
-      // `audience` is here because this file is the instruction the reader
-      // writes the entity list against, and the rule it must state changes with
-      // the declared recipient. Kept in SKILL.md alone it reached them only if
-      // the operator had loaded the skill and remembered a conditional in it.
-      { table: tier0Table, omitted, deferred, audience: reviewSessions.audience },
+      { table: tier0Table, omitted, deferred },
     );
     // Written BEFORE the refusal, and it is memory rather than output: these
     // sessions have now been put in front of a reader, and cli-ux §10's "no
@@ -1134,7 +1114,7 @@ export async function runExport(flags, env) {
     loadReads(saltDir),
     serialized.entries.map((e) => ({ id: e.source, mtimeMs: mtimeOf.get(e.source) ?? NaN })),
   );
-  const manifest = buildManifest(retained, decisions, serialized, residue, entities, spanCaveats(allStrings), reviewSessions, seeded.audienceEntities, reading);
+  const manifest = buildManifest(retained, decisions, serialized, residue, entities, spanCaveats(allStrings), reviewSessions, reading);
   report.renderManifest(manifest);
 
   // 17  the only step that writes an output artifact
@@ -1993,7 +1973,7 @@ export function sanitizeEntryName(name) {
 }
 
 /** Step 16. */
-function buildManifest(retained, decisions, serialized, residue, entities, caveats = { absorbed: 0, cjk: 0 }, held = null, audienceEntities = 0, read = null) {
+function buildManifest(retained, decisions, serialized, residue, entities, caveats = { absorbed: 0, cjk: 0 }, held = null, read = null) {
   const s = retained.stats;
   const num = (v) => v.toLocaleString('en-US');
   const occurrencesOf = (kind) =>
@@ -2063,18 +2043,8 @@ function buildManifest(retained, decisions, serialized, residue, entities, cavea
     // table: review.html and the preview print the limits block and used to
     // carry no residue figure at all.
     residueLine: residue.detail,
-    // privacy-tiers 6: a corpus exported for a teammate and one exported for
-    // the public are not comparable, and nothing in the contents says which.
-    // Recorded even at the default, because an absent field reads as
-    // "not considered" rather than as "public".
-    audience: held?.audience ?? 'public',
     // Sessions are held by the floor and by nothing else.
     heldByFloor: held?.heldByFloor ?? 0,
-    // What the declared audience did, which is a number that can be non-zero.
-    // Its predecessor `heldByAudience` was 0 on every measured run because
-    // nothing ever wrote the session decision it counted, so it reported a
-    // check that had not run as a check that had passed.
-    audienceEntities,
     countOnly: Object.freeze({
       sessions: decisions.filter((d) => d.tier === 'count-only').reduce((a, d) => a + d.sessionCount, 0),
       workspaces: decisions.filter((d) => d.tier === 'count-only').length,
