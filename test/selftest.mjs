@@ -8827,6 +8827,48 @@ const FIXTURES = [
     }
   }],
 
+  // F205. retainPrompt applied stripDeniedPaths and deniedTextReason and never
+  // stripInjected, so `last-prompt` and `queue-operation` shipped
+  // <system-reminder> spans whole with injectedBytesDropped at 0, while the
+  // identical text arriving on the message path was stripped and counted.
+  //
+  // CONSTRUCTED, not read out of a shipped archive: sweeping the two
+  // 2026-08-26 archives for INJECTED_SPANS returns nothing. It is not
+  // theoretical either. On the live corpus, 11 `queue-operation` records in 2
+  // of 214 session files carry 11,965 bytes of injected span, and every one of
+  // them is a goal check-in quoting the person's own dictation back at them.
+  ['F205', 'a prompt carried outside message gets the injection stripping prose gets', () => {
+    // The live shape of both records, with fabricated content.
+    const rec = (type, text) =>
+      type === 'last-prompt'
+        ? { type, uuid: 'u1', sessionId: 's1', timestamp: '2026-08-20T10:00:00.000Z', lastPrompt: text }
+        : { type, uuid: 'u2', sessionId: 's1', timestamp: '2026-08-20T10:00:00.000Z', operation: 'add', content: text };
+
+    for (const type of ['last-prompt', 'queue-operation']) {
+      // One context per shape: the two are deduped against each other within a
+      // session (PLAN C3), and identical stripped text is exactly what that
+      // dedupe drops.
+      const ctx = newRetentionContext((u) => u);
+      const kept = retainRecord(
+        rec(type, `run the tests <system-reminder>${NL}Goal check-in: memory index MEMORY.md${NL}</system-reminder>`),
+        ctx,
+        null,
+      );
+      assert.equal(kept.keep, true, `${type} lost the text the person actually typed`);
+      assert.equal(kept.record.text, 'run the tests', `${type} shipped the injected span: ${kept.record.text}`);
+      assert.ok(ctx.stats.injectedBytesDropped > 0, `${type} dropped the span without counting it`);
+    }
+
+    // A prompt that is NOTHING but an injection carries nothing anybody
+    // authored, and an empty shell is noise the residual scan then walks.
+    const ctx = newRetentionContext((u) => u);
+    assert.equal(
+      retainRecord(rec('last-prompt', '<system-reminder>memory index</system-reminder>'), ctx, null).keep,
+      false,
+      'a prompt of nothing but an injected span became an empty record',
+    );
+  }],
+
   ['F199', 'the fixture count in README is the number of fixtures', () => {
     // Gone stale five times in two days, every time caught by a person
     // reading rather than by the suite, and every time in a document whose

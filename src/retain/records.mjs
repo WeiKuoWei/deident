@@ -308,21 +308,8 @@ function retainBlock(block, ctx) {
   switch (block.type) {
     case 'text': {
       if (typeof block.text !== 'string' || block.text.length === 0) return null;
-      const rawText = stripInjected(block.text, ctx);
-      if (rawText.length === 0) return null;
-      // A deny-listed PATH inside prose is removed on its own, not by
-      // withholding the turn: an assistant paragraph naming
-      // `…/private/vendor-search/SCORECARD.md` is scoring evidence with one token
-      // in it that must not ship.
-      const text = stripDeniedPaths(rawText, ctx);
-      const credential = deniedTextReason(text);
-      if (credential !== null) {
-        const bytes = Buffer.byteLength(text, 'utf8');
-        ctx.stats.deniedBlocks += 1;
-        ctx.stats.deniedBytes += bytes;
-        return { type: 'text', text: DENIED_MARKER(bytes, credential) };
-      }
-      return { type: 'text', text };
+      const { text } = stripAuthored(block.text, ctx);
+      return text.length === 0 ? null : { type: 'text', text };
     }
 
     case 'thinking': {
@@ -461,6 +448,34 @@ function countLines(v) {
 
 function byteLength(v) {
   return typeof v === 'string' ? Buffer.byteLength(v, 'utf8') : null;
+}
+
+/**
+ * The one stripping order every kept string goes through.
+ *
+ * Injections first, because a `<system-reminder>` is nobody's text and taking
+ * it out can empty the string outright. Then the deny-listed PATHS inside
+ * prose, removed one token at a time rather than by withholding the turn: an
+ * assistant paragraph naming `…/private/vendor-search/SCORECARD.md` is scoring
+ * evidence with one token in it that must not ship. Then the whole-block
+ * denial, which is coarser on purpose.
+ *
+ * There were three copies of this order and one of them, retainPrompt's, was
+ * missing the first step entirely. One order, one place, so the next copy
+ * cannot lose a step quietly.
+ *
+ * @returns {{text: string, denied: boolean}} the stripped text or a
+ *   DENIED_MARKER, and '' when nothing authored is left
+ */
+function stripAuthored(raw, ctx) {
+  const text = stripDeniedPaths(stripInjected(raw, ctx), ctx);
+  if (text.length === 0) return { text: '', denied: false };
+  const why = deniedTextReason(text);
+  if (why === null) return { text, denied: false };
+  const bytes = Buffer.byteLength(text, 'utf8');
+  ctx.stats.deniedBlocks += 1;
+  ctx.stats.deniedBytes += bytes;
+  return { text: DENIED_MARKER(bytes, why), denied: true };
 }
 
 /** The LABEL of the first DENIED_TEXT pattern this prose trips, or null. */
@@ -652,25 +667,27 @@ const nullIfEmpty = (blocks) => (blocks.length === 0 ? null : blocks);
  */
 function retainPrompt(rec, ctx, kind, rawPrompt, extra = {}) {
   if (typeof rawPrompt !== 'string' || rawPrompt.trim().length === 0) return null;
-  // These carry user prose, so they carry the same quoted paths prose does,
-  // and they were the one keep-path with no denial check at all. Measured on a
-  // real export: `private/payroll-ledger/backfill-payload…` and
+  // These carry user prose, so they carry everything prose carries, and they
+  // were the one keep-path with no denial check at all. Measured on a real
+  // export: `private/payroll-ledger/backfill-payload…` and
   // `.gitignore:8:/private/` survived here after every other route had been
   // closed. The path goes and the prompt stays: §C3 keeps this class precisely
   // because it carries text found nowhere else.
-  const text = stripDeniedPaths(rawPrompt, ctx);
-  const why = deniedTextReason(text);
-  if (why !== null) {
-    const bytes = Buffer.byteLength(text, 'utf8');
-    ctx.stats.deniedBlocks += 1;
-    ctx.stats.deniedBytes += bytes;
+  //
+  // What they also carry is the harness's own injections, which this path
+  // stripped on the message side and shipped whole here, with
+  // injectedBytesDropped reading 0 for every one of them.
+  const { text, denied } = stripAuthored(rawPrompt, ctx);
+  // A prompt that was nothing but an injection is nothing anybody authored.
+  if (text.length === 0) return null;
+  if (denied) {
     return prune({
       type: kind,
       uuid: rec.uuid ? ctx.rewriteUuid(rec.uuid) : null,
       sessionId: ctx.rewriteUuid(rec.sessionId),
       timestamp: quantise(rec.timestamp),
       cwd: rec.cwd ?? null,
-      text: DENIED_MARKER(bytes, why),
+      text,
       ...extra,
     });
   }
