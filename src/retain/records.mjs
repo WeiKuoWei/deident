@@ -253,12 +253,27 @@ function retainTurn(rec, ctx, where) {
  */
 function retainMessageContent(msg, ctx, where) {
   const content = msg === null || typeof msg !== 'object' ? undefined : msg.content;
+  return retainContent(content, ctx, where, 'message.content');
+}
+
+/**
+ * The one dispatch. `message.content` is not the only field in the corpus that
+ * holds this shape: a `queued_command` attachment's `prompt` holds the same
+ * block array, and it used to be copied into the output verbatim, so
+ * BLOCK_DECISIONS never saw it. Measured on a shipped archive: 13 base64
+ * images, 2.7 MB, reached the recipient in full through that second path while
+ * the identical blocks on the message path were replaced with a placeholder.
+ *
+ * That is the `document` bug again: two lists answering one question, one of
+ * them maintained. There is one list now, and every caller reaches it here.
+ */
+function retainContent(content, ctx, where, what) {
   if (content === undefined || content === null) return [];
   if (Array.isArray(content)) return retainBlocks(content, ctx, where);
   if (typeof content === 'string') {
     return content.length === 0 ? [] : retainBlocks([{ type: 'text', text: content }], ctx, where);
   }
-  throw unknown(`a message.content that is neither an array nor a string (${typeof content})`, where);
+  throw unknown(`a ${what} that is neither an array nor a string (${typeof content})`, where);
 }
 
 function retainBlocks(blocks, ctx, where) {
@@ -589,9 +604,11 @@ function retainAttachment(rec, ctx, where) {
     return null;
   }
 
+  // An empty block list is the same nothing an absent `prompt` was, and the
+  // all-null test below is what drops the record. Keep it reachable.
   const body =
     subtype === 'queued_command'
-      ? { prompt: att.prompt ?? null }
+      ? { prompt: nullIfEmpty(retainContent(att.prompt, ctx, where, 'queued_command prompt')) }
       : subtype === 'edited_text_file'
         ? { filename: att.filename ?? null, snippet: att.snippet ?? null }
         : { filename: att.filename ?? att.file?.filePath ?? null, content: att.content ?? att.file?.content ?? null };
@@ -607,6 +624,8 @@ function retainAttachment(rec, ctx, where) {
     attachment: { type: subtype, ...body },
   });
 }
+
+const nullIfEmpty = (blocks) => (blocks.length === 0 ? null : blocks);
 
 // ------------------------------------------- prompts carried outside message
 
