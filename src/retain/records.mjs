@@ -658,25 +658,68 @@ function retainAttachment(rec, ctx, where) {
   }
 
   // An attachment names the file it came from, so the denial is exact here.
+  //
+  // `deniedReason` returns null for anything that is not a string, so this
+  // gate USED to skip a payload silently the moment it arrived as a block
+  // array rather than as text: a base64 image body, a credential and a harness
+  // injection all walked past a check that was looking at `undefined`.
+  // `attachmentText` is what makes the gate see a real string either way.
   const named = att.filename ?? att.file?.filePath ?? null;
-  const why = deniedReason(named) ?? deniedReason(att.snippet ?? att.content ?? att.file?.content ?? '');
+  const raw = att.snippet ?? att.content ?? att.file?.content;
+  const payload = attachmentText(raw);
+  const why = deniedReason(named) ?? deniedReason(payload);
   if (why !== null) {
     ctx.stats.deniedBlocks += 1;
-    ctx.stats.deniedBytes += Buffer.byteLength(
-      String(att.snippet ?? att.content ?? att.file?.content ?? ''),
-      'utf8',
-    );
+    ctx.stats.deniedBytes += Buffer.byteLength(payload, 'utf8');
     return null;
   }
 
-  // An empty block list is the same nothing an absent `prompt` was, and the
+  // Every arm reaches the ONE dispatch.
+  //
+  // `prompt` was routed through `retainContent` and these two were not, so a
+  // pasted document and an edited file's snippet were copied into the output
+  // verbatim: BLOCK_DECISIONS never saw them, `image` was never counted, the
+  // `document` placeholder was never emitted, `stripInjected` never ran and
+  // `deniedTextReason` never ran. Reproduced end to end through the real CLI:
+  // exit 0, six green checks, and a manifest printing `0 images` and `0
+  // harness injections` over an archive holding a base64 image body, a
+  // credential and a `<system-reminder>` span. It fires 58 times in this
+  // author's own live corpus.
+  //
+  // README promises "Dropped: all images, all pasted documents, all code
+  // content" and docs/limits.md promises injected spans are stripped whatever
+  // they are called. Those are promises to a stranger, so this was not a
+  // disclosed limit.
+  //
+  // The container is unwrapped here rather than inside `retainContent`: the
+  // dispatch takes the block array or the string, never the box one arrives
+  // in.
+  //
+  // Which box, measured over all 3,567 session files on this machine rather
+  // than guessed: every one of the 58 `file` attachments is
+  // `att.content.file.content`, a string, beside a `filePath` and a line
+  // count. `att.file.content` does not occur at all and is kept only because
+  // `att.file.filePath` above it does. `edited_text_file` is a plain string
+  // 322 times out of 322, and `queued_command` is a string 486 times against
+  // 21 block arrays. So the block-array form is real, the string form is the
+  // common one, and the wrapper is the shape that actually ships a pasted
+  // file. Every arm unwraps, because an arm that does not is how this bug
+  // arrives the fifth time; a fourth shape refuses by name.
+  //
+  // An empty block list is the same nothing an absent payload was, and the
   // all-null test below is what drops the record. Keep it reachable.
   const body =
     subtype === 'queued_command'
-      ? { prompt: nullIfEmpty(retainContent(att.prompt, ctx, where, 'queued_command prompt')) }
+      ? { prompt: nullIfEmpty(retainContent(unwrap(att.prompt), ctx, where, 'queued_command prompt')) }
       : subtype === 'edited_text_file'
-        ? { filename: att.filename ?? null, snippet: att.snippet ?? null }
-        : { filename: att.filename ?? att.file?.filePath ?? null, content: att.content ?? att.file?.content ?? null };
+        ? {
+            filename: att.filename ?? null,
+            snippet: nullIfEmpty(retainContent(unwrap(att.snippet), ctx, where, 'edited_text_file snippet')),
+          }
+        : {
+            filename: named,
+            content: nullIfEmpty(retainContent(unwrap(raw), ctx, where, 'file attachment content')),
+          };
 
   if (Object.values(body).every((v) => v === null)) return null;
 
@@ -691,6 +734,40 @@ function retainAttachment(rec, ctx, where) {
 }
 
 const nullIfEmpty = (blocks) => (blocks.length === 0 ? null : blocks);
+
+/**
+ * The block array or string inside the box a pasted file arrives in.
+ *
+ * One level, and only when the box is not itself a payload: a string has no
+ * `.file`, and neither does a block array, so both fall through untouched and
+ * a shape that is none of the three reaches `retainContent` to be refused by
+ * name rather than unwrapped on a guess.
+ */
+function unwrap(value) {
+  const inner = value === null || typeof value !== 'object' ? undefined : value.file?.content;
+  return inner === undefined ? value : inner;
+}
+
+/**
+ * An attachment payload as one string for the deny gate to read.
+ *
+ * Every string leaf joined, rather than JSON.stringify: a Windows path inside
+ * a block would arrive at DENIED_PATH_RE with its separators doubled, and the
+ * byte count the manifest reports would be the count of the JSON envelope
+ * rather than of the text that was withheld.
+ */
+function attachmentText(value) {
+  if (typeof value === 'string') return value;
+  if (value === null || typeof value !== 'object') return '';
+  const parts = [];
+  const walk = (v) => {
+    if (typeof v === 'string') parts.push(v);
+    else if (Array.isArray(v)) for (const x of v) walk(x);
+    else if (v !== null && typeof v === 'object') for (const x of Object.values(v)) walk(x);
+  };
+  walk(value);
+  return parts.join(String.fromCharCode(10));
+}
 
 // ------------------------------------------- prompts carried outside message
 

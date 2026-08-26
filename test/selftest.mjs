@@ -8928,6 +8928,192 @@ const FIXTURES = [
     assert.ok(!body.includes('Okonkwo-Vance'), `the declared name shipped: ${body.slice(0, 400)}`);
   }],
 
+  // F206 to F208 are the other two arms of the same leak F200 to F203 closed
+  // on `queued_command`. Two lines below the one that was fixed,
+  // `edited_text_file`'s `snippet` and `file`'s `content` were still copied
+  // into the output verbatim, so BLOCK_DECISIONS never saw them: no image
+  // placeholder, no document count, no `stripInjected`, no `deniedTextReason`.
+  // The attachment-level gate above them tests `deniedReason`, which returns
+  // null for anything that is not a string, so a block array walked past a
+  // check that was looking at `undefined`.
+  //
+  // Reproduced end to end through the real CLI: exit 0, six green checks, and
+  // a manifest printing `0 images  0 replaced with placeholders` and `0
+  // harness injections` over an archive holding a base64 image body, a
+  // credential, an injected span and an unreviewed block payload. It fires 58
+  // times in this author's own live corpus, so it is not a foreign-harness
+  // hypothetical, and it contradicts README's "Dropped: all images, all pasted
+  // documents, all code content".
+  ['F206', 'a pasted file and an edited snippet go through BLOCK_DECISIONS, like a queued command', () => {
+    const ctx = newRetentionContext((u) => u);
+    const rec = (attachment) => ({
+      type: 'attachment',
+      uuid: '11111111-2222-3333-4444-555555555555',
+      sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+      timestamp: '2026-08-20T10:00:00.000Z',
+      attachment,
+    });
+
+    // 1. The live shape: `file.content` as a block array with an image in it.
+    //    `iVBORw0KGgo` is the base64 prefix of every PNG, which is what was
+    //    grepped for in the shipped zip.
+    const pasted = retainRecord(
+      rec({
+        type: 'file',
+        file: {
+          filePath: 'notes.md',
+          content: [
+            { type: 'text', text: 'the chart from the deck' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgoSECRET' } },
+          ],
+        },
+      }),
+      ctx,
+      { file: 'a.jsonl', line: 1 },
+    );
+    assert.equal(pasted.keep, true, 'the pasted text still survives');
+    assert.ok(!JSON.stringify(pasted.record).includes('iVBORw0KGgo'), 'the base64 shipped inside a file attachment');
+    assert.deepEqual(pasted.record.attachment.content, [
+      { type: 'text', text: 'the chart from the deck' },
+      { type: 'image', redacted: 'replaced with a placeholder' },
+    ]);
+    // The manifest reports this number, and an un-counted image is an
+    // under-report of what was withheld: the half a reader cannot notice.
+    assert.equal(ctx.stats.images, 1, 'the image counter did not see it');
+
+    // 2. An `edited_text_file` snippet, the arm beside it, with a credential
+    //    and a harness injection in the same block.
+    const before = ctx.stats.injectedBytesDropped;
+    const edited = retainRecord(
+      rec({
+        type: 'edited_text_file',
+        filename: 'vault.md',
+        snippet: [
+          { type: 'text', text: 'Secret Key: A3-XXXXXX-YYYYYY <system-reminder>memory index</system-reminder>' },
+        ],
+      }),
+      ctx,
+      { file: 'a.jsonl', line: 2 },
+    );
+    assert.equal(edited.keep, true, 'the record survives with its body withheld');
+    const snippet = JSON.stringify(edited.record.attachment.snippet);
+    assert.ok(!snippet.includes('A3-XXXXXX'), `a credential shipped in a snippet: ${snippet}`);
+    assert.ok(!snippet.includes('memory index'), `an injected span shipped in a snippet: ${snippet}`);
+    assert.ok(ctx.stats.injectedBytesDropped > before, 'the injected bytes were not counted');
+
+    // 3. And the plain-string form still arrives, because that is the shape
+    //    the last one of these regressed on.
+    const plain = retainRecord(rec({ type: 'file', filename: 'a.txt', content: 'one line of notes' }), ctx, null);
+    assert.deepEqual(plain.record.attachment.content, [{ type: 'text', text: 'one line of notes' }]);
+
+    // 4. An unreviewed block refuses here as it does on the two paths that
+    //    already reached the dispatch. I7 held on one of three.
+    assert.throws(
+      () => retainRecord(rec({ type: 'file', filename: 'a.txt', content: [{ type: 'hologram' }] }), ctx, null),
+      (err) => err instanceof RefusalError && /hologram/.test(err.reason),
+      'an unreviewed block inside a pasted file was guessed about',
+    );
+  }],
+
+  ['F207', 'a document pasted into an attachment is counted, not shipped', () => {
+    // The `document` block was the FIRST instance of this disease, and only
+    // `image` was covered by a fixture: `documents` could go back to zero on
+    // every path and the suite would still be green. The manifest prints this
+    // counter beside the image one, so a silent zero is a promise that nothing
+    // was withheld.
+    const ctx = newRetentionContext((u) => u);
+    const kept = retainRecord(
+      {
+        type: 'attachment',
+        uuid: '11111111-2222-3333-4444-555555555555',
+        sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+        timestamp: '2026-08-20T10:00:00.000Z',
+        attachment: {
+          type: 'file',
+          filename: 'contract.pdf',
+          content: [
+            { type: 'text', text: 'the clause I meant' },
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQSECRET' } },
+          ],
+        },
+      },
+      ctx,
+      null,
+    );
+    assert.equal(ctx.stats.documents, 1, 'a pasted document was not counted');
+    assert.ok(!JSON.stringify(kept.record).includes('JVBERi0xLjQ'), 'the pdf body shipped');
+    assert.deepEqual(kept.record.attachment.content[1], { type: 'document', redacted: 'replaced with a placeholder' });
+  }],
+
+  ['F208', 'an attachment payload that is neither array nor string refuses, and names the field', () => {
+    // The relaxation `toolResultBytes` gets does not apply here: this text is
+    // KEPT, so an unhandled container shape is a silent drop of user text,
+    // which is the one outcome BRIEF 4.4's retention design forbids. The
+    // refusal has to say WHICH field it was, or the reader is told an
+    // attachment is unhandled and left to find out which of three payloads.
+    const ctx = newRetentionContext((u) => u);
+    const rec = (attachment) => ({
+      type: 'attachment',
+      uuid: '11111111-2222-3333-4444-555555555555',
+      sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+      attachment,
+    });
+
+    assert.throws(
+      () => retainRecord(rec({ type: 'file', filename: 'a.txt', content: { chunks: ['a'] } }), ctx, null),
+      (err) => err instanceof RefusalError && /file attachment content/.test(err.reason),
+      'a container-shaped file payload was dropped without naming the field',
+    );
+    assert.throws(
+      () => retainRecord(rec({ type: 'edited_text_file', filename: 'a.txt', snippet: { chunks: ['a'] } }), ctx, null),
+      (err) => err instanceof RefusalError && /edited_text_file snippet/.test(err.reason),
+      'a container-shaped snippet was dropped without naming the field',
+    );
+    assert.throws(
+      () => retainRecord(rec({ type: 'queued_command', prompt: { chunks: ['a'] } }), ctx, null),
+      (err) => err instanceof RefusalError && /queued_command prompt/.test(err.reason),
+      'a container-shaped prompt was dropped without naming the field',
+    );
+  }],
+
+  ['F209', 'a pasted file arrives in a box, and the box is not what BLOCK_DECISIONS is handed', () => {
+    // Measured over all 3,567 session files on this machine: every one of the
+    // 58 `file` attachments in the corpus is
+    // `att.content.file.content` beside a `filePath` and a line count, and
+    // `att.file.content` does not occur at all. Routing the arms through the
+    // dispatch without unwrapping that box therefore refused the whole export
+    // on the real corpus, which is docs/limits.md's cry-wolf failure: a
+    // refusal on a shape the corpus uses every day is not a safe default.
+    //
+    // The shape is written out here rather than described, so a version that
+    // changes it fails this instead of failing a user's export.
+    const ctx = newRetentionContext((u) => u);
+    const kept = retainRecord(
+      {
+        type: 'attachment',
+        uuid: '11111111-2222-3333-4444-555555555555',
+        sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+        timestamp: '2026-08-20T10:00:00.000Z',
+        attachment: {
+          type: 'file',
+          filename: 'notes.md',
+          displayPath: 'notes.md',
+          content: {
+            type: 'text',
+            file: { filePath: 'notes.md', content: 'the paragraph I pasted', numLines: 1, startLine: 1, totalLines: 1 },
+          },
+        },
+      },
+      ctx,
+      { file: 'a.jsonl', line: 1 },
+    );
+
+    assert.equal(kept.keep, true, 'the real corpus shape refuses the export');
+    assert.deepEqual(kept.record.attachment.content, [{ type: 'text', text: 'the paragraph I pasted' }]);
+    // The box's own bookkeeping is not user text and does not ship.
+    assert.ok(!JSON.stringify(kept.record).includes('totalLines'), 'the wrapper shipped with the payload');
+  }],
+
   ['F199', 'the fixture count in README is the number of fixtures', () => {
     // Gone stale five times in two days, every time caught by a person
     // reading rather than by the suite, and every time in a document whose
