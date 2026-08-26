@@ -8,7 +8,7 @@ Slice 1, Claude Code logs only, depth-0 sessions only, MIT licensed.
 
 **The promise.** Every byte in the archive is either a value from a vocabulary this
 tool defines in its own source, or a line of prose a person read on screen. The one
-exception is your tool call parameters: 1.48 MB of the 9.08 MB live-corpus archive, 16.3%.
+exception is your tool call parameters, 16.3% of the archive.
 
 **The cost, plainly.** A consumer whose scoring reads tool result CONTENT gets
 less than it did. Results leave as shape alone, so a pipeline that greps result

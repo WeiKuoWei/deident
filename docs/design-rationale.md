@@ -52,11 +52,12 @@ step.
 A malformed entity list is refused, never silently treated as an empty one. An
 empty list would satisfy "the pass ran" while delivering nothing.
 
-The instructions for the pass ship twice, as `skills/deident/SKILL.md` and as
-`AGENTS.md`, because harnesses disagree about where to look. The two carry the
-same text and fixture F103 asserts they have not drifted, so an agent that is
-not Claude Code is covered by pointing it at `AGENTS.md`. Nothing
-harness-specific has to be installed and there is no slash command to run.
+The instructions for the pass live once, in `skills/deident/SKILL.md`.
+`AGENTS.md` points any other agent at that path rather than restating it, and
+fixture F103 asserts the pointer still resolves: the path is there, the file it
+names is the operator contract, and `AGENTS.md` has not grown back into a copy.
+Nothing harness-specific has to be installed and there is no slash command to
+run.
 
 ## Opt-in, never opt-out
 
@@ -214,8 +215,9 @@ claude plugin uninstall deident@deident && claude plugin install deident@deident
 
 Measured with a marker added to the skill's `description`: `codex debug
 prompt-input` kept showing the old description until that pair ran, then showed
-the new one. Two copies of the operator contract have already drifted once,
-which is why a fixture compares `SKILL.md` against `AGENTS.md`.
+the new one. Two copies of the operator contract drifted twice, the second time
+in the frontmatter where a body comparison could not have seen it, which is why
+`AGENTS.md` is a pointer now rather than a copy.
 
 While editing the skill, the honest move is to skip installing and point the
 agent at the checkout.

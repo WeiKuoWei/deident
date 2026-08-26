@@ -5794,8 +5794,8 @@ const FIXTURES = [
   // F134b - the cap that remains, and the reason it is not the one that was
   // removed. Measured on a copy of the real corpus with the cap off: the
   // candidates file goes from 2,957,659 to 13,026,553 bytes, so removing the
-  // cap outright lands far above the 915 KB docs/cli-ux.md §11b budgets. The
-  // cap therefore stays, at a value taken from the measured post-retention
+  // cap outright lands far above the 3.5 MB docs/design-rationale.md budgets.
+  // The cap therefore stays, at a value taken from the measured post-retention
   // distribution rather than from the old 400, and the loss it causes is
   // COUNTED and printed. A reader handed a short file has to be told it is
   // short; that is the whole difference from what was there before.

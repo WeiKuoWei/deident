@@ -340,8 +340,8 @@ function retainBlock(block, ctx) {
       // and they are the ONLY free text in it that no reader is ever shown.
       // The remainder line quotes this figure, so it is counted rather than
       // estimated: without it that line can only report the whole non-prose
-      // share, 70.4%, of which 48.4% is record scaffolding and minted
-      // identifiers that cannot hold a name at all.
+      // share, 70.4% of the archive, most of which is record scaffolding and
+      // minted identifiers that cannot hold a name at all.
       ctx.stats.toolParamBytes += Buffer.byteLength(JSON.stringify(input ?? null), 'utf8');
       return {
         type: 'tool_use',

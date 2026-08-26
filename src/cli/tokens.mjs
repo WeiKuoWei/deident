@@ -1,8 +1,8 @@
 // What reading a file deident just wrote will cost the reader, in tokens.
 //
 // The tier-1 semantic pass is the only stage whose cost grows with the corpus
-// (docs/cli-ux.md §11b: 205 sessions, 915 KB), and the person was handed
-// deident-candidates.txt with no idea what reading it would cost.
+// (docs/design-rationale.md, "What the stages cost": about 3.5 MB), and the
+// person was handed deident-candidates.txt with no idea what reading it cost.
 //
 // These numbers are DISPLAY calibration, not policy: changing one moves a
 // printed estimate and moves not one byte of what the export ships. That is
