@@ -1053,7 +1053,11 @@ export async function runExport(flags, env) {
     (a, s) => a + s.chunks.reduce((b, c) => b + (typeof c === 'string' ? Buffer.byteLength(c, 'utf8') : 0), 0),
     0,
   );
-  const remainder = unverifiedRemainder(proseBytes, Buffer.byteLength(serialized.allBytes, 'utf8'));
+  const remainder = unverifiedRemainder(
+    proseBytes,
+    Buffer.byteLength(serialized.allBytes, 'utf8'),
+    retained.stats.toolParamBytes ?? 0,
+  );
   report.renderChecks(toReportRows(checks), remainder);
 
   //  15a  The declared values the table never carried, swept with needles
@@ -1467,7 +1471,13 @@ function retainCorpus(
     documents: 0,
     codeLinesCounted: 0,
     codeParamsDropped: 0,
-    toolResultBytesOmitted: 0,
+    // These have to be declared HERE as well as in the retention context: the
+    // merge below is `if (typeof v === 'number' && k in stats)`, so a counter
+    // that exists only on the context is summed into nothing and the manifest
+    // prints a confident zero.
+    toolResults: 0,
+    toolResultBytesDropped: 0,
+    toolParamBytes: 0,
     dedupedPrompts: 0,
     sessions: 0,
     emptiedSessions: 0,
@@ -1840,9 +1850,16 @@ function substituteAll(sessions, table) {
 }
 
 /**
- * Step 11's input: prose only, grouped by session. BRIEF §4.10 measured `text`
- * at 2.30% of bytes, and feeding a semantic pass the other 97.7% is how it
- * starts inventing entities.
+ * Step 11's input: prose only, grouped by session. Feeding a semantic pass
+ * bytes nobody authored is how it starts inventing entities.
+ *
+ * This list is INCLUSIVE and that is now load-bearing rather than incidental.
+ * `text`, `thinking`, the two prompt records and an attachment's strings are
+ * what a reader is shown, and after the tool_result cut they are also very
+ * nearly everything in the archive that a reader COULD be shown. The one thing
+ * in the archive that is free text and is not here is a `tool_use` parameter;
+ * see docs/limits.md, which states that gap with its measurement rather than
+ * leaving it to be discovered.
  *
  * Per session rather than one flat list, because the two questions the
  * candidates file now answers are per session: has this one's content changed
@@ -2002,6 +2019,14 @@ function buildManifest(retained, decisions, serialized, residue, entities, cavea
       { label: 'lines of code', suppressed: `${num(s.codeLinesCounted)} counted, none included` },
       { label: 'images', suppressed: `${num(s.images)} replaced with placeholders` },
       { label: 'code parameters', suppressed: `${num(s.codeParamsDropped)} replaced with counts` },
+      // The largest single thing this tool withholds, and it was the one thing
+      // it withheld without saying so. A reader comparing this row against
+      // "denied file content" below is looking at the difference between a
+      // rule that had to match and a rule that never has to.
+      {
+        label: 'tool output',
+        suppressed: `${num(s.toolResults ?? 0)} results, ${num(s.toolResultBytesDropped ?? 0)} bytes, kept as shape only`,
+      },
       { label: 'held back by hand', suppressed: `${num(s.droppedBySession ?? 0)} sessions dropped in review.md` },
       { label: 'never reviewed', suppressed: `${num(s.droppedUndecided ?? 0)} sessions written since the last scan` },
       { label: 'denied file content', suppressed: `${num(s.deniedBlocks ?? 0)} blocks, ${num(s.deniedBytes ?? 0)} bytes withheld` },

@@ -394,9 +394,16 @@ function renderRemainder(r) {
   // exact misreading this whole block was rewritten to stop.
   say('');
   say(`    unverified   ${humanBytes(r.proseBytes)} of these sessions is prose, and prose is the only`);
-  say(`                 part a reader is ever shown. The archive is ${humanBytes(r.archiveBytes)}, so`);
-  say(`                 ${r.unreadPercent}% of it went in front of nobody and no check here reads`);
-  say('                 it for a name that is not already in the table.');
+  say(`                 part a reader is ever shown. The archive is ${humanBytes(r.archiveBytes)}, and`);
+  say(`                 ${r.unreadPercent}% of that is not prose. Most of it cannot hold a name:`);
+  say('                 record scaffolding, and identifiers deident minted itself.');
+  // The number that is actually a risk, separated from the number that is
+  // mostly punctuation. Before the tool_result payload was cut these were the
+  // same figure and the whole remainder was unread session text; now they are
+  // not, and printing only the total would overstate the blind spot as badly
+  // as omitting it would understate it.
+  say(`                 ${humanBytes(r.toolParamBytes)} of it (${r.toolParamPercent}%) is the parameters of your tool`);
+  say('                 calls: free text, shown to no reader, checked by nothing.');
 }
 
 export function renderManifest(m) {

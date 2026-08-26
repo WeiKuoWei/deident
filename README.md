@@ -24,11 +24,33 @@ addresses, 228 of them not the user's. Emails have a regex and are swept
 automatically. **Names do not have a regex.** That is what the semantic pass is
 for, and why it is mandatory.
 
-**The semantic pass only ever sees prose, which is 2.30% of the bytes.** The
-candidates file is built from `text` blocks and nothing else, because feeding a
-discovery pass the other 97.7% is how it starts inventing entities. A
-third-party name that appears only in a tool result, a directory listing or a
-code block never reaches the reader: they cannot declare it, and the residue
+**Every byte in the archive is either a value from a vocabulary this tool
+defines in its own source, or a line of prose that a person read on screen.
+The one exception is the parameters of your tool calls, and it is named
+below.** Tool results used to be the bulk of the export, capped head-and-tail
+and read by nobody. They now leave as shape alone: which tool, whether it
+failed, how many bytes came back. Nothing a program printed reaches the zip as
+text.
+
+That is the point of the exercise. Before, the archive was the corpus minus
+whatever the detectors caught, and every miss was invisible. Now it is empty
+plus admissions, and material written in a language, an encoding or a format
+nobody anticipated is unrecognised, and unrecognised means absent.
+
+**The cost, plainly: a consumer whose scoring reads result CONTENT will get
+less than it did.** If your pipeline greps tool output for build failures,
+counts test names, or reads a diff body out of a result, that input is gone.
+What survives is `is_error`, `result_bytes`, the tool name on the paired
+`tool_use` block, and the `code_added_lines` / `code_removed_lines` /
+`patch_hunks` counts distilled from `structuredPatch`. Scoring that reads
+result SHAPE is unaffected.
+
+**The exception: the parameters of your tool calls are not read by anybody.**
+The candidates file is built from prose blocks, so the path you read, the
+command you ran and the brief you gave a subagent go in front of no reader and
+the semantic pass never sees them. Measured on an archive built from the live
+corpus, they are 1.48 MB of 9.08 MB, 16.3%. A third-party name that appears
+only there, or only in a code block, still cannot be declared, and the residue
 scan cannot look for what was never declared.
 
 The other twelve are in [`docs/limits.md`](docs/limits.md) with the measurement
@@ -38,9 +60,10 @@ its length; credentials and phone numbers are matched by shape and by label,
 never by entropy, and one with neither is not detected at all; document numbers
 need an English or Chinese label; device fingerprint survives; documents you
 pasted into a prompt are prose; the agent-memory deny-list knows one person's
-naming convention, not a Claude Code universal; an entity can survive as a
-fragment of itself; export scores are unverified against raw-log scores; and
-subagent transcripts are not exported.
+naming convention, not a Claude Code universal, though it now gates only tool
+parameters and attachments, since nothing a tool read ships as text; an entity
+can survive as a fragment of itself; export scores are unverified against
+raw-log scores; and subagent transcripts are not exported.
 
 ### The check deident cannot run on itself
 
@@ -204,12 +227,22 @@ One `.jsonl` per session under `sessions/<pseudonym>/<rewritten-uuid>.jsonl`. Th
 entry name is de-identified too, because the raw one carries your username and
 the real session uuid where no JSON body does.
 
-**Kept**: user prose, agent prose, thinking blocks, tool names, tool results
-(head-and-tail capped, with the omission stated), `is_error`, otherwise-unseen
-prompts from `queue-operation` and `last-prompt`, timestamps quantised to the
-minute. **Dropped**: all code content, all images, all pasted documents, account
-and organisation uuids, session titles, harness bookkeeping, hook output, the
-local skill/agent/MCP inventories.
+**Kept**: user prose, agent prose, thinking blocks, tool names, tool call
+parameters, `is_error`, `result_bytes`, otherwise-unseen prompts from
+`queue-operation` and `last-prompt`, timestamps quantised to the minute.
+**Dropped**: every byte of tool result text, all code content, all images, all
+pasted documents, account and organisation uuids, session titles, harness
+bookkeeping, hook output, the local skill/agent/MCP inventories.
+
+A tool result leaves as shape and nothing else:
+
+```json
+{"type":"tool_result","tool_use_id":"<rewritten>","is_error":true,"result_bytes":48213}
+```
+
+The tool NAME is on the `tool_use` block this id pairs with. Uuid rewriting is
+deterministic, so that join still resolves inside the archive; there is no
+second copy of the name to fall out of step.
 
 Code is replaced by a **count**: `code_added_lines`, taken from
 `structuredPatch`, `null` when unknown and never `0`. Measured over 511 edits, a
@@ -219,7 +252,7 @@ with net == 0, so a net figure is not a substitute.
 ## Development
 
 ```
-node deident.js --selftest      # 186 fixtures, plain node:assert, no framework
+node deident.js --selftest      # 189 fixtures, plain node:assert, no framework
 ```
 
 The suite is `test/selftest.mjs`. Each fixture exists because it catches a

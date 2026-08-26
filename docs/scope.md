@@ -59,9 +59,17 @@ Recorded so they are not silently inherited.
   becomes Senior at 64 if trouble detection is suppressed. Not caused here, but
   this tool is the first thing that will feed it a large prose-only corpus.
 - **The `ai-log-expertise` and `ai-log-csv-quality` prompts.** Four of six axes
-  and both hero tiles depend on rules that exist in neither repo. Until they are
-  in hand, every truncation threshold stays a named constant in one file and the
-  posture is: preserve evidence over shrinking bytes.
+  and both hero tiles depend on rules that exist in neither repo. Every
+  threshold that is still a threshold stays a named constant in one file, and
+  the posture is: preserve evidence over shrinking bytes, wherever the evidence
+  is something a person could read.
+
+  Tool results are the one place that posture was overruled, deliberately, and
+  the reason is that they were never evidence anybody read: no reader and no
+  semantic pass ever saw them, so a miss inside them was invisible rather than
+  merely undetected. They leave as shape now. `is_error` survives verbatim,
+  which is the part a scoring axis most plausibly depends on; a consumer that
+  read an axis off result TEXT is worse off, and docs/limits.md says so.
 - **Comparability across uploaders.** Different people withhold different
   amounts. The manifest states per-uploader tier counts so a recipient can see
   it; deciding what to do about it is the platform's call.

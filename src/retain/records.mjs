@@ -12,9 +12,6 @@ import { RefusalError } from '../cli/errors.mjs';
 import { userDenyTokens, userDenyPatterns } from '../policy/userdeny.mjs';
 import { retainToolUseResult, distillToolResult, lineCount } from './toolresult.mjs';
 import {
-  TOOL_RESULT_HEAD_BYTES,
-  TOOL_RESULT_TAIL_BYTES,
-  TRUNCATION_MARKER,
   KEEP_THINKING_BLOCKS,
   TIMESTAMP_QUANTUM_MS,
   CODE_VALUED_TOOL_PARAMS,
@@ -110,8 +107,12 @@ const SYSTEM_DROP = Object.freeze([
   'model_refusal_fallback',
 ]);
 
+// `shape-only` is a third decision beside keep and drop, and it exists for one
+// block type. Calling it `keep` would put a reviewed decision in this table
+// that no longer describes what happens: the block survives and its payload
+// does not. See retainBlock's tool_result case for the measurement.
 const BLOCK_DECISIONS = Object.freeze({
-  tool_result: 'keep',
+  tool_result: 'shape-only',
   tool_use: 'keep',
   thinking: 'keep',
   redacted_thinking: 'drop',
@@ -134,7 +135,12 @@ export function newRetentionContext(rewriteUuid) {
       documents: 0,
       codeLinesCounted: 0,
       codeParamsDropped: 0,
-      toolResultBytesOmitted: 0,
+      // Was `toolResultBytesOmitted`, which counted the middle of a truncated
+      // result. Nothing is truncated now, so the honest counter is how many
+      // results there were and how much they weighed.
+      toolResults: 0,
+      toolResultBytesDropped: 0,
+      toolParamBytes: 0,
       dedupedPrompts: 0,
       injectedBytesDropped: 0,
       deniedBlocks: 0,
@@ -268,13 +274,21 @@ function retainBlocks(blocks, ctx, where) {
       out.push({ type: block.type, redacted: 'replaced with a placeholder' });
       continue;
     }
-    const kept = retainBlock(block, ctx, where);
+    // `shape-only` and `keep` both route here; the difference is what
+    // retainBlock emits, not whether it runs.
+    //
+    // It no longer takes `where`. That parameter existed so the one path that
+    // could refuse (an unreviewed block nested inside a tool_result) could name
+    // the file and line. Nothing under here refuses now, and a parameter
+    // threaded through for a caller that is gone is the next thing to be
+    // mistaken for a live one.
+    const kept = retainBlock(block, ctx);
     if (kept !== null) out.push(kept);
   }
   return out;
 }
 
-function retainBlock(block, ctx, where) {
+function retainBlock(block, ctx) {
   switch (block.type) {
     case 'text': {
       if (typeof block.text !== 'string' || block.text.length === 0) return null;
@@ -320,35 +334,63 @@ function retainBlock(block, ctx, where) {
           input: { redacted: DENIED_MARKER(bytes, why) },
         };
       }
+      const input = stripCodeParams(block.input, ctx);
+      // Measured on the archive built from the live corpus after the
+      // tool_result cut: parameters are 1.48 MB of a 9.08 MB archive, 16.3%,
+      // and they are the ONLY free text in it that no reader is ever shown.
+      // The remainder line quotes this figure, so it is counted rather than
+      // estimated: without it that line can only report the whole non-prose
+      // share, 70.4%, of which 48.4% is record scaffolding and minted
+      // identifiers that cannot hold a name at all.
+      ctx.stats.toolParamBytes += Buffer.byteLength(JSON.stringify(input ?? null), 'utf8');
       return {
         type: 'tool_use',
         id: ctx.rewriteUuid(block.id),
         name: block.name ?? null,
-        input: stripCodeParams(block.input, ctx),
+        input,
       };
     }
 
+    // Shape without content, and this is the whole contract: which tool,
+    // whether it failed, how much came back.
+    //
+    // Twenty holes were reproduced against the shipped code on 2026-08-25.
+    // Sorted by where the BYTES came from rather than by which module missed
+    // them, seventeen of the twenty were in machine output: percent-encoded
+    // CJK, HTML character references, Python bytes-repr, base64, zero-width
+    // characters, a gcloud token, the secret half of an AWS credential pair,
+    // cloud account identifiers. A human does not type base64 of a colleague's
+    // name into a prompt. A program emits it, and the only route program
+    // output takes into the archive is a tool_result.
+    //
+    // And nobody reads this surface. Measured over 250 of the 4,228 files in
+    // the live corpus: tool_result is 47.2% of the three content surfaces by
+    // bytes, against 30.5% prose and 22.3% tool_use parameters. tier1.mjs
+    // builds the candidates file from prose blocks alone, so no reader and no
+    // semantic pass ever saw a byte of it, and every miss in it was therefore
+    // invisible rather than merely undetected.
+    //
+    // The cut is not reversible and does not need to be: cutting when the
+    // recipient needed it, they come back and ask; not cutting when there was
+    // a leak, the bytes have left.
     case 'tool_result': {
-      const denied = denyToolResult(block.content, ctx, where);
-      if (denied !== null) {
-        return prune({
-          type: 'tool_result',
-          tool_use_id: ctx.rewriteUuid(block.tool_use_id),
-          is_error: block.is_error === true ? true : null,
-          content: denied,
-          redacted_omitted_bytes: null,
-        });
-      }
-      const { text, omitted } = capToolResult(block.content, ctx, where);
+      const bytes = toolResultBytes(block.content);
+      ctx.stats.toolResults += 1;
+      ctx.stats.toolResultBytesDropped += bytes;
       return prune({
         type: 'tool_result',
+        // The tool NAME is not on this block and is not copied onto it. It is
+        // on the tool_use block this id pairs with, the rewrite is
+        // deterministic, and makeUuidRewriter exists to keep exactly that
+        // pairing resolvable. A second copy would be a second thing to keep
+        // in step.
         tool_use_id: ctx.rewriteUuid(block.tool_use_id),
-        // §6 open question 1: is_error is what failure_signal is most likely
-        // counted from, and suppressing it would raise OVR. Kept verbatim,
-        // before and independently of any truncation.
+        // BRIEF §6 open question 1: is_error is what failure_signal is most
+        // likely counted from, and suppressing it would silently RAISE OVR.
+        // It was preserved verbatim through truncation before and is
+        // preserved verbatim through deletion now.
         is_error: block.is_error === true ? true : null,
-        content: text,
-        redacted_omitted_bytes: omitted > 0 ? omitted : null,
+        result_bytes: bytes,
       });
     }
 
@@ -489,89 +531,39 @@ function stripInjected(text, ctx) {
 }
 
 /**
- * A tool result that read a denied file leaves as a count, not as its content.
+ * Bytes of text a tool returned, which is all that is kept of it.
  *
- * The whole result goes, not the matching line: a file listing is denied by
- * one entry in it, and half a private file is still a private file.
- */
-function denyToolResult(content, ctx, where) {
-  const text = flattenContent(content, where);
-  const why = deniedReason(text);
-  if (why === null) return null;
-  ctx.stats.deniedBlocks += 1;
-  const bytes = Buffer.byteLength(text, 'utf8');
-  ctx.stats.deniedBytes += bytes;
-  return DENIED_MARKER(bytes, why);
-}
-
-/**
- * Head + tail cap. §6 open question 1 is unresolved, so the caps in
- * constants.mjs are generous and the omission is stated in the record rather
- * than being silent.
- */
-function capToolResult(content, ctx, where) {
-  const text = flattenContent(content, where);
-  if (text === null) return { text: null, omitted: 0 };
-  const bytes = Buffer.byteLength(text, 'utf8');
-  if (bytes <= TOOL_RESULT_HEAD_BYTES + TOOL_RESULT_TAIL_BYTES) return { text, omitted: 0 };
-
-  const buf = Buffer.from(text, 'utf8');
-  // Snapped to a codepoint boundary. Slicing the buffer at a fixed byte offset
-  // splits a multi-byte character whenever the cut lands inside one, and
-  // toString then substitutes U+FFFD: measured over the corpus, 196 of 1,217
-  // truncated blocks (16.1%) gained a replacement character at the seam. This
-  // is the tool INSERTING a character that was never in the log, into an
-  // export whose selling point is that it only removes.
-  const headEnd = snapBack(buf, TOOL_RESULT_HEAD_BYTES);
-  const tailStart = snapBack(buf, buf.length - TOOL_RESULT_TAIL_BYTES);
-  const head = buf.subarray(0, headEnd).toString('utf8');
-  const tail = buf.subarray(tailStart).toString('utf8');
-  const omitted = tailStart - headEnd;
-  ctx.stats.toolResultBytesOmitted += omitted;
-  return { text: head + TRUNCATION_MARKER(omitted) + tail, omitted };
-}
-
-/**
- * The nearest codepoint boundary at or before `at`.
- * A UTF-8 continuation byte is 10xxxxxx, so walk back while that holds.
- */
-function snapBack(buf, at) {
-  let i = Math.max(0, Math.min(at, buf.length));
-  while (i > 0 && (buf[i] & 0xc0) === 0x80) i -= 1;
-  return i;
-}
-
-/**
- * Nested content blocks inside a tool_result.
+ * The payload the model read, not the JSON envelope around it: a consumer
+ * comparing a 40 KB Read against a 200 B one is comparing what came back, and
+ * counting the wrapper would make two identical results differ by their block
+ * shape.
  *
- * `retainBlocks` refuses an unknown block type at the top level (I7) precisely
- * because a silent drop is how the highest-value user turns get lost, and that
- * discipline stopped one level down: anything that was not a string, not an
- * object with `.text` and not an image fell off the end of the loop with no
- * counter and no refusal. Measured over the corpus: 1,361 `tool_reference`
- * blocks today, carrying only an MCP tool name, and any new sub-block type
- * tomorrow, carrying whatever Claude Code decides to put there.
+ * Every shape is measured rather than refused, and that is a deliberate
+ * relaxation of I7. The old path flattened this text in order to KEEP it, so
+ * an unhandled nested block type was a silent drop of user text and a refusal
+ * was the right answer; three types reached that refusal in production
+ * (tool_reference, a nested document, an embedded PDF) and each one blocked a
+ * whole export. Nothing is kept now, so an unrecognised shape can only change
+ * a byte count. Refusing an export over that is docs/limits.md's cry-wolf
+ * failure, and I7 still holds where it earns its keep: at the top level, and
+ * on block types, where the text really would be kept.
  */
-// Every type the top-level path drops without reading must be droppable here
-// too. Measured on the live corpus: an embedded PDF arrived as a nested
-// document block and refused the whole export, while BLOCK_DECISIONS had
-// already reviewed that same type as drop-counted. Two lists for one question.
-const NESTED_BLOCK_DROP = Object.freeze(['tool_reference', 'document']);
-
-export function flattenContent(content, where = null) {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return content === null || content === undefined ? null : JSON.stringify(content);
-  const parts = [];
+function toolResultBytes(content) {
+  if (content === null || content === undefined) return 0;
+  if (typeof content === 'string') return Buffer.byteLength(content, 'utf8');
+  if (!Array.isArray(content)) return Buffer.byteLength(JSON.stringify(content), 'utf8');
+  let bytes = 0;
   for (const b of content) {
-    if (typeof b === 'string') parts.push(b);
-    else if (b && typeof b === 'object' && typeof b.text === 'string') parts.push(b.text);
-    else if (b && typeof b === 'object' && b.type === 'image') parts.push('[image removed by deident]');
-    else if (b && typeof b === 'object' && NESTED_BLOCK_DROP.includes(b.type)) continue;
-    else if (b !== null && b !== undefined) {
-      throw unknown(`a nested content block of type "${b && b.type}"`, where, `nested ${b && b.type}`);
+    if (typeof b === 'string') bytes += Buffer.byteLength(b, 'utf8');
+    else if (b !== null && typeof b === 'object' && typeof b.text === 'string') {
+      bytes += Buffer.byteLength(b.text, 'utf8');
+    } else if (b !== null && b !== undefined) {
+      // An image, a document, a tool_reference, or whatever ships next. Its
+      // size is the only thing about it that can be stated honestly.
+      bytes += Buffer.byteLength(JSON.stringify(b), 'utf8');
     }
   }
-  return parts.join('\n');
+  return bytes;
 }
 
 // ------------------------------------------------------------- attachments

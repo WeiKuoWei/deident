@@ -100,8 +100,10 @@ export function renderPreview(state) {
   if (state.unverified) {
     const u = state.unverified;
     push(`    unverified: ${u.proseBytes} bytes of these sessions is prose, and prose is the only part`);
-    push(`    a reader is ever shown. The archive is ${u.archiveBytes} bytes, so ${u.unreadPercent}% of it went`);
-    push('    in front of nobody and no check above reads it for a name.');
+    push(`    a reader is ever shown. The archive is ${u.archiveBytes} bytes, of which ${u.unreadPercent}% is not`);
+    push('    prose. Most of that cannot hold a name: record scaffolding, and identifiers');
+    push(`    deident minted itself. ${u.toolParamBytes} bytes of it (${u.toolParamPercent}%) is the parameters of`);
+    push('    your tool calls: free text, shown to no reader, checked by nothing.');
     push('');
   }
 

@@ -16,13 +16,41 @@
 /** What survives every control this tool has. Nothing measured goes here. */
 // One line per item: every renderer prints them as a list, and a wrapped
 // second line becomes a bullet of its own in review.html.
+// Three entries left this list when the tool_result payload was deleted, and
+// they left because they became FALSE, which is the only reason an entry may
+// leave. cli-ux §6: a disclosure hiding an implemented control is worse than
+// either honest option, and so is a disclosure of a route that no longer
+// exists, because it teaches a reader to distrust the rows that are real.
+//
+//   "verbatim documents a tool read for you"   a tool result ships as a byte
+//                                              count now. Nothing a tool read
+//                                              reaches the archive as text.
+//   "…a key a command printed for you is       a key a command printed for you
+//    caught by shape or not at all"            is not in the export at all.
+//
+// The agent-memory line did NOT leave, and nearly did. Its wording was about a
+// memory file a tool READ for you, which is the closed route; the deny-list
+// underneath it still decides two live questions, whether a tool_use parameter
+// may name that file and whether an attachment carrying it survives. A user
+// whose memory files are named otherwise still needs to be told, and still has
+// denied.json as the remedy. So the line is narrowed rather than removed.
+//
+// What replaced them is narrower and true: the parameters of the tool calls.
 export const ALWAYS = Object.freeze([
   'device fingerprint: localhost ports, model mix, CLI version sequence',
-  'verbatim documents a tool read for you, not only ones you pasted yourself',
   'names the semantic pass missed, yours included, and facts that are not names: a shareholding, a rate, a balance',
   'the bare NAME of a file or directory you discussed, where prose quotes it without a path',
   'your own account inventory: vault item names, login ids, which tokens are live',
   'ids from a service deident does not sweep: a board, document or channel id',
+  // Measured on the archive built from the live corpus: 1.48 MB of 9.08 MB,
+  // 16.3%. It is the only free text left in the export that no reader sees,
+  // and it is the model's own words rather than a program's output, so the
+  // encodings that made tool results unreadable are rare here and ordinary
+  // English is not. A path, a shell command, a search pattern, and the brief
+  // one agent writes to another all ride in on this.
+  'the parameters of your tool calls: the path you read, the command you ran, the',
+  '  brief you gave a subagent. The candidates file is built from prose, so these',
+  '  go in front of no reader and the semantic pass never sees them',
   // The manifest prints `0 secrets  0 replaced` six lines above this block, as
   // a zeros row whose whole purpose is to be believed. Enumerating vendor
   // prefixes stays reactive forever, so the affirmative zero has to say what
@@ -31,18 +59,15 @@ export const ALWAYS = Object.freeze([
   // password and a private key body all have a sweep or a deny rule now, and
   // cli-ux §6 says a disclosure hiding an implemented control is worse than
   // either honest option.
-  // The deny-list that catches agent memory matches FILENAMES, and it knows one
-  // naming convention. Harness injections are stripped whatever they are
-  // called, so the residual exposure is narrower than it sounds and the line
-  // says which case it is: a memory file a TOOL read, under a name this list
-  // has never heard of.
-  'agent memory a tool READ for you, under a filename deident does not know: only',
-  '  MEMORY.md and reference_/feedback_/project_/user_*.md are recognised, which is',
-  '  one person\'s naming convention. Put your own in denied.json beside the salt',
+  'agent memory NAMED in a tool parameter or arriving as an attachment, under a',
+  '  filename deident does not know: only MEMORY.md and',
+  '  reference_/feedback_/project_/user_*.md are recognised, which is one person\'s',
+  '  naming convention. Put your own in denied.json beside the salt. A memory file',
+  '  a tool READ for you is no longer a case: tool output does not ship',
   'a credential with no listed vendor prefix and no label beside it. The 0 secrets',
-  '  row above means "none of the shapes it knows", not "no secrets", and the',
-  '  semantic pass never reads tool output, so a key a command printed for you is',
-  '  caught by shape or it is not caught at all',
+  '  row above means "none of the shapes it knows", not "no secrets". A key a',
+  '  command PRINTED for you is no longer a case: tool output does not ship. One',
+  '  you typed, or one named in a tool parameter, is caught by shape or not at all',
 ]);
 
 /**
