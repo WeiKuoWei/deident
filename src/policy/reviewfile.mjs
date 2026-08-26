@@ -46,8 +46,6 @@ export function renderReview(model) {
   push('#   drop   held back. Someone else’s documents, health, private messages,');
   push('#          live credentials, or anything else you will not send.');
   push('# A session whose workspace is excluded is already out; this is on top of that.');
-  push('# --audience does NOT move these rows. It decides what gets substituted;');
-  push('# every kept session ships at every audience.');
   for (const s of model.sessions ?? []) {
     push(`${s.decision.padEnd(6)} ${s.date}  ${s.workspace.padEnd(26)} ${s.id}`);
   }
@@ -171,8 +169,8 @@ export function parseReview(text, opts = {}) {
  * mistake: whole-session removal took that funnel from 35 to 17, and removing
  * parts of a session instead took it back to 76.
  *
- * The axis now moves what goes INTO the entity list (seed.mjs, `audience`) and
- * never which sessions ship, so more privacy and more sessions stop competing.
+ * Privacy is served by substituting more, usefulness by keeping everything, so
+ * the two stopped competing once nothing but the floor could hold a session.
  */
 export const SESSION_DECISIONS = Object.freeze(['keep', 'drop']);
 
@@ -188,16 +186,6 @@ const LEGACY_AUDIENCE_DROP = 'drop:audience';
 function isSessionDecision(value) {
   return SESSION_DECISIONS.includes(value) || value === LEGACY_AUDIENCE_DROP;
 }
-
-/**
- * Who the archive is for, which is a claim about what the reader already knows.
- *
- * Ordered, and `public` is the default: an archive that has left a machine has
- * left it, and the person who receives it is not the last person who will hold
- * it. A declared recipient rather than a number, because a number cannot be
- * audited and gives the person no way to know what moved between 6 and 7.
- */
-export const AUDIENCES = Object.freeze(['teammate', 'company', 'public']);
 
 /**
  * The session id on a `## sessions` row: column 4, not the last word.
@@ -236,20 +224,9 @@ export function sessionRowId(parts) {
  */
 export function parseSessionDrops(text, opts = {}) {
   const onProblem = typeof opts.onProblem === 'function' ? opts.onProblem : null;
-  const audience = opts.audience ?? 'public';
-  if (!AUDIENCES.includes(audience)) {
-    throw new RefusalError(`"${audience}" is not an audience`, {
-      why: [
-        `Audiences are: ${AUDIENCES.join(', ')}.`,
-        'Refusing rather than falling back, because the fallback direction is a release.',
-      ],
-      remedies: [{ label: 'Declare one', command: `deident export --audience ${AUDIENCES[0]}` }],
-    });
-  }
   const drops = new Set();
   const known = new Set();
   let heldByFloor = 0;
-  let legacyAudienceRows = 0;
   let inSessions = false;
 
   for (const rawLine of text.split('\n')) {
@@ -280,22 +257,16 @@ export function parseSessionDrops(text, opts = {}) {
     }
     if (!id) continue;
     known.add(id);
-    if (decision === LEGACY_AUDIENCE_DROP) legacyAudienceRows += 1;
     if (decision !== 'keep') {
       heldByFloor += 1;
       drops.add(id);
     }
   }
 
-  // `audience` rides along because the manifest records it (privacy-tiers §6),
-  // not because it moved anything here. It cannot: it is an entity-list
-  // setting now.
   return Object.freeze({
     drops: Object.freeze(drops),
     known: Object.freeze(known),
-    audience,
     heldByFloor,
-    legacyAudienceRows,
   });
 }
 
@@ -350,9 +321,7 @@ export function readSessionDrops(filePath, opts = {}) {
       return Object.freeze({
         drops: Object.freeze(new Set()),
         known: Object.freeze(new Set()),
-        audience: opts.audience ?? 'public',
         heldByFloor: 0,
-        legacyAudienceRows: 0,
       });
     }
     throw new RefusalError(`could not read ${filePath}`, {

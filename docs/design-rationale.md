@@ -144,30 +144,28 @@ in memory and are never written down, so regenerating the entity list cannot
 tell those two inputs apart. The export prints the count of merged replacements
 for exactly this reason.
 
-## The declared audience moves the entity list, not the sessions
+## Your own repository name is an identity, with no way to say otherwise
 
-`--audience` was first put on the session decision: sessions were held back at
-`public` and released for a declared insider. Measured on the live corpus at
-`audience=teammate`: 151 sessions held by the floor, **0 held by the audience**,
-and zero occurrences of the token in the `review.md` the tool produced. It asked
-the operator to classify every held row against a distinction that changed
-nothing, while defining `public` as the setting that ships the fewest sessions.
-The expected user publishes publicly, so the design gave its main case the worst
-archive. Whole-session removal took that funnel from 35 sessions to 17; removing
-parts of a session instead took it back to 76.
+Your repository's bare name is your employer's product vocabulary: what the
+company builds, written the way your prose writes it. It names your employer to
+a reader who does not already know it, so it is seeded as an entity on every
+run. There is no setting for this. An archive that has left this machine has
+left it, and the person who receives it is not the last person who will hold it,
+so the one reading that is safe for every recipient is the only one offered.
 
-So the axis now moves what goes **into** the entity list and never which sessions
-ship. At `public` your own repository name is an identity, because it names your
-employer to a reader who does not already know it. At `teammate` or `company` it
-is a word the reader uses daily, and substituting it wrecks the sentence while
-hiding nothing. More privacy and more sessions stopped competing.
+The cost is prose quality: a sentence reads `ORG_4471` where a colleague would
+have read a word they use daily. The cost of the other direction is a name.
 
-Your repository's **owner** is seeded at every audience and is deliberately not
-on the axis: tier 0 cannot tell an employer's own org from a client's org you
+The seed is gated on the name being project-shaped, for the reason the project
+basename seed is: without that gate a repo called `dashboard`, `references` or
+`migration` becomes an entity and ordinary prose gets substituted, which is
+§F7's "a scan that cries wolf is the first thing switched off" arriving as
+over-substitution.
+
+Your repository's **owner** is seeded on the same terms and never was
+conditional: tier 0 cannot tell an employer's own org from a client's org you
 happen to have a checkout under, and the failure direction of guessing wrong is
 shipping a client's name to a stranger.
-
-`docs/audience-and-floor.md` has the full record.
 
 ## Installing copies the repository, and updating does not re-copy it
 

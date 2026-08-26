@@ -93,7 +93,6 @@ import {
   readSessionDrops,
   renderReview,
   renderReviewHtml,
-  SESSION_DECISIONS,
 } from '../src/policy/reviewfile.mjs';
 import { readEntities, writeCandidates } from '../src/entities/tier1.mjs';
 import { estimateTokens, roundEstimate, tokenCost } from '../src/cli/tokens.mjs';
@@ -3947,139 +3946,31 @@ const FIXTURES = [
     assert.doesNotMatch(human.out, /^\s*\{/m, 'no JSON leaks into the human path');
     assert.match(human.out, /Workspaces/);
   }],
-  // F100 - the audience setting must not be able to remove a session.
+  // F100 - a `drop:audience` row written by an older deident is still a drop.
   //
-  // It used to. `drop:audience` was a third session decision, held at `public`
-  // and released at `teammate` or `company`, and the measured result on the live
-  // corpus was that it never held anything:
+  // The value is no longer offered and nothing writes it any more, but a
+  // review.md written before it was retired still carries those rows. Refusing
+  // would strand the file; reading the value as unknown would RELEASE a session
+  // someone held.
   //
-  //   audience=teammate   heldByFloor=151   heldByAudience=0
-  //   occurrences of "drop:audience" in the produced review.md:  0
-  //
-  // Nothing writes that value: buildReviewModel emits keep or drop, and triage
-  // only ever moves a row toward drop. So the axis asked the operator for a
-  // decision that changed nothing, while defining `public` as the setting under
-  // which the MOST sessions are held. The expected user publishes publicly, so
-  // the design handed its main case the worst archive, and it did it with the
-  // one instrument measured on this corpus as the expensive
-  // mistake: whole-session removal took that funnel from 35 sessions to 17, and
-  // block-level denial and value-level redaction took it back to 76.
-  //
-  // The axis now moves what goes INTO the entity list (F154) and never which
-  // sessions ship. An unqualified `drop` IS the floor and stays the only way to
-  // hold a session, so the two goals stop competing: privacy is served by
-  // substituting more, usefulness by keeping everything.
-  ['F100', 'the audience setting never removes a session, at any value', () => {
-    const model = {
-      generated: '2026-08-24 00:00',
-      workspaces: [{ tier: 'redact', name: '<home>', sessionCount: 3, cwd: 'C:', note: null }],
-      sessions: [
-        { id: 'aaaa-1111', date: '2026-08-01', workspace: '<home>', decision: 'keep' },
-        { id: 'bbbb-2222', date: '2026-08-02', workspace: '<home>', decision: 'drop' },
-      ],
-      flaggedSessions: [],
-      entities: [],
-    };
-    const text = renderReview(model);
-
-    // The same rows at every audience. Only the floor holds anything.
-    for (const audience of ['public', 'company', 'teammate']) {
-      const held = parseSessionDrops(text, { audience });
-      assert.deepEqual([...held.drops], ['bbbb-2222'], `${audience} moved a session`);
-      assert.deepEqual([...held.known].sort(), ['aaaa-1111', 'bbbb-2222']);
-      assert.equal(held.heldByFloor, 1, `${audience}: the floor count is the only held count`);
-    }
-
-    // The review file must stop offering a decision the tool no longer has.
-    // An operator told to classify every held row into two buckets spends the
-    // step that matters on a distinction with no effect.
-    assert.doesNotMatch(text, /drop:audience/, 'review.md still offers the removed decision');
-    assert.deepEqual([...SESSION_DECISIONS], ['keep', 'drop']);
-
-    // A review.md written before the change still holds its rows. Refusing
-    // would strand the file; reading the value as unknown would RELEASE a
-    // session someone held, so it is read as the drop it was.
+  // `deident scan` is the path that makes this a leak rather than a warning: it
+  // reads review.md leniently and regenerates the file from `remembered
+  // .sessionDrops` union the parsed drops, so a row this parser skips lands in
+  // neither set and the regenerated file renders that session as `keep`. With a
+  // fresh salt directory the held session then ships, and the file reads clean.
+  ['F100', 'a retired drop:audience row is still read as the drop its author meant', () => {
     const legacy = '## sessions' + NL + 'drop:audience 2026-08-03  ws  cccc-3333' + NL;
-    for (const audience of ['public', 'company', 'teammate']) {
-      const old = parseSessionDrops(legacy, { audience });
-      assert.deepEqual([...old.drops], ['cccc-3333'], `${audience} released a legacy audience-held row`);
-      assert.equal(old.heldByFloor, 1, 'a legacy row is held, so it is counted as held');
-      assert.equal(old.legacyAudienceRows, 1, 'the row is counted so the operator can be told to fix it');
-    }
+    const held = parseSessionDrops(legacy);
+    assert.deepEqual([...held.drops], ['cccc-3333'], 'a legacy audience-held row was released');
+    assert.equal(held.heldByFloor, 1, 'a legacy row is held, so it is counted as held');
+
     // And triage still recognises such a row, or a file with one in it silently
     // stops being triageable.
     assert.deepEqual(parseSessionRows(legacy).map((r) => r.id), ['cccc-3333']);
 
-    // An unknown qualifier refuses rather than being read as the safe default.
-    // Guessing here fails towards release.
+    // Only that one spelling. Any other qualifier refuses rather than being read
+    // as the safe default, because guessing here fails towards release.
     assert.throws(() => parseSessionDrops('## sessions' + NL + 'drop:later 2026-08-01 ws aaaa-1111' + NL), RefusalError);
-
-    // And an unknown audience refuses too, for the same reason.
-    assert.throws(() => parseSessionDrops(text, { audience: 'friends' }), RefusalError);
-  }],
-  // F101 - the manifest must say which audience it was exported for, and what
-  // that audience actually did.
-  //
-  // privacy-tiers 6: a recipient comparing two corpora needs to see that one
-  // uploader withheld 40% of theirs, or a privacy choice reads downstream as a
-  // skill gap. The audience is the other half of that: a corpus exported for a
-  // teammate and one exported for the public are not comparable, and nothing in
-  // the contents says which is which.
-  //
-  // `heldByAudience` used to be the second number here and it was always 0,
-  // because nothing ever wrote the decision it counted (F100). A zero printed
-  // where no check ran is BRIEF section 4.3's mistake in the report block whose
-  // whole job is being believed. The honest number is the one the axis now
-  // moves: how many entities are in the table BECAUSE of the declared audience.
-  ['F101', 'the declared audience is recorded, with the count of what it changed', () => {
-    const root = tmpdir();
-    const out = path.join(root, 'out');
-    const saltDir = path.join(root, 'salt');
-    writeCorpus(root);
-
-    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
-    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
-    primeSemanticPass(root, out, saltDir);
-
-    // An unknown audience refuses at the flag, before any work is done.
-    const bogus = runCli([
-      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--audience', 'friends',
-      '--entities', path.join(root, 'ents.json'),
-    ]);
-    assert.notEqual(bogus.code, 0);
-    assert.match(bogus.out, /audience/i);
-
-    const exported = runCli([
-      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--audience', 'company', '--json',
-      '--entities', path.join(root, 'ents.json'),
-    ]);
-    assert.equal(exported.code, 0, exported.out);
-    const doc = JSON.parse(exported.out);
-    assert.equal(doc.manifest.audience, 'company', 'the recipient claim travels with the archive');
-    assert.equal(typeof doc.manifest.heldByFloor, 'number');
-    // The empty count is gone rather than printed as a zero.
-    assert.equal('heldByAudience' in doc.manifest, false, 'a count nothing ever wrote is still reported');
-    assert.equal(doc.manifest.audienceEntities, 0, 'an insider audience adds nothing to the table');
-
-    // Default is public when nothing is declared, and it is recorded as such
-    // rather than left absent: absent reads as "not considered".
-    const dflt = runCli([
-      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--json',
-      '--entities', path.join(root, 'ents.json'),
-    ]);
-    assert.equal(dflt.code, 0, dflt.out);
-    assert.equal(JSON.parse(dflt.out).manifest.audience, 'public');
-    assert.equal(typeof JSON.parse(dflt.out).manifest.audienceEntities, 'number');
-
-    // The human path prints it too, in the block whose whole job is being
-    // believed, and it says what the setting did rather than only naming it.
-    const human = runCli([
-      'export', '--root', root, '--out', out, '--salt-dir', saltDir, '--audience', 'teammate',
-      '--entities', path.join(root, 'ents.json'),
-    ]);
-    assert.equal(human.code, 0, human.out);
-    assert.match(human.out, /teammate/);
-    assert.doesNotMatch(human.out, /by the audience setting/, 'the empty count is still being printed');
   }],
   // F102 - the runtime floor is discovered at the last step of a ten-minute run.
   //
@@ -7141,23 +7032,22 @@ const FIXTURES = [
     assert.match(h.out, /2,100 occurrences/, 'the header must carry the true count, not the listed one');
   }],
 
-  // F154 - the audience axis, rebuilt as an entity-list question.
+  // F154 - the employer's own product vocabulary is an entity, unconditionally.
   //
-  // SKILL.md's list of what stays OUT of the entity list carries the clause
-  // "the user's own employer and its product vocabulary, WHEN THE RECIPIENT
-  // WORKS THERE TOO". That conditional is the audience question, and it was
-  // enforced only by a human reading a document. Here it is the flag.
+  // SKILL.md's list of what stays OUT of the entity list used to carry the
+  // clause "the user's own employer and its product vocabulary, WHEN THE
+  // RECIPIENT WORKS THERE TOO". The conditional is gone: an archive that has
+  // left this machine has left it, and the person who receives it is not the
+  // last person who will hold it. The bare repo name is what the employer
+  // builds, written the way the prose writes it, so it names the employer to a
+  // reader who does not already know it.
   //
-  // Only the repo name moves. The remote OWNER is seeded at every audience and
-  // stays that way: tier 0 cannot tell an employer's org from a client's, and
-  // guessing wrong in that direction ships a client's name.
-  //
-  // projectShaped gates the promotion for the reason it gates the project
-  // basename seed: without it a repo called `dashboard`, `references` or
-  // `migration` becomes an entity and ordinary prose gets substituted, which is
-  // section F7's "a scan that cries wolf is the first thing switched off"
-  // arriving as over-substitution.
-  ['F154', "the employer's product vocabulary is seeded for a stranger and left alone for an insider", () => {
+  // projectShaped gates the seed for the reason it gates the project basename
+  // seed: without it a repo called `dashboard`, `references` or `migration`
+  // becomes an entity and ordinary prose gets substituted, which is section
+  // F7's "a scan that cries wolf is the first thing switched off" arriving as
+  // over-substitution.
+  ['F154', "the employer's product vocabulary is an entity, and an ordinary word is not", () => {
     // Fabricated. The SHAPE each value preserves:
     //   kestrel-labs   a company's git remote owner: a hyphenated org handle
     //   harbour-api    a repo named after a product the company sells, so its
@@ -7167,75 +7057,17 @@ const FIXTURES = [
       ['/w/one', { raw: 'kestrel-labs/harbour-api', owner: 'kestrel-labs', repo: 'harbour-api', host: 'github.com' }],
       ['/w/two', { raw: 'kestrel-labs/dashboard', owner: 'kestrel-labs', repo: 'dashboard', host: 'github.com' }],
     ]);
-    const seedAt = (opts) =>
-      seedEntities(
-        { USERNAME: 'devuser', HOME: '/home/devuser', USERPROFILE: '/home/devuser' },
-        { files: [] },
-        { cwds: [], repoDirs: [...remotes.keys()], probeRemote: (d) => remotes.get(d) ?? null, texts: [], ...opts },
-      );
-
-    const pub = seedAt({ audience: 'public' });
-    const pubCanon = pub.entities.map((e) => e.canonical);
-    assert.ok(pubCanon.includes('harbour-api'), `the product name is not seeded at public: ${pubCanon.join(', ')}`);
-    assert.ok(!pubCanon.includes('dashboard'), 'an ordinary word became an entity');
-    assert.equal(pub.audienceEntities, 1, 'the number the manifest reports as what the audience did');
-
-    for (const inside of ['teammate', 'company']) {
-      const seeded = seedAt({ audience: inside });
-      const canon = seeded.entities.map((e) => e.canonical);
-      assert.ok(!canon.includes('harbour-api'), `${inside}: a word the reader already knows was substituted anyway`);
-      assert.ok(canon.includes('kestrel-labs'), `${inside}: the remote owner seed must not be on the axis`);
-      assert.equal(seeded.audienceEntities, 0);
-    }
-
-    // Absent, the seeder assumes what the flag assumes. A default that leaned
-    // the other way would mean the two halves of the tool disagreed about who
-    // the archive is for.
-    assert.ok(seedAt({}).entities.map((e) => e.canonical).includes('harbour-api'), 'the default is not public');
-  }],
-
-  // F155 - the reader who writes the entity list has to be told which rule is
-  // in force, in the file they are reading.
-  //
-  // The clause lived in SKILL.md, so the instruction reached the reader only if
-  // the operator had loaded the skill and remembered a conditional in it. The
-  // candidates file is the artifact that is actually in front of them, it is
-  // generated per run, and the run already knows the declared audience.
-  //
-  // It states the RULE and never the seeded owner: this file is the one
-  // artifact meant to be handed to a model, and tier-0 substitution has already
-  // taken that handle out of the prose. Writing it back into the header would
-  // put a plaintext identity in the file whose header claims there is none.
-  ['F155', 'the candidates file states what the declared audience does to the entity list', () => {
-    const root = tmpdir();
-    const out = path.join(root, 'out');
-    const saltDir = path.join(root, 'salt');
-    writeCorpus(root);
-    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir], CORPUS_USER_ENV).code, 0);
-    setTier(path.join(out, 'review.md'), 'alpha', 'redact');
-
-    const file = path.join(out, 'deident-candidates.txt');
-    const headerAt = (audience) => {
-      fs.rmSync(file, { force: true });
-      const r = runCli(
-        ['export', '--root', root, '--out', out, '--salt-dir', saltDir, '--audience', audience],
-        CORPUS_USER_ENV,
-      );
-      assert.equal(r.code, 1, `the run should refuse for want of an entity list: ${r.out}`);
-      const text = fs.readFileSync(file, 'utf8');
-      return text.slice(0, text.indexOf('-----'));
-    };
-
-    const pub = headerAt('public');
-    assert.match(pub, /employer/i, 'the public header says nothing about the employer');
-    assert.match(pub, /declare/i, 'the public header does not ask for it');
-
-    for (const inside of ['teammate', 'company']) {
-      const header = headerAt(inside);
-      assert.match(header, /employer/i, `${inside}: the header says nothing about the employer`);
-      assert.notEqual(header, pub, `${inside}: the declared audience changed nothing the reader reads`);
-      assert.match(header, /leave|out/i, `${inside}: the header does not say to leave it out`);
-    }
+    const seeded = seedEntities(
+      { USERNAME: 'devuser', HOME: '/home/devuser', USERPROFILE: '/home/devuser' },
+      { files: [] },
+      { cwds: [], repoDirs: [...remotes.keys()], probeRemote: (d) => remotes.get(d) ?? null, texts: [] },
+    );
+    const canon = seeded.entities.map((e) => e.canonical);
+    assert.ok(canon.includes('harbour-api'), `the product name is not seeded: ${canon.join(', ')}`);
+    assert.ok(!canon.includes('dashboard'), 'an ordinary word became an entity');
+    // The remote OWNER has never been conditional: tier 0 cannot tell an
+    // employer's org from a client's, and guessing wrong ships a client's name.
+    assert.ok(canon.includes('kestrel-labs'), 'the remote owner is not seeded');
   }],
 
   // F157..F160 - the third source of entities: values the person DECLARES.
