@@ -39,6 +39,7 @@ import { checkDeclaredValues } from '../src/verify/declared.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from '../src/verify/residual.mjs';
 import { distillToolResult, retainToolUseResult } from '../src/retain/toolresult.mjs';
 import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason,
+  RETENTION_TABLE,
 } from '../src/retain/records.mjs';
 import { resolveLineCwd, cwdChangeFrom } from '../src/corpus/cwdtrack.mjs';
 import { allowLine } from '../src/policy/linefilter.mjs';
@@ -100,7 +101,7 @@ import { CANDIDATE_CHUNK_CHARS } from '../src/retain/constants.mjs';
 import { DICTIONARY_FILENAME, mergeEntities } from '../src/policy/dictionary.mjs';
 import { parseCliArgs } from '../src/cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from '../src/cli/runtime.mjs';
-import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings } from '../src/pipeline.mjs';
+import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings, extractProseBySession } from '../src/pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from '../src/cli/errors.mjs';
 
 // Both sides of every fold pair must be Han and nothing else. A pair that
@@ -8704,6 +8705,227 @@ const FIXTURES = [
     assert.ok(!text.includes('memory index'), `an injected span shipped in a queued command: ${text}`);
     assert.equal(ctx.stats.deniedPaths, 1, 'the withheld path was not counted');
     assert.ok(ctx.stats.injectedBytesDropped > 0, 'the injected bytes were not counted');
+  }],
+
+  // F204 and F205 come from a regression this suite was green through, like
+  // the three instances of this bug before it: `extractProseBySession` was a
+  // SECOND enumeration of where prose lives, naming `rec.message.content` and
+  // an attachment's top-level string values. When a `queued_command`'s
+  // `prompt` became a retained block array the enumeration stopped finding it,
+  // so the prompt was kept in the archive and never put in front of a reader.
+  // Measured end to end: a name appearing ONLY in a queued command went from
+  // reaching the reader to not reaching them, with the archive still shipping
+  // it, the export exiting 0 and all six checks green. 506 of the 527 prompts
+  // in that corpus had the plain-string shape that regressed.
+  //
+  // A name that is retained but invisible to the reader is un-declarable BY
+  // CONSTRUCTION: the candidates file is what a human reads, and the semantic
+  // pass is the only producer that can catch a name nothing else recognises.
+  //
+  // The one-line repair is not the deliverable; this fixture is. It drives one
+  // record of every `keep` row and one block of every reviewed block type
+  // through the real retainer and the real extractor, and fails on any prose
+  // the archive keeps and the reader is not shown.
+  ['F204', 'every field the retention tables keep is either shown to the reader or declared', () => {
+    const proseFields = RETENTION_TABLE.proseFields;
+    assert.ok(proseFields, 'records.mjs no longer publishes where prose lives; the extractor is guessing again');
+
+    const sid = '11111111-1111-4111-8111-111111111111';
+    const cwd = ['C:', 'Users', 'devuser', 'projects', 'alpha'].join(BS);
+    const uuid = (n) => '00000000-0000-4000-8000-0000000000' + String(n).padStart(2, '0');
+    // Every reviewed block type, each carrying a PROSE- sentinel, so a block
+    // that stops reaching the reader stops this fixture. `tool_use`'s sentinel
+    // sits inside `input`, which is the gap docs/limits.md declares: it must
+    // NOT arrive, and assertion 3 says so rather than leaving it silent.
+    const blocks = [
+      { type: 'text', text: 'PROSE-TEXT-BLOCK' },
+      { type: 'thinking', thinking: 'PROSE-THINKING-BLOCK' },
+      { type: 'tool_use', id: uuid(11), name: 'Edit', input: { file_path: 'a.txt', description: 'PROSE-TOOL-PARAMETER' } },
+      { type: 'tool_result', tool_use_id: uuid(11), content: 'PROSE-TOOL-RESULT' },
+      { type: 'redacted_thinking', data: 'PROSE-REDACTED-THINKING' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'PROSE-IMAGE-BODY' } },
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'PROSE-DOCUMENT-BODY' } },
+    ];
+    const stamp = { sessionId: sid, timestamp: '2026-08-20T10:11:12.345Z', cwd };
+    const samples = [
+      { type: 'user', uuid: uuid(1), parentUuid: uuid(2), ...stamp, isSidechain: true, isMeta: true,
+        message: { role: 'user', model: 'claude-x', content: blocks } },
+      { type: 'assistant', uuid: uuid(3), ...stamp,
+        message: { role: 'assistant', model: 'claude-x', content: [{ type: 'text', text: 'PROSE-ASSISTANT-TEXT' }] },
+        toolUseResult: { structuredPatch: [] } },
+      { type: 'attachment', uuid: uuid(4), ...stamp,
+        attachment: { type: 'queued_command', prompt: [{ type: 'text', text: 'PROSE-QUEUED-COMMAND' }] } },
+      { type: 'attachment', uuid: uuid(5), ...stamp,
+        attachment: { type: 'edited_text_file', filename: 'PROSE-EDITED-FILENAME', snippet: 'PROSE-EDITED-SNIPPET' } },
+      { type: 'attachment', uuid: uuid(6), ...stamp,
+        attachment: { type: 'file', filename: 'PROSE-FILE-FILENAME', content: 'PROSE-FILE-CONTENT' } },
+      { type: 'last-prompt', uuid: uuid(7), ...stamp, lastPrompt: 'PROSE-LAST-PROMPT' },
+      { type: 'queue-operation', uuid: uuid(8), ...stamp, operation: 'add', content: 'PROSE-QUEUE-OPERATION' },
+      { type: 'mode', uuid: uuid(9), ...stamp, mode: 'acceptEdits' },
+      { type: 'system', uuid: uuid(10), subtype: 'compact_boundary', ...stamp },
+    ];
+
+    // A `keep` row with no sample here is a row nobody checked, and all four
+    // instances of this bug began as exactly that.
+    const keepTypes = Object.entries(RETENTION_TABLE.topLevel)
+      .filter(([, d]) => d === 'keep')
+      .map(([t]) => t);
+    assert.deepEqual(
+      [...new Set(samples.map((r) => r.type))].sort(),
+      [...keepTypes].sort(),
+      'a top-level type is kept and this fixture has no sample of it',
+    );
+    assert.deepEqual(
+      samples.filter((r) => r.type === 'attachment').map((r) => r.attachment.type).sort(),
+      [...RETENTION_TABLE.attachmentKeep].sort(),
+      'an attachment sub-type is kept and this fixture has no sample of it',
+    );
+    assert.deepEqual(
+      blocks.map((b) => b.type).sort(),
+      Object.keys(RETENTION_TABLE.blocks).sort(),
+      'a block type has a retention decision and this fixture has no sample of it',
+    );
+    for (const b of blocks) {
+      assert.match(
+        JSON.stringify(b),
+        /PROSE-/,
+        `the ${b.type} sample carries no sentinel, so nothing about it is checked`,
+      );
+    }
+
+    const ctx = newRetentionContext((u) => u);
+    const records = [];
+    for (const rec of samples) {
+      const kept = retainRecord(rec, ctx, { file: 'f204.jsonl', line: 1 });
+      assert.equal(kept.keep, true, `a ${rec.type} sample was dropped, so this fixture checks nothing about it`);
+      records.push(kept.record);
+    }
+
+    const chunks = extractProseBySession([{ file: { sessionId: sid, mtimeMs: 0 }, records }])[0].chunks;
+
+    // Every string the retainer emitted, with whether it sits under a field the
+    // table declares 'skip'.
+    const fields = [];
+    const walk = (v, skipped) => {
+      if (Array.isArray(v)) {
+        for (const x of v) walk(x, skipped);
+        return;
+      }
+      if (v === null || typeof v !== 'object') return;
+      for (const [k, val] of Object.entries(v)) {
+        const s = skipped || proseFields[k] === 'skip';
+        if (typeof val === 'string') fields.push({ key: k, value: val, skipped: s });
+        else walk(val, s);
+      }
+    };
+    walk(records, false);
+
+    // 1. A `keep` row emitting a string field the table has never seen. The
+    //    extractor shows it to the reader rather than hiding it, which is the
+    //    safe direction of the two, but nobody DECIDED that and this is where
+    //    they do.
+    for (const f of fields) {
+      if (f.skipped) continue;
+      assert.ok(
+        f.key in proseFields,
+        `a retained record emits "${f.key}" and PROSE_FIELDS has no row for it: decide 'prose' or 'skip'`,
+      );
+    }
+
+    // 2. The invariant itself: prose the archive keeps reaches the reader.
+    const planted = fields.filter((f) => f.value.startsWith('PROSE-'));
+    assert.ok(planted.length >= 8, `retention destroyed the sentinels; only ${planted.length} survived`);
+    for (const f of planted) {
+      if (f.skipped) {
+        assert.ok(!chunks.includes(f.value), `"${f.key}" is declared 'skip' and the reader was shown it anyway`);
+        continue;
+      }
+      assert.ok(
+        chunks.includes(f.value),
+        `"${f.value}" is in the archive under "${f.key}" and never reaches deident-candidates.txt`,
+      );
+    }
+
+    // 3. And the declared gap is really a gap, so docs/limits.md is not
+    //    describing a limit the code quietly stopped having.
+    assert.ok(
+      planted.some((f) => f.value === 'PROSE-TOOL-PARAMETER' && f.skipped),
+      'a tool parameter is no longer withheld from the reader; docs/limits.md states that it is',
+    );
+  }],
+
+  ['F205', 'a queued command reaches deident-candidates.txt in a real export', () => {
+    // F204 asserts the invariant against the extractor. This asserts it
+    // against the artifact, because the suite is not the oracle: it was green
+    // through all four instances of this bug, and the thing that actually
+    // caught the regression was reading the file a human is handed.
+    //
+    // No fixture anywhere built an export containing a `queued_command`
+    // attachment, which is why a prompt could stop arriving with 200 fixtures
+    // green.
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const dir = path.join(root, 'projects', 'ws');
+    fs.mkdirSync(dir, { recursive: true });
+    const cwd = ['C:', 'Users', 'devuser', 'projects', 'queued'].join(BS);
+    const sid = '77777777-7777-4777-8777-777777777771';
+    // Fabricated. SHAPE: a third party named ONLY inside a queued command,
+    // which is what a person types while the agent is busy. Nothing else in
+    // the corpus mentions them, so the semantic pass is the only producer that
+    // could ever put this name in front of a reader to be declared.
+    const ONLY_IN_QUEUE = 'ask Marguerite Okonkwo-Vance whether the invoice cleared';
+    const rows = [
+      {
+        type: 'user',
+        uuid: '00000000-0000-4000-8000-000000000801',
+        sessionId: sid,
+        timestamp: '2026-08-20T10:00:00.000Z',
+        cwd,
+        message: { role: 'user', content: [{ type: 'text', text: 'start the run and tell me when it is done' }] },
+      },
+      {
+        type: 'attachment',
+        uuid: '00000000-0000-4000-8000-000000000802',
+        sessionId: sid,
+        timestamp: '2026-08-20T10:01:00.000Z',
+        cwd,
+        // The live shape after 50df560: a block array, not a raw string.
+        attachment: { type: 'queued_command', prompt: [{ type: 'text', text: ONLY_IN_QUEUE }] },
+      },
+    ];
+    fs.writeFileSync(path.join(dir, `${sid}.jsonl`), rows.map((r) => JSON.stringify(r)).join(NL) + NL, 'utf8');
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+    setTier(path.join(out, 'review.md'), 'queued', 'redact');
+
+    const first = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(first.code, 1, `the first export refuses for want of an entity list: ${first.out}`);
+    const candidates = fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8');
+    assert.ok(
+      candidates.includes(ONLY_IN_QUEUE),
+      'a queued command is kept in the archive and never put in front of the reader',
+    );
+
+    // And it is in the archive too, so this fixture cannot be satisfied by
+    // dropping the record instead of showing it.
+    fs.writeFileSync(
+      path.join(root, 'ents.json'),
+      JSON.stringify({ entities: [{ kind: 'person', spellings: ['Marguerite Okonkwo-Vance'], confidence: 'high' }] }),
+      'utf8',
+    );
+    const done = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(done.code, 0, done.out);
+    const zipName = fs.readdirSync(out).find((f) => f.endsWith('.zip'));
+    const body = readZipFile(path.join(out, zipName))
+      .filter((e) => e.name.endsWith('.jsonl'))
+      .map((e) => e.data)
+      .join(NL);
+    assert.ok(body.includes('whether the invoice cleared'), 'the queued command left the archive as well');
+    assert.ok(!body.includes('Okonkwo-Vance'), `the declared name shipped: ${body.slice(0, 400)}`);
   }],
 
   ['F199', 'the fixture count in README is the number of fixtures', () => {

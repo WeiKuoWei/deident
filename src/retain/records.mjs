@@ -121,6 +121,71 @@ const BLOCK_DECISIONS = Object.freeze({
   document: 'drop-counted',
 });
 
+/**
+ * The prose half of the two tables above: which fields of a RETAINED record
+ * hold text a reader must be shown.
+ *
+ * `extractProseBySession` in pipeline.mjs used to answer this question a
+ * second time, by naming two record types, two block types and a generic
+ * scrape of an attachment's string values. That second list went stale the
+ * moment a `queued_command`'s `prompt` stopped being a raw string and became a
+ * retained block array: the scrape found no string under it, the prompt
+ * vanished from deident-candidates.txt, and the archive shipped it anyway,
+ * with the export exiting 0 and every check green. 506 of the 527 prompts in
+ * the corpus it was measured on had exactly the shape that regressed.
+ *
+ * That class is the worst one this tool has: the candidates file is what a
+ * human reads, and the semantic pass is the only producer that can catch a
+ * name nothing else recognises. A name that is retained but never put in front
+ * of the reader is un-declarable BY CONSTRUCTION. It is also the fourth time
+ * two lists have answered one question here, so there is one list, and the
+ * extractor reads it rather than restating it.
+ *
+ * Keyed by FIELD NAME rather than by record type, because a field name is what
+ * survives retention: `retainTurn` and `retainAttachment` emit the SAME block
+ * array under different keys, and `retainContent` is already polymorphic over
+ * the array and string forms. So is this table.
+ *
+ *   'prose'  a reader must see it. An array is walked as retained blocks; a
+ *            string is shown as it stands.
+ *   'skip'   an identifier, a stamp, a role, a tool name, or the one gap
+ *            docs/limits.md declares. Not descended into either.
+ *
+ * An UNDECLARED field falls to 'prose', because between showing the reader a
+ * uuid and hiding a sentence from them, only one of the two is the bug this
+ * table exists for. F204 then fails on the undeclared field, so the fail-open
+ * default buys safety without buying silence.
+ */
+export const PROSE_FIELDS = Object.freeze({
+  text: 'prose', // a `text` block, `last-prompt`, `queue-operation`
+  thinking: 'prose',
+  content: 'prose', // `message.content` blocks, and a pasted file's body
+  prompt: 'prose', // a `queued_command`
+  snippet: 'prose', // an `edited_text_file`
+  filename: 'prose', // third-party names live in the paths a person types
+
+  type: 'skip',
+  subtype: 'skip',
+  uuid: 'skip',
+  parentUuid: 'skip',
+  sessionId: 'skip',
+  id: 'skip',
+  tool_use_id: 'skip',
+  timestamp: 'skip',
+  cwd: 'skip',
+  role: 'skip',
+  model: 'skip',
+  mode: 'skip',
+  operation: 'skip',
+  name: 'skip', // the tool NAME, `Edit`, not what it touched
+  redacted: 'skip', // the placeholder BLOCK_DECISIONS emits in place of a body
+  result_form: 'skip',
+  // A tool's parameters are the one free text in the archive no reader is ever
+  // shown. docs/limits.md states that gap with its measurement rather than
+  // leaving it to be discovered, so it is DECLARED here, not omitted here.
+  input: 'skip',
+});
+
 export function newRetentionContext(rewriteUuid) {
   return {
     rewriteUuid,
@@ -793,4 +858,5 @@ export const RETENTION_TABLE = Object.freeze({
   systemKeep: SYSTEM_KEEP,
   systemDrop: SYSTEM_DROP,
   blocks: BLOCK_DECISIONS,
+  proseFields: PROSE_FIELDS,
 });
