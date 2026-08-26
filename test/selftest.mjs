@@ -38,7 +38,7 @@ import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal,
 import { checkDeclaredValues } from '../src/verify/declared.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from '../src/verify/residual.mjs';
 import { distillToolResult, retainToolUseResult, checkAddedLines } from '../src/retain/toolresult.mjs';
-import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason, flattenContent,
+import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason,
 } from '../src/retain/records.mjs';
 import { resolveLineCwd, cwdChangeFrom } from '../src/corpus/cwdtrack.mjs';
 import { allowLine } from '../src/policy/linefilter.mjs';
@@ -855,10 +855,15 @@ const FIXTURES = [
     fs.rmSync(dir, { recursive: true, force: true });
   }],
 
-  // F20, §6 open question 1: the one that silently inflates OVR. If
-  // truncation dropped is_error, failure_signal could fall below 3,
-  // hits_trouble would go false, Resilience would go null and OVR would RISE.
-  ['F20', 'is_error survives truncation of a large tool_result', () => {
+  // F20, §6 open question 1: the one that silently inflates OVR. If the cut
+  // dropped is_error, failure_signal could fall below 3, hits_trouble would go
+  // false, Resilience would go null and OVR would RISE.
+  //
+  // This asserted it against TRUNCATION, which no longer exists. The subject
+  // is not truncation, it is that is_error survives whatever happens to the
+  // body, so it now asserts it against deletion, which is the strictly harder
+  // case: there is no body left for the flag to ride out on.
+  ['F20', 'is_error survives the body being cut', () => {
     const ctx = newRetentionContext((u) => u);
     const huge = 'E'.repeat(50_000);
     const rec = {
@@ -871,10 +876,9 @@ const FIXTURES = [
     const out = retainRecord(rec, ctx, null);
     const block = out.record.message.content[0];
     assert.equal(block.is_error, true, 'is_error must survive');
-    assert.ok(block.content.length < huge.length, 'the body must actually be truncated');
-    assert.ok(block.redacted_omitted_bytes > 0, 'the omission must be stated, not silent');
-    assert.ok(block.content.includes('omitted by deident'), 'the marker must be present');
-    assert.ok(ctx.stats.toolResultBytesOmitted > 0);
+    assert.equal('content' in block, false, 'and the body must be gone, not shortened');
+    assert.equal(block.result_bytes, 50_000, 'with its size stated rather than silent');
+    assert.equal(ctx.stats.toolResultBytesDropped, 50_000);
   }],
 
   // F21, I1 on the hard cases. §4.6 measured 1,206 non-BMP strings.
@@ -2525,7 +2529,11 @@ const FIXTURES = [
     const ctx = newRetentionContext((u) => u);
     const at = { file: 'a', line: 1 };
 
-    // 1. A tool result that read a denied file leaves as a byte count.
+    // 1. A tool result that read a denied file leaves as a byte count. It used
+    // to leave that way because the deny-list caught it; it leaves that way
+    // now whatever it read, which is the same outcome reached without needing
+    // the pattern to match. The counter moved with it: this is no longer a
+    // denial, so it is no longer counted as one.
     const tr = retainRecord(
       {
         type: 'user',
@@ -2543,26 +2551,9 @@ const FIXTURES = [
     );
     assert.ok(tr.keep, 'the record itself survives');
     const block = tr.record.message.content[0];
-    assert.match(block.content, /withheld by deident/, 'the denied content is replaced');
-    assert.ok(!block.content.includes('line one'), 'and none of it survives');
-    assert.equal(ctx.stats.deniedBlocks, 1);
-
-    // 2. A clean tool result in the same session is untouched.
-    const clean = retainRecord(
-      {
-        type: 'user',
-        uuid: 'u2',
-        sessionId: 's',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't2', content: 'ordinary build output' }],
-        },
-      },
-      ctx,
-      at,
-    );
-    assert.equal(clean.record.message.content[0].content, 'ordinary build output');
-    assert.equal(ctx.stats.deniedBlocks, 1, 'a clean block is not counted as denied');
+    assert.equal(JSON.stringify(block).includes('line one'), false, 'none of it survives');
+    assert.equal(JSON.stringify(block).includes('MEMORY.md'), false, 'nor the filename that used to be the reason');
+    assert.equal(ctx.stats.deniedBlocks, 0, 'and no deny rule had to fire for that to be true');
 
     // 3. An attachment naming a denied file is dropped whole.
     const att = retainRecord(
@@ -2576,7 +2567,10 @@ const FIXTURES = [
       at,
     );
     assert.equal(att.keep, false, 'the attachment does not survive');
-    assert.equal(ctx.stats.deniedBlocks, 2);
+    // 1, not 2: the tool result above is no longer a denial, so the deny
+    // counter now counts only the routes where a pattern actually decided
+    // something. An attachment is one of the two that are left.
+    assert.equal(ctx.stats.deniedBlocks, 1);
 
     // 4. Harness-injected spans are stripped, authored text either side stays.
     const before = ctx.stats.injectedBytesDropped;
@@ -2761,7 +2755,15 @@ const FIXTURES = [
       assert.match(text, /0 occurrences of 12 entity spellings/, `${name} has no residue figure`);
       assert.match(text, /7 known-entity spellings abut/, `${name} has no embedded count`);
       assert.match(text, /3 spellings are legible in the raw bytes/, `${name} hides the escape artifacts`);
-      assert.match(text, /a tool read for you/, `${name} still says only pasted documents`);
+      // Was `a tool read for you`, which left the block when it became false:
+      // nothing a tool read ships as text any more. The probe moves to the
+      // line that replaced it, because the subject here is that all three
+      // renderers print ONE block, not which sentence is in it.
+      assert.match(text, /the parameters of your tool calls/, `${name} lost the unread-surface line`);
+      assert.ok(
+        !/a tool read for you/.test(text),
+        `${name} still discloses a route that no longer exists`,
+      );
     }
   }],
 
@@ -3128,7 +3130,10 @@ const FIXTURES = [
     assert.equal(/payroll|private|identity/i.test(block.input.redacted), false);
     assert.equal(ctx.stats.deniedBlocks, 1);
 
-    // A directory listing that ENUMERATES one, from an allowed cwd.
+    // A directory listing that ENUMERATES one, from an allowed cwd. The
+    // deny-list used to be what caught this, one entry in the listing
+    // condemning the whole result. It is caught by the blanket cut now, so it
+    // no longer depends on the pattern being right about a listing format.
     const listing = retainRecord(
       {
         type: 'user',
@@ -3143,8 +3148,8 @@ const FIXTURES = [
       ctx,
       at,
     );
-    assert.equal(listing.record.message.content[0].content.includes('SCORECARD'), false);
-    assert.equal(ctx.stats.deniedBlocks, 2);
+    assert.equal(JSON.stringify(listing.record.message.content[0]).includes('SCORECARD'), false);
+    assert.equal(ctx.stats.deniedBlocks, 1, 'the tool_use above is the only denial here now');
 
     // And an ordinary tool call in the same session is untouched.
     const fine = retainRecord(
@@ -3159,7 +3164,7 @@ const FIXTURES = [
       at,
     );
     assert.equal(fine.record.message.content[0].input.file_path, 'C:/w/src/index.mjs');
-    assert.equal(ctx.stats.deniedBlocks, 2);
+    assert.equal(ctx.stats.deniedBlocks, 1, 'and it adds no denial of its own');
   }],
 
   // F84, the cwd-less gate destroyed two whole record classes and never said
@@ -3276,7 +3281,7 @@ const FIXTURES = [
   }],
 
   // F87, three retention defects that all report something untrue.
-  ['F87', 'one line count, a codepoint-safe cut, and no silent nested drop', () => {
+  ['F87', 'one line count, and a cut that invents no character', () => {
     const ctx = newRetentionContext((u) => u);
     const at = { file: 'a', line: 1 };
 
@@ -3297,12 +3302,13 @@ const FIXTURES = [
     assert.equal(stripped.lines, 3, 'a trailing newline terminates the last line');
     assert.equal(stripped.lines, counted.code_added_lines, 'the two figures in one export must agree');
 
-    // (2) The head/tail cut split a multi-byte character, and toString then
-    // substituted U+FFFD: 196 of 1,217 truncated blocks in the corpus gained
-    // one. This tool only removes; it must not insert.
+    // (2) A multi-byte payload is cut whole, so the seam that used to invent a
+    // U+FFFD has nowhere to happen. 196 of 1,217 truncated blocks in the
+    // corpus gained a replacement character at that seam; the assertion that
+    // this tool only removes and never inserts is what survives here.
     const FFFD = String.fromCharCode(0xfffd);
     const cjk = '中'.repeat(9000);
-    const capped = retainRecord(
+    const cut = retainRecord(
       {
         type: 'user', uuid: 'u2', sessionId: 's',
         message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: cjk }] },
@@ -3310,38 +3316,10 @@ const FIXTURES = [
       ctx,
       at,
     );
-    const text = capped.record.message.content[0].content;
-    assert.ok(text.includes('omitted by deident'), 'it was truncated');
-    assert.equal(text.includes(FFFD), false, 'and no replacement character was invented');
-    assert.equal(Buffer.from(text, 'utf8').includes(Buffer.from(FFFD, 'utf8')), false);
-
-    // (3) A nested block type nobody has decided about is a refusal, the same
-    // as at the top level (I7). Today's instance carries only an MCP tool name
-    // and is dropped by name; anything else raises.
-    const known = retainRecord(
-      {
-        type: 'user', uuid: 'u3', sessionId: 's',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't2', content: [{ type: 'tool_reference', name: 'mcp__x__y' }, { type: 'text', text: 'result' }] }],
-        },
-      },
-      ctx,
-      at,
-    );
-    assert.equal(known.record.message.content[0].content, 'result');
-    assert.throws(
-      () => retainRecord(
-        {
-          type: 'user', uuid: 'u4', sessionId: 's',
-          message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't3', content: [{ type: 'brand_new_thing', payload: 'user text nobody reviewed' }] }] },
-        },
-        newRetentionContext((u) => u),
-        at,
-      ),
-      /never seen/,
-      'a silent drop is how the highest-value turns get lost (BRIEF §4.4)',
-    );
+    const block = JSON.stringify(cut.record.message.content[0]);
+    assert.equal(block.includes(FFFD), false, 'no replacement character was invented');
+    assert.equal(cut.record.message.content[0].result_bytes, Buffer.byteLength(cjk, 'utf8'),
+      'and the size is measured in bytes, not in UTF-16 units');
   }],
   // F86 - a presigned URL's session token is a credential, and prose whose
   // subject is a recovery kit goes as a block.
@@ -6215,7 +6193,17 @@ const FIXTURES = [
   ['F142', 'the limits block says what the 0 secrets row does not cover, without claiming a handled shape is unhandled', () => {
     const block = limitLines({}).join(NL);
     assert.match(block, /none of the shapes it knows/, 'the zeros row is left to speak for itself');
-    assert.match(block, /never reads tool output/, 'the block does not say why nothing downstream recovers it');
+    // Was `never reads tool output`, which was the reason nothing downstream
+    // recovered a missed key. Tool output no longer ships, so that sentence
+    // became a disclosure of a route that does not exist, which cli-ux §6 rules
+    // out for the same reason it rules out hiding a real control. The block
+    // must still say which cases are left, and must say that this one is not.
+    assert.match(block, /command PRINTED for you is no longer a case/, 'the block leaves a closed route open');
+    assert.match(block, /caught by shape or not at all/, 'the block does not say why nothing downstream recovers it');
+    assert.ok(
+      !/never reads tool output/.test(block),
+      'the block still explains a limit by a route that was deleted',
+    );
     // Handled now, so naming them here would be the disclosure hiding a real
     // control: a labelled value, a signed URL, an inline database password and
     // a private key body all have a sweep or a deny rule.
@@ -6446,8 +6434,16 @@ const FIXTURES = [
   // READ for you, and the fix for that is one token in denied.json.
   ['F146', 'the agent-memory deny-list says which filenames it knows, at the moment of export', () => {
     const block = limitLines({}).join(NL);
-    assert.match(block, /agent memory a tool READ for you/, 'the limit is stated nowhere the person hits it');
+    // The wording narrowed when tool output stopped shipping: the risk is no
+    // longer a memory file a tool READ for you, it is one NAMED in a tool
+    // parameter or arriving as an attachment. The deny-list still decides both,
+    // so the limit and its remedy both survive; only the route changed.
+    assert.match(block, /agent memory NAMED in a tool parameter/, 'the limit is stated nowhere the person hits it');
     assert.match(block, /denied\.json/, 'the disclosure names no remedy the person can run');
+    assert.ok(
+      !/agent memory a tool READ for you/.test(block),
+      'the block still discloses the route that was closed',
+    );
 
     // Pinned here so the disclosure and the list cannot drift. Fabricated
     // names. The SHAPE: one file using a recognised prefix, the index file
@@ -8234,42 +8230,214 @@ const FIXTURES = [
     assert.equal(startsOnEscapeBody(`C:${BS}${BS}Users${BS}${BS}ravi`, 11, true), false, 'and a serialized path separator is still not an escape');
   }],
 
-  ['F186', 'a document block is dropped on the nested path too, not only the top-level one', () => {
-    // Found on the live corpus during a verification run: an embedded PDF, as
-    // a base64 document block nested inside a user message, refused the whole
-    // export with "deident has never seen a nested content block of type
-    // document". BLOCK_DECISIONS already listed it as drop-counted, so the
-    // type WAS reviewed; only this second path had its own list and had not
-    // been told. Two lists for one question is the bug.
-    //
-    // SHAPE: the smallest thing that reaches flattenContent, with a text
-    // sibling so the assertion can prove the text survived rather than the
-    // whole block being dropped.
-    const content = [
-      { type: 'text', text: 'here is the form' },
-      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0x' } },
-    ];
+  // F186 is deleted, not renumbered: F174 asserts ids are distinct, and a
+  // reused id would be the one thing that check exists to catch. Its subject
+  // was flattenContent's second drop-list, which kept a nested document block
+  // from refusing an export whose top-level path had already reviewed that
+  // type. There is no second list any more, because there is no flattening
+  // any more: F190 covers what is left of the question, from the other side.
 
-    const out = flattenContent(content, 'F186');
-    assert.equal(out, 'here is the form', 'the document must vanish and the prose must stay');
+  // F188, the tool_result payload. Seventeen of the twenty holes reproduced
+  // against the shipped code on 2026-08-25 were in machine output: percent-
+  // encoded CJK, HTML character references, Python bytes-repr, base64,
+  // zero-width characters, a gcloud token, the secret half of an AWS pair.
+  // Nobody types base64 of a colleague's name into a prompt; a program emits
+  // it, and the only route program output takes into the archive is here.
+  //
+  // Measured over 250 of the 4,228 corpus files, the surface is 47.2% of the
+  // three content surfaces by bytes, and tier1.mjs builds the candidates file
+  // from prose blocks alone, so no reader and no semantic pass ever saw any
+  // of it. What survives is shape: which tool, whether it failed, how much
+  // came back.
+  ['F188', 'a tool result leaves as shape, never as text', () => {
+    const ctx = newRetentionContext((u) => u);
+    const at = { file: 'a', line: 1 };
+    // Every class in the sentence above, in one payload, so a partial cut
+    // fails this rather than passing on the half it removed.
+    const payload = [
+      'AKIAIOSFODNN7EXAMPLE',
+      'ya29.a0ARrdaM-' + 'z'.repeat(60),
+      Buffer.from('nora.lund@northwind.example', 'utf8').toString('base64'),
+      '%E5%B0%8F%E6%98%8E',
+      '&#x5C0F;&#x660E;',
+      "b'\\xe5\\xb0\\x8f\\xe6\\x98\\x8e'",
+      'zero\u200bwidth',
+    ].join(NL);
 
-    // Negative control: a type nobody has reviewed still refuses, because
-    // refusing to guess is the property this must not weaken.
-    assert.throws(
-      () => flattenContent([{ type: 'sculpture', data: 'x' }], 'F186'),
-      /never seen/,
-      'an unreviewed type must still refuse',
+    const out = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u1',
+        sessionId: 's',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'toolu_1', is_error: true, content: payload }],
+        },
+      },
+      ctx,
+      at,
     );
 
-    // And the two lists agree, which is the actual fix. Anything the top-level
-    // path drops without reading must be droppable here too, or the same
-    // refusal returns under a different type name.
-    for (const t of ['document', 'image']) {
-      assert.doesNotThrow(
-        () => flattenContent([{ type: t, source: { data: 'x' } }], 'F186'),
-        `${t} is reviewed at the top level and unknown when nested`,
-      );
+    const block = out.record.message.content[0];
+    const serialized = JSON.stringify(block);
+    for (const needle of ['AKIA', 'ya29.', 'bm9yYS5s', '%E5%B0', '&#x5C0F', 'xe5', '\u200b']) {
+      assert.equal(serialized.includes(needle), false, `"${needle}" must not survive`);
     }
+    // Not a truncation either: no head, no tail, no marker, no content key.
+    assert.equal('content' in block, false, 'there is no content key to read');
+    assert.equal(serialized.includes('omitted by deident'), false, 'nothing was truncated, so nothing says it was');
+
+    // The contract, positively. is_error is what failure_signal is most likely
+    // counted from, and suppressing it is what would silently raise OVR.
+    assert.equal(block.is_error, true, 'is_error survives verbatim');
+    assert.equal(block.result_bytes, Buffer.byteLength(payload, 'utf8'), 'the size of what came back is stated');
+    assert.equal(ctx.stats.toolResults, 1);
+    assert.equal(ctx.stats.toolResultBytesDropped, Buffer.byteLength(payload, 'utf8'));
+
+    // The tool NAME survives, on the tool_use block the id pairs with. The
+    // uuid rewrite is deterministic, so the join a JSONL consumer already
+    // makes still resolves; nothing here needs a second copy of the name.
+    const use = retainRecord(
+      {
+        type: 'assistant',
+        uuid: 'u2',
+        sessionId: 's',
+        message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } }] },
+      },
+      ctx,
+      at,
+    );
+    assert.equal(use.record.message.content[0].name, 'Bash', 'the tool name survives');
+    assert.equal(use.record.message.content[0].id, block.tool_use_id, 'and the pairing still resolves');
+
+    // A clean result is cut on exactly the same terms. Denial was a decision
+    // about what to keep, and nothing is kept, so there is no second path.
+    const clean = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u3',
+        sessionId: 's',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't2', content: 'ordinary build output' }] },
+      },
+      ctx,
+      at,
+    );
+    const cleanBlock = clean.record.message.content[0];
+    assert.equal('content' in cleanBlock, false, 'a clean result is cut too');
+    assert.equal(cleanBlock.result_bytes, 21);
+    assert.equal('is_error' in cleanBlock, false, 'and a result that did not fail says nothing about failure');
+  }],
+
+  // F189, the counts that must not regress. toolresult.mjs reads the
+  // `toolUseResult` sidecar, not the content block, so deleting the payload
+  // must leave every figure downstream reads exactly where it was. BRIEF §4.3:
+  // `null` and `0` are different and `0` is the dangerous one, because
+  // distill.ts reads `abandoned: s.code_added_lines === 0`.
+  ['F189', 'the structuredPatch counts survive the payload being cut', () => {
+    const ctx = newRetentionContext((u) => u);
+    const at = { file: 'a', line: 1 };
+    const patched = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u1',
+        sessionId: 's',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'The file has been updated successfully.' }],
+        },
+        toolUseResult: {
+          filePath: 'C:/w/a.mjs',
+          structuredPatch: [{ oldStart: 1, oldLines: 2, newStart: 1, newLines: 4, lines: ['+one', '+two', '-gone', ' ctx'] }],
+        },
+      },
+      ctx,
+      at,
+    );
+    assert.equal(patched.record.toolUseResult.code_added_lines, 2, 'a true added-line count, not 0 and not null');
+    assert.equal(patched.record.toolUseResult.code_removed_lines, 1);
+    assert.equal(patched.record.toolUseResult.patch_hunks, 1);
+    assert.equal(ctx.stats.codeLinesCounted, 2, 'and the run-wide total still counts it');
+
+    // The Write-create shape, which is 75.9% of every added line in the corpus
+    // and reads its count off `toolUseResult.content`. That field is the
+    // sidecar, never the content block, so the cut must not touch it.
+    const created = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u2',
+        sessionId: 's',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't2', content: 'File created successfully.' }],
+        },
+        toolUseResult: { type: 'create', filePath: 'C:/w/b.mjs', content: 'a' + NL + 'b' + NL + 'c' + NL, structuredPatch: [] },
+      },
+      ctx,
+      at,
+    );
+    assert.equal(created.record.toolUseResult.code_added_lines, 3, 'a Write-create still reports its true count');
+    assert.equal(created.record.toolUseResult.result_form, 'create-content');
+    // And the sidecar still carries no text of its own.
+    assert.equal(JSON.stringify(created.record.toolUseResult).includes('C:/w/b.mjs'), false, 'no path rides in on the sidecar');
+
+    // Unknown stays null, never 0.
+    const bash = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u3',
+        sessionId: 's',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't3', content: 'total 4' }] },
+        toolUseResult: { stdout: 'total 4', stderr: '' },
+      },
+      ctx,
+      at,
+    );
+    // null, and specifically not 0. prune only walks the record's own keys, so
+    // this one is emitted as null on purpose and reads as "unknown" downstream.
+    assert.equal(bash.record.toolUseResult.code_added_lines, null, 'unknown is null, never 0');
+    assert.equal(bash.record.toolUseResult.result_form, 'no-patch');
+  }],
+
+  // F190, a nested block type nobody has reviewed. This used to refuse the
+  // whole export (I7), because the payload was being KEPT and an unhandled
+  // shape was therefore a silent drop of user text. Nothing is kept now, so an
+  // unrecognised shape can only change a byte count, and refusing an export
+  // over one is the cry-wolf failure docs/limits.md warns about.
+  ['F190', 'an unreviewed nested block no longer refuses, because nothing is kept', () => {
+    const ctx = newRetentionContext((u) => u);
+    const out = retainRecord(
+      {
+        type: 'user',
+        uuid: 'u1',
+        sessionId: 's',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 't1',
+              content: [
+                { type: 'text', text: 'result' },
+                { type: 'brand_new_thing', payload: 'whatever Claude Code ships next' },
+              ],
+            },
+          ],
+        },
+      },
+      ctx,
+      { file: 'a', line: 1 },
+    );
+    const block = out.record.message.content[0];
+    assert.equal(JSON.stringify(block).includes('whatever Claude Code ships next'), false, 'and it still does not ship');
+    assert.ok(block.result_bytes > 0, 'it is counted rather than refused');
+
+    // The top level is unchanged: a record type nobody has decided about is
+    // still a refusal, because there the text really would be kept.
+    assert.throws(
+      () => retainRecord({ type: 'brand-new-record' }, newRetentionContext((u) => u), { file: 'a', line: 2 }),
+      /never seen/,
+      'the top-level refusal is not weakened',
+    );
   }],
 
 ];

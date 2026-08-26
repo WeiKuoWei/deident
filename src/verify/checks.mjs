@@ -389,27 +389,51 @@ export function toReportRows(checks) {
  *                            what the candidates file offers, changes it.
  *
  * Prose is the only part of the corpus a reader is ever shown: the candidates
- * file is prose, BRIEF §4.10 measured text at 2.30% of depth-0 bytes, and a
- * name that appears only inside a tool result, a directory listing or a code
- * block therefore never reaches a reader, cannot be declared, and cannot be
- * scanned for. The remaining percentage is the size of that blind spot.
+ * file is prose, and a name that appears only in a directory listing or a code
+ * block never reaches a reader, cannot be declared, and cannot be scanned for.
  *
- * @param {number} proseBytes    prose put in front of a reader, this corpus
- * @param {number} archiveBytes  the serialized output
+ * What this line MEASURES changed when the tool_result payload was deleted,
+ * and reporting the same figure afterwards would have been a false claim in
+ * the honest direction. It used to say that 78.1% of the archive went in front
+ * of nobody, and that 78.1% really was unread session text: measured on the
+ * archive built from the live corpus, tool_result payloads alone were 28.8% of
+ * it. They are gone, and what is left of the non-prose share is mostly not
+ * text at all. Same corpus, after:
+ *
+ *   record scaffolding, minted ids, timestamps   48.4%
+ *   tool_use parameters                          16.3%
+ *   tool_result shape (an id, a bool, an int)     3.6%
+ *   cwd                                           2.1%
+ *
+ * So the honest blind spot is no longer the whole non-prose remainder. Three
+ * quarters of that remainder is a vocabulary this tool defines in its own
+ * source, or an identifier it minted itself, and neither can hold a name
+ * nobody declared. The part that CAN is `tool_use` parameters: free text, the
+ * model's own, and the one surface still in the archive that no reader is
+ * shown. That is the number this reports, beside the total, rather than
+ * letting a scaffolding-heavy percentage stand in for a risk.
+ *
+ * @param {number} proseBytes      prose put in front of a reader, this corpus
+ * @param {number} archiveBytes    the serialized output
+ * @param {number} toolParamBytes  tool_use parameters, the unread free text
  */
-export function unverifiedRemainder(proseBytes, archiveBytes) {
+export function unverifiedRemainder(proseBytes, archiveBytes, toolParamBytes = 0) {
   const unread = Math.max(0, archiveBytes - proseBytes);
   // Guard the empty corpus rather than printing NaN%: the export refuses on an
   // empty archive anyway, but this runs before that refusal.
-  const percent = archiveBytes > 0 ? Number(((unread / archiveBytes) * 100).toFixed(1)) : 0;
+  const pct = (n) => (archiveBytes > 0 ? Number(((n / archiveBytes) * 100).toFixed(1)) : 0);
   return Object.freeze({
     proseBytes,
     archiveBytes,
     unreadBytes: unread,
-    unreadPercent: percent,
+    unreadPercent: pct(unread),
+    toolParamBytes,
+    toolParamPercent: pct(toolParamBytes),
     note:
-      'Prose is the only part of a session a reader is ever shown, so the rest of ' +
-      'the archive was read by nobody and no check looks at it for a name that is ' +
-      'not already in the entity table.',
+      'Prose is the only part of a session a reader is ever shown. The rest of the ' +
+      'archive is record scaffolding and identifiers deident minted, plus the ' +
+      'parameters of the tool calls: those parameters are free text, no reader is ' +
+      'shown them, and no check looks at them for a name that is not already in ' +
+      'the entity table.',
   });
 }

@@ -345,9 +345,11 @@ $ deident export
     the table came from   --entities deident-entities.json · 12 entities · 170/170 sessions read
 
     unverified   323.2 KB of these sessions is prose, and prose is the only
-                 part a reader is ever shown. The archive is 14.2 MB, so
-                 97.8% of it went in front of nobody and no check here reads
-                 it for a name that is not already in the table.
+                 part a reader is ever shown. The archive is 14.2 MB, and
+                 97.8% of that is not prose. Most of it cannot hold a name:
+                 record scaffolding, and identifiers deident minted itself.
+                 2.3 MB of it (16.3%) is the parameters of your tool
+                 calls: free text, shown to no reader, checked by nothing.
 
   Leaving this machine
     170 sessions from 17 workspaces
@@ -765,13 +767,20 @@ refuses, which understates rather than the other way round.
   and forms no impression, and SKILL.md step 6 tells an agent to name two of
   them to the person by name. Collapsing the array would break every consumer
   and remove the per-check attribution from the one reader that can use it.
-- **The remainder is stated in the same block, with a number.** The unit is
+- **The remainder is stated in the same block, with two numbers.** The unit is
   prose as a fraction of the archive: prose is the only part of a session a
-  reader is ever shown, BRIEF §4.10 measured text at 2.30% of depth-0 bytes,
-  and a name occurring only inside a tool result, a directory listing or a code
-  block therefore never reaches a reader, cannot be declared, and cannot be
-  scanned for. The remaining percentage is the size of that blind spot, on this
-  run.
+  reader is ever shown, so a name occurring only in a directory listing or a
+  code block never reaches a reader, cannot be declared, and cannot be scanned
+  for.
+
+  The second number exists because the first one stopped being a blind spot
+  when the tool_result payload was cut. Measured on an archive built from the
+  live corpus, the non-prose remainder is 48.4% record scaffolding and minted
+  identifiers, 16.3% `tool_use` parameters, 3.6% tool result shape, 2.1% cwd.
+  Three quarters of it is a vocabulary the tool defines in its own source and
+  cannot hold an undeclared name. Reporting only the total would overstate the
+  risk as badly as omitting it would understate it, so the parameters figure is
+  printed beside it: that is the part that is free text and unread.
 
   Three units were rejected for it. **Sessions nobody read** is always zero
   here, because the semantic-pass gate refuses the export while it is not, and

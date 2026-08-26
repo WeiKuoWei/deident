@@ -7,24 +7,12 @@
 //
 // No literal number with a policy meaning appears anywhere else.
 
-/**
- * tool_result head/tail caps.
- *
- * BRIEF §6 open question 1 is unresolved: nobody here knows what
- * `failure_signal` is counted from. Measured, an 800+400 byte cap destroyed
- * 98.7% of tool_result bytes and 23.9% of blocks exceed 1200 B. If truncating
- * pushes failure_signal below 3, `hits_trouble` goes false, Resilience goes
- * null, and OVR RISES, the tool would silently inflate scores.
- *
- * So these are set generously, not tightly, and `is_error` is preserved
- * verbatim regardless of truncation. Shrink them only after that question is
- * answered.
- */
-export const TOOL_RESULT_HEAD_BYTES = 4000;
-export const TOOL_RESULT_TAIL_BYTES = 2000;
-
-/** The marker written between head and tail. Counted, never silent. */
-export const TRUNCATION_MARKER = (omitted) => `\n…[${omitted} bytes omitted by deident]…\n`;
+// The tool_result head/tail caps used to live here, with a comment conceding
+// that nobody knew what `failure_signal` was counted from and that the values
+// were therefore "set generously, not tightly". Nothing is truncated now
+// because nothing is kept, so there is no threshold left to hedge about: the
+// open question is MOOT rather than answered. `is_error` is still preserved
+// verbatim, which is the half of that hedge that was load-bearing.
 
 /**
  * BRIEF §6 posture again: thinking blocks are agent reasoning and are the
@@ -130,8 +118,10 @@ export const CANDIDATE_BATCH_CHARS = 120_000;
  * dropping every session that carried one of these took the archive from 35
  * sessions to 17, and not one of those sessions was ABOUT the private matter.
  *
- * So the block is dropped and the session stays. Matched against a file path,
- * a filename, or the first part of a tool result's own text.
+ * So the block is dropped and the session stays. Matched against a file path
+ * or a filename, wherever one is named: a tool_use parameter, or an
+ * attachment. It used to be matched against a tool result's own text too,
+ * which is now moot, since no tool result text reaches the export at all.
  */
 // ONLY patterns that are true of the AGENT, not of one person. The first
 // draft of this list carried the author's own dictation app, his immigration
@@ -155,10 +145,11 @@ export const DENIED_CONTENT = Object.freeze([
   // Filenames that are a credential or an identity record by convention.
   /(credentials|profile)[.]json/i,
   // A private key body. Not a value to substitute: half a key is still a key,
-  // and the whole block goes as a count. It belongs here rather than in the
-  // entity sweep because a PEM almost always arrives as tool output, which
-  // routes through deniedReason, and the semantic pass never reads tool output
-  // at all. The header is what the reason line ships, and it names no secret.
+  // and the whole block goes as a count. The measured route was tool output,
+  // which is gone by construction now; this stays for the two routes that are
+  // left, a PEM named or pasted into a tool_use parameter and one arriving as
+  // an attachment. The header is what the reason line ships, and it names no
+  // secret.
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
 ]);
 

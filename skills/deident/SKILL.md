@@ -429,12 +429,13 @@ JSON keeps the rows so you can name the failing one. Do not report a passing
 in the table was substituted, everywhere the scan found it.
 
 - `unverified`: what none of the checks covers, on this run. `proseBytes` is
-  the prose a reader was shown, `archiveBytes` is what leaves, and
-  `unreadPercent` is the rest. Prose is the only part of a session a reader is
-  ever shown, so a name that occurs only inside a tool result, a directory
-  listing or a code block was never in front of anyone and no check looks for
-  it. **Carry the percentage into the handover.** It is the honest size of the
-  gap between "every check passed" and "this archive names nobody".
+  the prose a reader was shown, `archiveBytes` is what leaves, `unreadPercent`
+  is the rest, and `toolParamPercent` is the slice of that rest which is free
+  text. **Carry `toolParamPercent` into the handover, not `unreadPercent`.**
+  Most of the non-prose remainder is record scaffolding and identifiers deident
+  minted, which cannot hold an undeclared name; `tool_use` parameters can, and
+  no reader is shown them. Quoting the larger number would overstate the gap as
+  badly as quoting neither would understate it.
 - `declaredResidue`: values from `known-values.json` that never entered the
   entity table, swept for anyway. The needles are re-read from the file on disk
   rather than taken from the run's table, which is the point: a value the safety
@@ -606,9 +607,11 @@ session.
 
 - **It refuses a lot.** Every refusal names a remedy. That is the design: a
   check nobody can bypass is worth more than a check that degrades quietly.
-- **The archive contains no code**, only line counts. Tool output is truncated.
+- **The archive contains no code**, only line counts, and **no tool output at
+  all**, only shape: which tool, whether it failed, how many bytes came back.
   That is deliberate; the export exists to show how a person works, not to ship
-  their repository.
+  their repository. A consumer whose scoring reads result CONTENT gets less than
+  it did, and should be told so rather than left to find out.
 - **Sessions written since the last `scan` are held back**, counted as
   `never reviewed`. Re-run `scan` to decide them. Opt-in has to mean opt-in.
 - **A session is offered again when a setting changes what it retains**, not
@@ -623,10 +626,12 @@ reading a summary will not see it:
 
 - Names the reader did not find. The residue scan can only look for what it was
   given.
-- Names the reader was never shown. The candidates file is prose, measured at
-  2.30% of bytes, so a name that appears only inside a tool result, a directory
-  listing or a code block never reaches it: it cannot be declared, and the
-  residue scan cannot look for what was never declared.
+- Names the reader was never shown. The candidates file is prose, so a name
+  that appears only in a tool call's PARAMETERS (the path read, the command
+  run, the brief given to a subagent) or only in a code block never reaches it:
+  it cannot be declared, and the residue scan cannot look for what was never
+  declared. Tool RESULTS used to be the bulk of this gap and no longer are:
+  they do not ship.
 - Identity-document numbers labelled in a language other than English or
   Chinese, or written with no label beside them. The sweep is label-anchored on
   purpose, for precision.

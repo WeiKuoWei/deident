@@ -108,10 +108,18 @@ function audienceRule(audience) {
 }
 
 /**
- * Write the candidates file. Prose only: tool output, harness bookkeeping and
- * code are excluded, because BRIEF §4.10 measured `text` at 2.30% of bytes and
- * feeding a semantic pass the other 97.7% is how it starts inventing entities
- * (§F7, arriving through the discovery pass instead of the residual pass).
+ * Write the candidates file. Prose only: harness bookkeeping and code are
+ * excluded, because feeding a semantic pass bytes nobody authored is how it
+ * starts inventing entities (§F7, arriving through the discovery pass instead
+ * of the residual pass).
+ *
+ * "Tool output is excluded" used to be the first item on that list and the
+ * reason this file was 2.30% of the corpus. It is not an exclusion any more:
+ * tool results are cut in retention, so there is nothing here to leave out.
+ * What that changed is the honesty of the gap rather than its size. This file
+ * is now most of the free text in the archive instead of a fiftieth of it:
+ * measured on an archive built from the live corpus, prose is 29.6% of 9.08 MB
+ * and the only unread free text left is `tool_use` parameters, 16.3%.
  */
 export function writeCandidates(proseChunks, outPath, opts = {}) {
   const seen = new Set();
