@@ -8440,6 +8440,313 @@ const FIXTURES = [
     );
   }],
 
+  // F187 to F194 all come from one re-measurement: ten live shapes were run
+  // through the shipped tier-0 sweeps and every one came back empty. The shape
+  // they share is that each sweep enumerates the cases its author had seen.
+  // Grouped rather than listed, because ten more list entries is the thing that
+  // produced this.
+
+  ['F187', 'a vendor prefix nobody listed, and a credential label nobody spelled that way', () => {
+    // Fabricated. The SHAPE each value preserves:
+    //   ya29.<base64url>   a gcloud OAuth2 access token, printed by
+    //                      `gcloud auth print-access-token` and pasted into a
+    //                      curl line. A fixed vendor prefix, so it belongs in
+    //                      the prefix list and is one line there.
+    //   aws_secret_access_key = <40 base64 chars>
+    //                      the OTHER half of the pair whose AKIA key id the
+    //                      sweep already catches. Measured: the key id was
+    //                      seeded and the secret was not, so half a credential
+    //                      pair shipped. This is a LABEL beside a value, which
+    //                      is BEARER_RE's mechanism, not the prefix list's.
+    const token = 'ya29.c0AfH6SMBn7QxVzKpLwR9tYuGeJc4NsAvFbXdMiPoQ2WrTkUyHzSg5Jn8Cm1Bv3Xq';
+    assert.deepEqual(sweepSecrets([`curl -H "Authorization: ${token}"`]), [token], 'the gcloud token prefix');
+
+    const half = 'pQ7vNc2LzXmR8dTfWy4KbHs6JgAeUiZn0OxCvRlT';
+    assert.deepEqual(
+      sweepSecrets([`aws_secret_access_key = ${half}`]),
+      [half],
+      'the label list matched secret_key and access_token and nothing that spells both',
+    );
+
+    // The generalisation is that a credential label is a QUALIFIED noun, not an
+    // enumerated compound. These three are the same rule, and none of them was
+    // in the old list either.
+    for (const label of ['gcp_service_account_key', 'azure_client_secret', 'x-api-key']) {
+      assert.deepEqual(sweepSecrets([`${label}: ${half}`]), [half], `${label} is the same shape`);
+    }
+
+    // What the wider label must NOT eat, and both are already-paid-for filters
+    // rather than new ones. An env lookup NAMES a credential; a bucket key is
+    // a path, and substituting it replaces a filename everywhere it occurs.
+    assert.deepEqual(sweepSecrets(['api_key: process.env.NORTHWIND_API_KEY']), [], 'a reference is not a value');
+    assert.deepEqual(sweepSecrets(['s3_key = uploads/2026/quarterly-report.pdf']), [], 'a path is not a value');
+  }],
+
+  ['F188', 'cloud account identifiers, which had no producer at all', () => {
+    // Fabricated. The SHAPE each value preserves:
+    //   604812350917   a 12-digit AWS account id. Twelve digits on their own
+    //                  are an order number, so it is taken only from an ARN's
+    //                  positional slot or from beside the word `account`.
+    //   quailstone-ledger-4471
+    //                  a GCP project id: lowercase, hyphenated, 6 to 30 chars.
+    //                  This is the class most likely to cry wolf, because it
+    //                  is shaped exactly like an ordinary directory name.
+    //   7c1b3d90-...   an Azure subscription id, a UUID in a fixed URL segment.
+    //                  Section F5's residue check seeds on "any UUID that is not
+    //                  a known message or session uuid" and nothing SEEDS one.
+    const account = '604812350917';
+    const project = 'quailstone-ledger-4471';
+    const subscription = '7c1b3d90-2e64-4a17-9f83-15ad6c802b44';
+
+    const found = sweepPlatformIds([
+      `arn:aws:iam::${account}:role/deploy-bot`,
+      `{"Account": "${account}"}`,
+      `gcloud run deploy --project=${project}`,
+      `project_id: ${project}`,
+      `/subscriptions/${subscription}/resourceGroups/rg-prod`,
+    ]);
+    for (const want of [account, project, subscription]) {
+      assert.ok(found.includes(want), `${want} was not swept: ${JSON.stringify(found)}`);
+    }
+
+    // Every one of these is what the patterns would wrongly eat if they were
+    // shape-anchored instead of label-anchored, and each is the reason the
+    // corresponding pattern is written the way it is.
+    const mustMiss = [
+      'order 604812350917 shipped',          // 12 bare digits are an order number
+      'project_id: dashboard',                // an ordinary English word, section F7
+      'C:/Users/devuser/projects/deident',    // `projects/` is a filesystem path
+      'commit 7c1b3d902e644a179f8315ad6c80',  // a content hash, not a subscription
+    ];
+    assert.deepEqual(sweepPlatformIds(mustMiss), [], `cried wolf: ${JSON.stringify(sweepPlatformIds(mustMiss))}`);
+  }],
+
+  ['F189', 'a national-format phone number, which has no country code to anchor on', () => {
+    // Fabricated (09 is Taiwan's mobile trunk prefix; the digits are made up).
+    // The SHAPE each value preserves:
+    //   0912-345-678   a national mobile with a trunk `0` and separators. The
+    //                  E.164 sweep needs a leading `+` and a country code, and
+    //                  a local number has neither, so it returned [].
+    //   0912345678     the same number with no separator at all. Ten contiguous
+    //                  digits are also an order number and a unix timestamp, so
+    //                  this one is taken ONLY when a label says what it is.
+    const separated = ['0912-345-678', '0912 345 678', '02-2345-6789'];
+    for (const n of separated) {
+      assert.deepEqual(sweepPhones([`M: ${n}`]), [n], `${n} is a trunk-prefixed grouping`);
+    }
+
+    for (const line of ['Mobile: 0912345678', '手機 0912345678', 'Tel. 0912345678']) {
+      assert.deepEqual(sweepPhones([line]), ['0912345678'], `${line}: the label is the evidence`);
+    }
+
+    // The bare run with NO label stays out on purpose. Stated here rather than
+    // left implicit: this is a deliberate miss, and it is the same trade
+    // ID_NUMBER_RE makes when it refuses to match a passport by shape.
+    assert.deepEqual(sweepPhones(['reference 0912345678 was closed']), [], 'a bare ten-digit run is not a number');
+
+    // What the trunk-prefixed rule must not eat. A date and a version are the
+    // two shapes the module already records as having been matched by an
+    // earlier digit-run rule.
+    for (const noise of ['2026-08-22', 'v1.2.3.4567', 'in 2024 300 000 units', '0.123 456 789']) {
+      assert.deepEqual(sweepPhones([noise]), [], `${noise} is not a phone number`);
+    }
+
+    // Three false positives measured on real session text, each with the fix
+    // that removed it. Fabricated here, preserving the shape.
+    const noise = [
+      // A UUID: a first draft added 68 fragments like this from 2 session
+      // files, because the character before the run is a hex LETTER and a
+      // digit-only lookbehind lets it through.
+      '"uuid":"1312a80d-5d03-4325-8145-1b9f5121fa33"',
+      // A playwright snapshot filename. Its groups are hours, minutes and
+      // seconds: two digits, never three.
+      'page-2026-08-08T03-54-27-281Z.yml',
+      // An escaped line break. These records hold JSON-escaped prose, so a
+      // paragraph break between a label and a number is the two characters
+      // `\\` and `n`, which a class excluding a real newline lets through.
+      '電話。**\\n\\n- **2026-08-21 01:58 UTC',
+    ];
+    assert.deepEqual(sweepPhones(noise), [], `cried wolf: ${JSON.stringify(sweepPhones(noise))}`);
+  }],
+
+  ['F190', 'id-number labels outside the author\u2019s own two languages', () => {
+    // Fabricated. The SHAPE preserved is a passport number: two letters and
+    // seven digits, which is the shape section F7 records a shape-only regex
+    // matching against `M1019757`, a thermal-paste part number. The label is
+    // the evidence, so the only thing changing here is which words count.
+    const number = 'MH1234567';
+    const labelled = [
+      `\u30D1\u30B9\u30DD\u30FC\u30C8\u756A\u53F7: ${number}`,
+      `\u65C5\u5238\u756A\u53F7 ${number}`,
+      `\uC5EC\uAD8C\uBC88\uD638: ${number}`,
+      `n\u00FAmero de pasaporte: ${number}`,
+    ];
+    for (const line of labelled) {
+      assert.deepEqual(sweepIdNumbers([line]), [number], `${line} named a document and the sweep did not read it`);
+    }
+
+    // The two filters that keep this label-anchored rather than shape-anchored
+    // still hold with the wider list, which is the only thing that could have
+    // broken. Both are already fixtures elsewhere; they are re-asserted here
+    // because a wider label list is exactly what would loosen them.
+    assert.deepEqual(sweepIdNumbers(['U.S. TIN: none']), [], 'a label with no number');
+    assert.deepEqual(sweepIdNumbers([`\u820A\u8B77\u7167 2026-08-24 \u5230\u671F`]), [], 'an expiry date is not a number');
+
+    // The separator the wider list needs also closes a hole that was already
+    // here, which is why it is on the whole Latin branch and not on the new
+    // labels only. Every part between label and value is optional, so a short
+    // Latin label matched inside base64: measured over 2 real session files,
+    // 25 of the 26 numbers the shipped sweep returned were `ssn` and `SSN`
+    // sitting inside base64 image data, and the 26th was the real one.
+    //
+    // Fabricated below, preserving that shape: a base64 run whose characters
+    // happen to spell a label, followed by more base64.
+    for (const blob of ['fL/wCYuXTxQEwLsSn7dT493Xo15AT+hztWc', 'CeqdTfYqKeDNI627r94nhS+AeRz6jn']) {
+      assert.deepEqual(sweepIdNumbers([blob]), [], `a label inside base64 is not a document number: ${blob}`);
+    }
+    // ...and the connector words still reach through it, which is what stops
+    // the guard from costing a real JSON field name.
+    assert.deepEqual(sweepIdNumbers([`{"passportNumber": "${number}"}`]), [number], 'a run-together JSON key');
+  }],
+
+  ['F191', 'every git remote is seeded, not only the first', () => {
+    // Fabricated remotes. The SHAPE preserved is a fork checkout: `origin` is
+    // the person's own fork and `upstream` is the org they contribute to, so
+    // the second remote carries the org name that the first one does not.
+    //
+    // The bug is a divergence between two paths for one question. gitRemotes
+    // reads every line of `git remote -v` when it shells out itself, but the
+    // shipped export path hands it the shared probe, and the probe answered
+    // with ONE remote. Verified against the shipped modules: `feldspar-labs`
+    // was never an entity on the path the tool actually runs.
+    const origin = { raw: 'devuser/harbour-api', owner: 'devuser', repo: 'harbour-api', host: 'github.com' };
+    const upstream = { raw: 'feldspar-labs/harbour-api', owner: 'feldspar-labs', repo: 'harbour-api', host: 'github.com' };
+    const seeded = seedEntities(
+      { USERNAME: 'devuser', HOME: '/home/devuser', USERPROFILE: '/home/devuser' },
+      { files: [] },
+      {
+        cwds: [],
+        repoDirs: ['/w/one'],
+        probeRemote: () => ({ ...origin, all: [origin, upstream] }),
+        texts: [],
+      },
+    );
+    const canon = seeded.entities.map((e) => e.canonical);
+    for (const want of ['devuser/harbour-api', 'feldspar-labs/harbour-api', 'feldspar-labs']) {
+      assert.ok(canon.includes(want), `${want} missing: ${canon.join(', ')}`);
+    }
+
+    // A probe with no `all` is what every existing caller and fixture passes,
+    // and it must keep meaning "one remote" rather than "no remotes".
+    const one = seedEntities(
+      { USERNAME: 'devuser', HOME: '/home/devuser', USERPROFILE: '/home/devuser' },
+      { files: [] },
+      { cwds: [], repoDirs: ['/w/one'], probeRemote: () => origin, texts: [] },
+    );
+    assert.ok(one.entities.map((e) => e.canonical).includes('devuser/harbour-api'), 'the old probe shape still works');
+  }],
+
+  ['F192', 'the identity configured INSIDE a repository, not only the global one', () => {
+    // Fabricated. The SHAPE preserved is the common two-identity setup: a
+    // global identity for personal work and a per-repo `user.email` for the
+    // employer's checkouts. Verified on a real checkout: `git config --get`
+    // runs with no `-C`, so it reads whatever directory deident was launched
+    // from, the global name and email were seeded, and the in-repo ones were
+    // not seeded at all.
+    //
+    // The identity rides on the remote probe rather than on new spawns of its
+    // own: git costs about 85 ms per spawn and the probe is already paying for
+    // one per repository.
+    const remote = { raw: 'feldspar-labs/harbour-api', owner: 'feldspar-labs', repo: 'harbour-api', host: 'github.com' };
+    const seeded = seedEntities(
+      { USERNAME: 'devuser', HOME: '/home/devuser', USERPROFILE: '/home/devuser' },
+      { files: [] },
+      {
+        cwds: [],
+        repoDirs: ['/w/one'],
+        probeRemote: () => ({
+          ...remote,
+          // Two of each, which is what `git config --get-regexp` reports for a
+          // checkout that sets a work identity over a personal one: git prints
+          // every level that sets the key, global first. Keeping only the
+          // effective value would throw away the other real identity.
+          names: ['Ada Quillfeather', 'aquill'],
+          emails: ['ada@personal.example', 'ada@feldspar-labs.example'],
+        }),
+        texts: [],
+      },
+    );
+    const people = seeded.entities.filter((e) => e.kind === 'person').map((e) => e.canonical);
+    for (const want of ['Ada Quillfeather', 'aquill', 'ada@personal.example', 'ada@feldspar-labs.example']) {
+      assert.ok(people.includes(want), `${want} is not an entity: ${people.join(', ')}`);
+    }
+  }],
+
+  ['F193', 'an email that only ever appears percent-encoded', () => {
+    // Fabricated address. The SHAPE preserved is an address that exists in the
+    // corpus ONLY inside a URL query, which is where `%40` comes from.
+    //
+    // expandVariants already generates the percent-encoded and double-encoded
+    // twins of a seeded address, so the whole gap is upstream of it: the
+    // address is never seeded AT ALL, so there is nothing to expand. Verified:
+    // sweepEmails returned [] on text containing `%40`.
+    const found = sweepEmails(['https://console.example/invite?authuser=ada%40feldspar-labs.example&next=/x']);
+    assert.ok(
+      found.includes('ada@feldspar-labs.example'),
+      `the decoded address is what expandVariants needs: ${JSON.stringify(found)}`,
+    );
+
+    // The neighbouring escape, measured on real text: a URL that had itself
+    // been encoded once carries `%3D` for the `=`, and a first draft seeded
+    // `3Dada@…` because `3D` is [A-Za-z0-9] and the escape it belongs to is
+    // invisible to a pattern starting at the wrong character. A spelling with
+    // two stray characters welded to the front protects nothing and reports
+    // itself in the manifest as protection.
+    assert.deepEqual(
+      sweepEmails(['https://console.example/o?authuser%3Dada%40feldspar-labs.example']),
+      ['ada@feldspar-labs.example'],
+      'the local part started inside the preceding percent escape',
+    );
+  }],
+
+  ['F194', 'the text a queue-operation record replays is reached by substitution', () => {
+    // A reported hole that does not reproduce, pinned so it stays that way.
+    //
+    // `queue-operation` was reported as a retained record no substitution pass
+    // reaches. It is reached: retainPrompt puts the replayed prompt in `text`,
+    // and walker.mjs substitutes EVERY string in a record rather than a list of
+    // fields, so there is no field list to fall out of. The risk the report
+    // names is real in general, and it is a field list appearing later, which
+    // is what this asserts against.
+    //
+    // SHAPE: the smallest real record. Keys taken from the live shape
+    // (type, operation, timestamp, sessionId, content); the content is
+    // fabricated and carries one entity spelling.
+    const ctx = newRetentionContext((u) => u);
+    const kept = retainRecord(
+      {
+        type: 'queue-operation',
+        operation: 'add',
+        timestamp: '2026-08-20T10:00:00.000Z',
+        sessionId: '11111111-2222-3333-4444-555555555555',
+        content: 'ping quillfeather about the deploy',
+      },
+      ctx,
+      'F194',
+    );
+    assert.equal(kept.keep, true, 'the record is kept, per PLAN C2');
+
+    const table = buildTable([
+      { id: 'PERSON_01', kind: 'person', pseudonym: 'X_PERSON_1', spellings: ['quillfeather'] },
+    ]);
+    const out = substituteRecord(kept.record, table).record;
+    assert.equal(out.text, 'ping X_PERSON_1 about the deploy', 'the replayed prompt was not substituted');
+    assert.ok(
+      !JSON.stringify(out).includes('quillfeather'),
+      `a field of the retained record escaped substitution: ${JSON.stringify(out)}`,
+    );
+  }],
+
 ];
 
 export function selftest() {

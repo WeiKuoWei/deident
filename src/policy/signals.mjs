@@ -28,17 +28,43 @@ import { HOME_NAME } from './grouping.mjs';
  */
 export const GIT_UNAVAILABLE = Object.freeze({ unavailable: true });
 
+// One `git config` invocation answers three questions, so the probe below still
+// costs exactly one spawn.
+//
+// It replaced `git remote -v`, which answered one of them. The other two were
+// measured as holes: only the FIRST remote of a checkout was ever seeded, so a
+// fork's `upstream` owner was never an entity, and `git config --get` in
+// seed.mjs runs with no `-C`, so a per-repository `user.name` and `user.email`
+// were never read at all.
+//
+// `--get-regexp` prints EVERY level that sets a key, global then local, so a
+// repository with a work identity over a personal one reports both. Both are
+// kept rather than only the effective one: both are the uploader's, both appear
+// in the material, and buildEntities dedupes on the canonical string. Taking
+// only the winner would throw away the identity `git config --get` used to be
+// the only source of.
+//
+// Behaviour on the three failure paths is unchanged, which is what lets it swap
+// in under the existing callers: outside a repository it returns global user
+// lines and no remote lines, which is "no remote"; a directory that does not
+// exist exits non-zero, which is "no remote"; git absent from PATH is ENOENT.
+const CONFIG_KEYS = '^(remote\\..*\\.(url|pushurl)|user\\.(name|email))$';
+
 /**
  * The first remote of the repository containing `dir`, null if there is none,
  * or `GIT_UNAVAILABLE` if git could not be run at all.
  * `git -C` walks up, so a cwd deep inside a checkout still resolves.
  * A directory that no longer exists is not an error: it is "no remote".
+ *
+ * The returned remote also carries `all`, every remote of that checkout, and
+ * `name` / `email`, the identity configured for it. Callers that only want a
+ * remote read the same fields they always did; seed.mjs reads the rest.
  */
 export function gitRemoteAt(dir) {
   if (typeof dir !== 'string' || dir === '') return null;
   let out;
   try {
-    out = execFileSync('git', ['-C', dir, 'remote', '-v'], {
+    out = execFileSync('git', ['-C', dir, 'config', '--get-regexp', CONFIG_KEYS], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 5000,
@@ -53,13 +79,41 @@ export function gitRemoteAt(dir) {
     if (err.code === 'ENOENT') return GIT_UNAVAILABLE;
     return null; // Not a repo, or git refused. Expected for most directories.
   }
+  // `key value`, one per line. A config value can hold spaces (`user.name Ada
+  // Quillfeather`), so the split is on the FIRST space only.
+  const remotes = [];
+  const names = [];
+  const emails = [];
+  const push = (list, value) => {
+    if (!list.includes(value)) list.push(value);
+  };
   for (const line of out.split('\n')) {
-    const url = line.split(/\s+/)[1];
-    if (!url) continue;
-    const parsed = parseRemote(url);
-    if (parsed) return parsed;
+    const at = line.indexOf(' ');
+    if (at < 1) continue;
+    const key = line.slice(0, at);
+    const value = line.slice(at + 1).trim();
+    if (value === '') continue;
+    if (key === 'user.name') push(names, value);
+    else if (key === 'user.email') push(emails, value);
+    else {
+      const parsed = parseRemote(value);
+      // Deduped on the owner/repo pair: a checkout whose fetch and push URLs
+      // point at the same place is one remote, not two.
+      if (parsed && !remotes.some((r) => r.raw === parsed.raw)) remotes.push(parsed);
+    }
   }
-  return null;
+  // No remote means "not a repository" to every existing caller, and that has
+  // to keep meaning it: proposeTier reads a non-null return as evidence the
+  // directory IS one. The identity of a repository with no remote is lost here,
+  // which is the price of not changing that contract; `git config --get` in
+  // seed.mjs still reads the identity of wherever deident was launched.
+  if (remotes.length === 0) return null;
+  return Object.freeze({
+    ...remotes[0],
+    all: Object.freeze(remotes),
+    names: Object.freeze(names),
+    emails: Object.freeze(emails),
+  });
 }
 
 /** Memoised probe, so 40 workspaces do not shell out 40 times per command. */
