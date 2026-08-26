@@ -8747,6 +8747,25 @@ const FIXTURES = [
     );
   }],
 
+  ['F199', 'the fixture count in README is the number of fixtures', () => {
+    // Gone stale five times in two days, every time caught by a person
+    // reading rather than by the suite, and every time in a document whose
+    // whole job is to be believed by a stranger.
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const readme = fs.readFileSync(path.join(repo, 'README.md'), 'utf8');
+
+    const m = readme.match(/(\d+) fixtures/);
+    assert.ok(m, 'README no longer states a fixture count; delete this fixture if that was deliberate');
+    assert.equal(
+      Number(m[1]),
+      FIXTURES.length,
+      `README says ${m[1]} fixtures, the suite has ${FIXTURES.length}`,
+    );
+
+    // One statement of it, so there is no second copy to drift.
+    assert.equal((readme.match(/\d+ fixtures/g) || []).length, 1, 'the count is stated more than once');
+  }],
+
 ];
 
 export function selftest() {
