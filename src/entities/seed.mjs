@@ -110,13 +110,33 @@ export function seedEntities(env, corpus, opts = {}) {
       );
     }
   }
-  if (gitEmail) {
-    add('person', gitEmail, 'git config user.email');
-    const local = gitEmail.split('@')[0];
+  const addGitEmail = (email, source) => {
+    add('person', email, source);
+    const local = email.split('@')[0];
     if (local && local.length >= 3 && local !== username) {
-      add('person', local, 'git config user.email (local part)', 'low');
+      add('person', local, `${source} (local part)`, 'low');
     }
-  }
+  };
+  if (gitEmail) addGitEmail(gitEmail, 'git config user.email');
+
+  // --- The identity configured INSIDE each repository, which the two calls
+  // above cannot see.
+  //
+  // `git config --get` runs with no `-C`, so it reads the config of whatever
+  // directory deident was launched from. Verified on a real checkout: the
+  // GLOBAL name and email were seeded and the in-repo ones were not seeded at
+  // all. A per-repository `user.email` is the ordinary setup for anyone keeping
+  // work and personal identities apart, so the identity most likely to be in
+  // the exported material is precisely the one tier 0 could not see.
+  //
+  // This rides on the remote probe rather than on spawns of its own. git costs
+  // ~85 ms per spawn, gitRemoteAt already pays for one per repository, and
+  // makeRemoteProbe memoises it, so reading the identity out of the same probe
+  // result costs nothing. A probe that carries no identity, which is every
+  // injected one, contributes nothing rather than failing.
+  const repoIdentity = gitIdentities(opts.repoDirs ?? [], opts.probeRemote ?? null);
+  for (const name of repoIdentity.names) add('person', name, 'git config user.name inside a repository');
+  for (const email of repoIdentity.emails) addGitEmail(email, 'git config user.email inside a repository');
 
   // --- Per-line cwd values seen in the exported material: real directories,
   // not slugs (§4.9). Longest first so nested projects both get an entity.
@@ -352,11 +372,41 @@ const EMAIL_RE = /[A-Za-z0-9](?:[A-Za-z0-9._%+-]*[A-Za-z0-9])?@(?:[A-Za-z0-9](?:
 // under a header stating the username had already been replaced.
 const EMAIL_LOCAL_RE = /[A-Za-z0-9](?:[A-Za-z0-9._%+-]{2,}[A-Za-z0-9])@(?![A-Za-z0-9])/g;
 
+// The same address with its at-sign percent-encoded, which is how it is written
+// when it sits in a URL query.
+//
+// Measured: sweepEmails returned [] on text containing `%40`, so an address
+// seen ONLY inside a URL was never seeded at all. That is upstream of every
+// other control: expandVariants already generates the percent-encoded and the
+// double-encoded twins of a seeded address, so the machinery to REPLACE the URL
+// form has been there all along and there was simply nothing to expand.
+//
+// What is added to the sweep is therefore the DECODED address, not the matched
+// bytes: seeding `ada%40x.example` would protect the one URL it came from and
+// leave every plain occurrence of the same address alone, and expandVariants
+// run over an encoded string produces twins of an encoding.
+//
+// It eats nothing else, but it did eat part of its own neighbour. The two
+// lookbehinds stop the local part from starting inside the PRECEDING percent
+// escape: measured on real text, `…authuser%3Draykuo%40gitroll.io` seeded
+// `3Draykuo@gitroll.io`, because `3D` is `[A-Za-z0-9]` and the escape it
+// belongs to is invisible to a pattern that starts at the wrong character. A
+// spelling with two stray characters welded to the front protects nothing and
+// reports itself as protection. `%3D` before an address is the shape
+// variants.mjs already names, so this is where it actually arrives.
+const EMAIL_ENCODED_RE =
+  /(?<!%)(?<!%[0-9A-Fa-f])([A-Za-z0-9](?:[A-Za-z0-9._+-]*[A-Za-z0-9])?)%40((?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,})/gi;
+
 /** Distinct email addresses appearing in `texts`, full and domainless. */
 export function sweepEmails(texts) {
   const found = new Set();
   for (const text of texts) {
-    if (typeof text !== 'string' || !text.includes('@')) continue;
+    // The `@` fast path used to be the whole guard, and it is the reason a
+    // percent-encoded address was never seeded: a URL that carries one has no
+    // literal at-sign in it anywhere, so the string was skipped before any
+    // pattern below ever looked at it.
+    if (typeof text !== 'string') continue;
+    if (!text.includes('@') && !text.includes('%40')) continue;
     EMAIL_RE.lastIndex = 0;
     let m;
     while ((m = EMAIL_RE.exec(text)) !== null) {
@@ -368,6 +418,13 @@ export function sweepEmails(texts) {
     while ((m = EMAIL_LOCAL_RE.exec(text)) !== null) {
       found.add(m[0]);
       if (found.size > 5000) return [...found];
+    }
+    if (text.includes('%40')) {
+      EMAIL_ENCODED_RE.lastIndex = 0;
+      while ((m = EMAIL_ENCODED_RE.exec(text)) !== null) {
+        found.add(`${m[1]}@${m[2]}`);
+        if (found.size > 5000) return [...found];
+      }
     }
   }
   return [...found];
@@ -395,6 +452,11 @@ const SECRET_RE = new RegExp(
     // that misses one of three.
     'trig_[A-Za-z0-9]{20,}',
     'AIza[0-9A-Za-z_-]{30,}',
+    // A gcloud OAuth2 access token, which is what `gcloud auth
+    // print-access-token` prints and what then gets pasted into a curl line.
+    // Measured: sweepSecrets returned [] on one. A fixed vendor prefix is
+    // exactly what this list is for, so it is one line and not a mechanism.
+    'ya29[.][A-Za-z0-9_-]{20,}',
     // Added because a re-measurement ran ten live-credential shapes through
     // this sweep and got ten empty arrays. Each of these is the one line the
     // comment above promises; none of them is a heuristic.
@@ -425,8 +487,29 @@ const SECRET_RE = new RegExp(
 // the evidence. A label naming a credential, then a 16+ character value with
 // no space in it. The vendor list stays for keys that arrive with no label at
 // all, such as a bare AKIA in a URL.
-const LABELLED_SECRET_RE =
-  /(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)["' ]*[:=][ ]*["']?([A-Za-z0-9_.~+/=-]{16,})/gi;
+//
+// The label was itself an enumerated list of COMPOUNDS: api_key, secret_key,
+// access_token, auth_token, client_secret. Measured: `aws_secret_access_key`
+// matches none of them, because `secret[_-]?key` cannot cross the `access` in
+// the middle, so the AKIA key id beside it was seeded and the secret half of
+// the same pair shipped. Enumerating one more compound leaves the same hole one
+// vendor over, and `gcp_service_account_key` and `azure_client_secret` are the
+// same sentence again.
+//
+// The shape underneath the list: a credential label is a credential NOUN
+// carrying at least one qualifier word. That is what separates it from a bare
+// `key:`, which is the form that cries wolf. Two ways a qualifier attaches, and
+// the list is now of nouns rather than of compounds:
+//   1. separator-joined, any depth up to three: aws_secret_access_key, x-api-key
+//   2. run together or camel-cased, which needs the small qualifier list
+//      because there is no separator to find: apiKey, clientsecret
+const CREDENTIAL_LABEL_RE =
+  /(?:[A-Za-z][A-Za-z0-9]*[_-]){1,3}(?:key|token|secret|password|passwd)|(?:api|access|auth|client|secret|private|refresh|session)[_-]?(?:key|token|secret)|password|passwd/
+    .source;
+const LABELLED_SECRET_RE = new RegExp(
+  `(?:${CREDENTIAL_LABEL_RE})["' ]*[:=][ ]*["']?([A-Za-z0-9_.~+/=-]{16,})`,
+  'gi',
+);
 
 // A URL that carries its password in the authority. Vendor-independent, and
 // README named it by hand as a shape nothing swept.
@@ -436,14 +519,23 @@ const LABELLED_SECRET_RE =
 // that this needs.
 const URL_PASSWORD_RE = /[a-z][a-z0-9+.-]*:[/][/][^\s/@:]+:([^\s/@]{6,})@/gi;
 
-// A labelled value that NAMES a credential rather than being one.
+// A labelled value that is not a credential: one that NAMES a credential, and
+// one that is a path.
 //
 // The dominant shape a wide label pattern hits in source and config is an
 // environment lookup or the variable holding it, and substituting one of those
 // replaces an ordinary identifier everywhere it occurs, which is §F7's
 // over-reporting with a wide blast radius. Same kind of cheap post-filter as
 // ID_NUMBER_MIN_DIGITS and DATE_SHAPED_RE, and for the same reason.
-const SECRET_REFERENCE_RE = /^(?:process[.]env|os[.]environ|import[.]meta|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$)/;
+//
+// The path branch is what the wider CREDENTIAL_LABEL_RE above costs, priced
+// rather than argued away: a noun-plus-qualifier label admits `s3_key`,
+// `object_key` and `blob_path`, whose values are object paths, and the value
+// class already allows `/` and `.` because base64 secrets contain both. A value
+// carrying a slash and ending in a file extension is a filename, and seeding
+// one substitutes that filename throughout the export.
+const SECRET_REFERENCE_RE =
+  /^(?:process[.]env|os[.]environ|import[.]meta|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$|[^ ]*[/][^ /]*[.][A-Za-z0-9]{1,5}$)/;
 
 // A token presented after `Bearer ` in an Authorization header is a credential
 // whatever vendor minted it.
@@ -480,8 +572,28 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]*/g;
 
 // An identity-document number, taken only where the words beside it say what
 // it is. The digit floor is what keeps `U.S. TIN: none` out.
+//
+// A Latin label must not run straight into its value with no separator at all.
+// Every part between label and number is optional, so `dni` matched inside a
+// base64 blob: measured over 2 real session files, 13 of the 13 numbers the
+// wider label list added were fragments of base64 image data, led by
+// `…//dni3t3u5x9y0fsaf…` and `…CDNI627r94nhS…`. The lookahead is on the Latin
+// branch only, because it is the one whose labels are short Latin runs, and it
+// admits the connector words so that a JSON key like `"passportNumber"` still
+// matches. It closes the same hole on the labels that were already here: `ssn`,
+// `tin` and `fein` are three, three and four characters of base64 alphabet.
+//
+// CJK labels need no such guard: base64 is ASCII.
 const ID_NUMBER_RE = new RegExp(
-  '(?:passport|national id|identity card|id card|driver.?s licen[sc]e|social security|ssn|u[.]?s[.]? tin|tax id|fein|employer identification(?: number)?' +
+  '(?:(?:passport|national id|identity card|id card|driver.?s licen[sc]e|social security|ssn|u[.]?s[.]? tin|tax id|fein|employer identification(?: number)?' +
+    // Spanish, measured as returning [] while the English labels beside it
+    // worked. It sits in the Latin branch rather than beside the other two new
+    // languages below, so that one lookahead covers every Latin label.
+    '|pasaporte|dni|c[ée]dula' +
+    // The lookahead the comment above this constant explains: a separator, or
+    // one of the connector words, so that `passportNumber` still matches and
+    // `dni` inside base64 does not.
+    ')(?=[^A-Za-z0-9]|no[.]?|number|card)' +
     // The same labels in Chinese. The sweep knew English label words only, so
     // a number named in Chinese was never seeded, never substituted, and
     // invisible to the residual scan, which only looks for what it was given.
@@ -497,8 +609,31 @@ const ID_NUMBER_RE = new RegExp(
     // CJK does not space its words, and every segment between label and number
     // is already optional, so nothing else in the pattern has to change. The
     // fullwidth colon is already in the character class.
-    '|護照(?:號碼)?|护照|身分證(?:字號)?|身份證|台胞證|居留證(?:號碼)?)' +
-    '[ ]*(?:no[.]?|number|#|card)?[ ]*[:：]?[ ]*([A-Za-z0-9-]{6,14})(?![A-Za-z0-9])',
+    '|護照(?:號碼)?|护照|身分證(?:字號)?|身份證|台胞證|居留證(?:號碼)?' +
+    // Japanese, Korean and Spanish, measured as returning [] while the English
+    // and Chinese labels beside them worked.
+    //
+    // There is no shape here, and this is the honest version of that. What is
+    // being detected is a MEANING carried by a word, and a word list is what a
+    // meaning reduces to. A national-number shape was tried and §F7 records the
+    // result: it matched `M1019757`, a thermal-paste part number. So the list
+    // stays a list, and it is inherently incomplete: this file now reads six
+    // languages, and a passport named in the seventh is invisible to it in
+    // exactly the way a passport named in Japanese was invisible until now.
+    //
+    // The escape hatch for the seventh language already exists and is the one
+    // mechanism in this file that is not inference: a number the machine cannot
+    // name can be written into known-values.json beside the salt, and arrives
+    // through DECLARED_SOURCE. That is where an unlisted language belongs,
+    // rather than in a list that grows one incident at a time.
+    '|パスポート(?:番号)?|旅券(?:番号)?|マイナンバー' +
+    '|여권(?:번호)?|주민등록(?:번호)?)' +
+    // Quotes are allowed in the gap for the reason LABELLED_SECRET_RE allows
+    // them in its own: the label arrives as a JSON key at least as often as it
+    // arrives as prose, and `{"passportNumber": "…"}` matched nothing because
+    // the closing quote sat between the connector word and the colon. Only
+    // quotes and spaces, so an intervening WORD still breaks the match.
+    '["\' ]*(?:no[.]?|number|#|card)?["\' ]*[:：]?["\' ]*([A-Za-z0-9-]{6,14})(?![A-Za-z0-9])',
   'gi',
 );
 const ID_NUMBER_MIN_DIGITS = 5;
@@ -518,6 +653,59 @@ const DATE_SHAPED_RE = /^(?:19|20)[0-9]{2}-[0-9]{2}-[0-9]{2}$/;
 // characters on their own are every content hash in the corpus (§F7).
 const SLACK_ID_RE = /(?<![A-Za-z0-9])[UWBCDGT]0[0-9A-Z]{7,9}(?![A-Za-z0-9])/g;
 const NOTION_ID_RE = /(?:app[.]notion[.]com|notion[.]so)[/](?:[A-Za-z0-9-]*-)?([0-9a-f]{32})/g;
+
+// Cloud account identifiers: an AWS account id, a GCP project id, an Azure
+// subscription id.
+//
+// Measured: sweepSecrets, sweepIdNumbers, sweepPlatformIds and sweepEmails all
+// returned [] on text carrying all three, and seedEntities produced nothing.
+// That is a whole class with no producer, not a missing prefix, and it is the
+// same join-key hazard the Slack ids above are here for: the pair (pseudonym,
+// account id) re-identifies an organisation whose name never appears.
+//
+// They live in sweepPlatformIds rather than in a new sweep because they are the
+// question it already answers: an id of a service these sessions talk to, taken
+// only from beside its vendor's own syntax. The Notion rule right above takes a
+// bare 32-hex id ONLY after a notion host, for exactly this reason.
+//
+// This is the class most likely to cry wolf, so every branch is anchored on
+// something prose does not produce, and what each one still eats is stated:
+//
+//   ARN account slot     eats nothing: `arn:` plus four colon-separated fields
+//                        plus twelve digits is not a shape prose reaches.
+//   `account` + 12 digits
+//                        eats a twelve-digit ORDER number labelled `account`,
+//                        and a bank account number of that length. Both are
+//                        account identifiers, so the failure is benign.
+//   GCP project id       eats a hyphenated slug written after `--project` or
+//                        `project_id`, including a non-GCP one: a CI config's
+//                        `project_id: acme-frontend` becomes an entity. The
+//                        projectShaped gate below is what keeps the ordinary
+//                        English word out, which is the §F7 case.
+//   Azure subscription   eats nothing: a UUID in a literal `subscriptions/`
+//                        segment is Azure's own resource-id grammar.
+//
+// A BARE twelve-digit run with no label is deliberately not matched: twelve
+// digits are an order number, an invoice number and a phone number, and §F7
+// already records what a shape-only numeric rule costs. A GCP project id after
+// a bare `projects/` is not matched either, because `projects/` is the most
+// ordinary directory name there is and the id slot would eat the repo name out
+// of every path on this machine.
+const LABEL_GAP = /[^0-9\n]{0,8}/.source;
+const SLUG_GAP = /["' :=]{1,6}/.source;
+const CLOUD_ID_RE = new RegExp(
+  [
+    'arn:[a-z0-9-]+:[a-z0-9-]*:[a-z0-9-]*:([0-9]{12})[:/]',
+    `(?:aws[_ -]?)?account(?:[_ -]?id)?${LABEL_GAP}([0-9]{12})(?![0-9])`,
+    `(?:--project[ =]|(?:gcp[_-]?)?project[_-]?id${SLUG_GAP})([a-z][a-z0-9-]{4,28}[a-z0-9])(?![a-z0-9-])`,
+    'subscriptions/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})',
+  ].join('|'),
+  'gi',
+);
+
+// Cheap pre-test, the same one `text.includes('notion')` is below: the sweep
+// above is four alternations wide and most strings contain none of them.
+const CLOUD_HINT_RE = /arn:|account|--project|project[_-]?id|subscriptions[/]/i;
 
 // The only form an MCP tool name takes in these logs. The name itself may
 // contain single underscores (`claude_ai_Gmail`); the separator is a double.
@@ -609,6 +797,21 @@ export function sweepPlatformIds(texts) {
         if (found.size > 1000) return [...found];
       }
     }
+    if (CLOUD_HINT_RE.test(text)) {
+      CLOUD_ID_RE.lastIndex = 0;
+      while ((m = CLOUD_ID_RE.exec(text)) !== null) {
+        // One alternation, four capture groups, exactly one of them defined.
+        const value = m[1] ?? m[2] ?? m[3] ?? m[4];
+        if (value === undefined) continue;
+        // Group 3 is the GCP project id, the only branch whose value can be an
+        // ordinary English word. Same gate the project-basename seed uses, for
+        // the same reason: without it `project_id: dashboard` makes an entity
+        // of `dashboard` and substitutes it throughout the prose.
+        if (m[3] !== undefined && !projectShaped(value)) continue;
+        found.add(value);
+        if (found.size > 1000) return [...found];
+      }
+    }
   }
   return [...found];
 }
@@ -636,6 +839,79 @@ const SEPARATOR_RE = /[-. ]/;
 const PHONE_PAREN_RE = /(?:[+][0-9]{1,3}[ ]?)?[(][+]?[0-9]{1,4}[)][ ]?[0-9]{2,4}(?:[ .-][0-9]{2,4}){1,3}/g;
 const PHONE_DASHED_RE = /(?<![0-9-.])[0-9]{3}([-.])[0-9]{3}\1[0-9]{4}(?![0-9-.])/g;
 
+// A number written in its own country's NATIONAL format, which by definition
+// carries no country code.
+//
+// Measured: sweepPhones('0912-345-678') and sweepPhones('0912345678') both
+// returned []. Every rule above is anchored on a leading `+`, on parentheses,
+// or on the North American 3-3-4, and a national number has none of those. The
+// three rules were the author's own three formats.
+//
+// The trunk prefix is the anchor. Outside North America a national number is
+// written with a leading `0` that is not part of the number, and prose does not
+// start a grouped digit run with a zero: `in 2024 300 000 units` is three
+// space-separated groups totalling ten digits and is rejected on its first
+// character. So is a date, which starts with `19` or `20`.
+//
+// The two bounds are both measured rather than assumed. Run over 2 real session
+// files, a first draft with `(?<![0-9])` and 2-to-4-digit groups added 71
+// numbers, and 68 of them were fragments of UUIDs: `…-5d03-4325-8145-…` yields
+// `03-4325-8145`, because the character before the `03` is a hex LETTER and a
+// digit-only lookbehind lets it through. Playwright snapshot filenames
+// (`page-2026-08-08T03-54-27-281Z`) supplied most of the rest. That is §F7's
+// cry-wolf failure with the widest possible blast radius, since every session
+// file is mostly UUIDs.
+//
+//   letters and hyphens in the boundaries   kills the UUID fragment: a real
+//                                           number is not glued to hex.
+//   groups of 3 or 4 digits, never 2        kills the timestamp shape, whose
+//                                           groups are hours, minutes, seconds.
+//
+// What it still eats: a grouped digit run of 9 to 11 digits that starts with a
+// zero and is not a phone number, such as a zero-padded reference written
+// `0123-456-789`. Nothing in the corpus produced one.
+const PHONE_TRUNK_RE = /(?<![0-9A-Za-z-])0[0-9]{1,3}([-. ])[0-9]{3,4}(?:\1[0-9]{3,4}){1,2}(?![0-9A-Za-z-])/g;
+
+// The same number written with no separator at all, taken only where a word
+// beside it says it is a telephone number.
+//
+// A contiguous ten-digit run is also a unix timestamp, an order number and a
+// part number, so there is nothing in the SHAPE to match on: `0912345678`
+// carries no more evidence than `1755820800` does. §F7 is why this is
+// label-anchored, which is the same answer ID_NUMBER_RE gives to the same
+// question about a passport number.
+//
+// What it wrongly eats: a digit run after a word that contains a phone label,
+// such as `phone_number_id: 123456789012345`, a WhatsApp Business API
+// identifier. That is an identifier of the same person, so the failure is
+// benign. The label list is English plus the two CJK spellings, and it is
+// inherently incomplete for the reason ID_NUMBER_RE's is.
+//
+// Parentheses are deliberately NOT in the value class. With them in, measured
+// on real text, `Helpdesk (852) 2748 8288` captured `852) 2748 8288`: a needle
+// starting inside a bracket pair, which substitutes half a punctuation mark.
+// PHONE_PAREN_RE already owns the parenthesised form, so the label rule leaving
+// it alone costs nothing.
+//
+// The boundaries are PHONE_TRUNK_RE's, for the reason measured there: without
+// them the value runs into a UUID or a hex digest sitting next to a label.
+//
+// `whatsapp` was in the label list and came out. It is the name of an app, not
+// a word for a telephone number, and it turns up in filenames: measured on real
+// text, `WhatsApp Video 2026-07-11 at 12.25.2` in a directory listing seeded
+// the DATE as a phone number. The two survivors of that shape are rejected by
+// DATE_SHAPED_RE in sweepPhones, which is the same filter sweepIdNumbers
+// already applies for the same reason.
+//
+// A backslash is excluded from the gap for a related reason. These records hold
+// JSON-escaped prose, so a line break between a label and a number is the two
+// characters `\` and `n`, which a class excluding a real newline lets straight
+// through. Measured: a label crossed two escaped line breaks and a bullet
+// marker to reach the timestamp of the NEXT paragraph. A backslash between a
+// label and a value means a boundary was crossed, whatever the boundary was.
+const PHONE_LABEL_RE =
+  /(?:(?<![A-Za-z])(?:telephone|mobile|phone|tel|cell|fax)(?![A-Za-z])|手機|手机|電話|电话)[^0-9+\n\\]{0,12}(?<![A-Za-z-])([+]?[0-9][0-9 .-]{5,18}[0-9])(?![0-9A-Za-z-])/gi;
+
 /**
  * Distinct E.164-shaped phone numbers in `texts`.
  *
@@ -643,18 +919,39 @@ const PHONE_DASHED_RE = /(?<![0-9-.])[0-9]{3}([-.])[0-9]{3}\1[0-9]{4}(?![0-9-.])
  * begins with a plus and can be all digits, so a separatorless run at the start
  * of a line is not treated as a number. §F7: precision over recall.
  */
+// The cheap pre-test for PHONE_LABEL_RE, which is the widest rule here.
+const PHONE_LABEL_HINT_RE = /tel|phone|mobile|cell|fax|手機|手机|電話|电话/i;
+
 export function sweepPhones(texts) {
   const newline = String.fromCharCode(10);
   const found = new Set();
-  const take = (text, re, min, max) => {
+  // `group` is 1 for the label-anchored rule, whose match includes the label
+  // word: seeding `Mobile: 0912345678` would substitute the word `Mobile` too.
+  const take = (text, re, min, max, group = 0) => {
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(text)) !== null) {
-      const digits = m[0].replace(/[^0-9]/g, '').length;
+      const value = (group === 0 ? m[0] : m[group] ?? '').trim();
+      const digits = value.replace(/[^0-9]/g, '').length;
       if (digits < min || digits > max) continue;
+      // An ISO date is eight digits with two separators and sits next to a word
+      // like `phone` more often than it should. Same filter, same reason, as
+      // sweepIdNumbers: seeding a date substitutes every occurrence of it in
+      // the export, which is §F7's cry-wolf failure at its widest.
+      //
+      // Tested on the first ten characters rather than on the whole value,
+      // because a date arrives with a time glued to it: measured on real text,
+      // a phone label reached `2026-08-21 01:58 UTC` in the next paragraph and
+      // seeded `2026-08-21 01`, which an anchored test walks straight past.
+      if (DATE_SHAPED_RE.test(value.slice(0, 10))) continue;
+      // The diff-line guard applies to the shape-only rules only. A match that
+      // begins with a label word cannot be a unified-diff `+` marker, and the
+      // guard misfired on it: `Mobile: 0912345678` at the start of a line has
+      // no separator in its VALUE, so every label-anchored number on a first
+      // line was thrown away.
       const atLineStart = m.index === 0 || text[m.index - 1] === newline;
-      if (atLineStart && !SEPARATOR_RE.test(m[0])) continue;
-      found.add(m[0]);
+      if (group === 0 && atLineStart && !SEPARATOR_RE.test(value)) continue;
+      found.add(value);
       if (found.size > 1000) return true;
     }
     return false;
@@ -665,6 +962,9 @@ export function sweepPhones(texts) {
     if (text.includes('(') && take(text, PHONE_PAREN_RE, 8, 15)) break;
     // Exactly ten digits: a 3-3-4 run of any other length is not this shape.
     if (take(text, PHONE_DASHED_RE, 10, 10)) break;
+    // A national number is 9 to 11 digits including the trunk `0`.
+    if (text.includes('0') && take(text, PHONE_TRUNK_RE, 9, 11)) break;
+    if (PHONE_LABEL_HINT_RE.test(text) && take(text, PHONE_LABEL_RE, 7, 15, 1)) break;
   }
   return [...found];
 }
@@ -805,7 +1105,20 @@ function gitRemotes(dirs, warnings, probeRemote = null) {
   if (probeRemote !== null) {
     for (const dir of dirs) {
       const parsed = probeRemote(dir);
-      if (parsed && !seen.has(parsed.raw)) seen.set(parsed.raw, parsed);
+      if (!parsed) continue;
+      // `all` is every remote of that checkout; the bare object is the first
+      // one. Two paths answered one question differently: the loop below reads
+      // every line of `git remote -v`, and the SHIPPED export path hands this
+      // function the shared probe, which answered with one. Measured on a fork
+      // checkout, the `upstream` owner and repo were never entities on the path
+      // the tool actually runs.
+      //
+      // The fallback keeps a probe that carries no `all` meaning "one remote",
+      // which is what proposeTier's own callers and every injected test probe
+      // pass.
+      for (const remote of parsed.all ?? [parsed]) {
+        if (remote && !seen.has(remote.raw)) seen.set(remote.raw, remote);
+      }
     }
     return [...seen.values()];
   }
@@ -832,6 +1145,32 @@ function gitRemotes(dirs, warnings, probeRemote = null) {
     }
   }
   return [...seen.values()];
+}
+
+/**
+ * Every distinct `user.name` and `user.email` configured across `dirs`.
+ *
+ * Read off the SAME memoised probe gitRemotes uses, so no repository is spawned
+ * for twice. Names and emails are separate sets rather than pairs: git reports
+ * every level that sets a key, so one checkout can report a personal identity
+ * and a work one, and both are entities. Deduped because forty checkouts under
+ * one employer share one identity and would otherwise be added forty times.
+ */
+function gitIdentities(dirs, probeRemote) {
+  const names = new Set();
+  const emails = new Set();
+  if (probeRemote !== null) {
+    for (const dir of dirs) {
+      const probed = probeRemote(dir);
+      if (!probed || typeof probed !== 'object') continue;
+      for (const [from, into] of [[probed.names, names], [probed.emails, emails]]) {
+        for (const value of from ?? []) {
+          if (typeof value === 'string' && value.trim() !== '') into.add(value.trim());
+        }
+      }
+    }
+  }
+  return Object.freeze({ names: [...names], emails: [...emails] });
 }
 
 /** github.com:owner/repo.git and https://github.com/owner/repo both parse. */

@@ -96,18 +96,34 @@ two code units, German sharp s uppercases to two. Folding those would consume
 the wrong span, so they stay literal. A miss rather than a corruption, which is
 the right way round.
 
-## Credentials and phone numbers are matched by shape, and only by shape
+## Credentials and phone numbers are matched by shape and by label, never by entropy
 
 Anything with an unambiguous vendor prefix (`github_pat_`, `ghp_`, `sk-ant-`,
 `xoxb-`, `AKIA`, `ntn_`, `AIza`, `sk-proj-`, `sk_live_`, `npm_`, `glpat-`,
-`hf_`, `xapp-`, and the rest of one greppable list in `src/entities/seed.mjs`)
-is force-replaced, and so is any `+<country code><8-15 digits>` phone number. So
-is a value whose **label** says what it is: `api_key`, `secret_key`,
-`access_token`, `auth_token`, `client_secret`, `password`, a `Bearer ` header,
-an `X-Amz-` parameter in a signed URL, a password inline in a database URL. A
-`-----BEGIN … PRIVATE KEY-----` block is dropped whole, because half a key is
-still a key. An entropy heuristic would fire on every hash and uuid in your
-logs, and a scan that cries wolf is the first thing switched off.
+`hf_`, `xapp-`, `ya29.`, and the rest of one greppable list in
+`src/entities/seed.mjs`) is force-replaced. So is a value whose **label** says
+what it is: a credential noun (`key`, `token`, `secret`, `password`) carrying at
+least one qualifier word, which covers `api_key` and `aws_secret_access_key` and
+`gcp_service_account_key` alike; a `Bearer ` header; an `X-Amz-` parameter in a
+signed URL; a password inline in a database URL. A bare `key:` is not a label,
+because that is the form that cries wolf. A `-----BEGIN … PRIVATE KEY-----`
+block is dropped whole, because half a key is still a key. An entropy heuristic
+would fire on every hash and uuid in your logs, and a scan that cries wolf is
+the first thing switched off.
+
+Phone numbers are three shapes: `+<country code><8-15 digits>`; a national
+number written with its trunk `0` and consistent separators (`0912-345-678`);
+and a digit run of any format sitting next to a word that says it is a telephone
+number (`Tel`, `Mobile`, `手機`, `電話`). **A national number written with no
+separators and no label is ten digits and nothing else, and is not detected**:
+so is a unix timestamp, and so is an order number.
+
+Cloud account identifiers are taken from their vendor's own syntax, never from
+their shape: the account slot of an `arn:aws:…`, twelve digits beside the word
+`account`, a GCP project id after `--project` or `project_id`, an Azure
+subscription id in a `subscriptions/` segment. A bare twelve-digit number is an
+order number, and a bare `projects/<name>` is a directory on your disk, so
+neither is matched.
 
 ## A credential with no listed prefix and no label beside it is not detected
 
@@ -124,14 +140,20 @@ seven that vanished were values that existed nowhere but tool output. They are
 now absent rather than substituted. What is left is a credential you typed, or
 one named in a tool parameter.
 
-## Identity-document numbers are found by their label, in English and Chinese only
+## Identity-document numbers are found by their label, in six languages
 
 `passport`, `national id`, `identity card`, `id card`, `driver's licence`,
-`social security`, `ssn`, `tax id`, `fein`, and 護照, 护照, 身分證, 身份證,
-台胞證, 居留證. Anchoring on the label is a measured precision decision: a
-passport-shaped regex on its own matched a thermal-paste part number. **A number
-labelled in any other language, or with no label near it, is not detected.**
-Only the semantic pass can catch that one.
+`social security`, `ssn`, `tax id`, `fein`, `pasaporte`, `dni`, `cédula`, and
+護照, 护照, 身分證, 身份證, 台胞證, 居留證, パスポート, 旅券, マイナンバー,
+여권, 주민등록. Anchoring on the label is a measured precision decision: a
+passport-shaped regex on its own matched a thermal-paste part number.
+
+**A number labelled in any other language, or with no label near it, is not
+detected.** The list is inherently incomplete and adding a seventh language
+would not change that, because what is being detected is a meaning carried by a
+word. The semantic pass can catch one; so can writing the number into
+`known-values.json` beside your salt, which is the one mechanism here that is
+not inference.
 
 ## `review.md` is full of raw identity, on purpose
 

@@ -58,7 +58,7 @@ behind each, and the same list prints at the moment of export: a name touching a
 letter or a digit is left alone, and so is a spelling whose case change alters
 its length; credentials and phone numbers are matched by shape and by label,
 never by entropy, and one with neither is not detected at all; document numbers
-need an English or Chinese label; device fingerprint survives; documents you
+need a label in one of six languages; device fingerprint survives; documents you
 pasted into a prompt are prose; the agent-memory deny-list knows one person's
 naming convention, not a Claude Code universal, though it now gates only tool
 parameters and attachments, since nothing a tool read ships as text; an entity
