@@ -8446,7 +8446,7 @@ const FIXTURES = [
   // Grouped rather than listed, because ten more list entries is the thing that
   // produced this.
 
-  ['F187', 'a vendor prefix nobody listed, and a credential label nobody spelled that way', () => {
+  ['F198', 'a vendor prefix nobody listed, and a credential label nobody spelled that way', () => {
     // Fabricated. The SHAPE each value preserves:
     //   ya29.<base64url>   a gcloud OAuth2 access token, printed by
     //                      `gcloud auth print-access-token` and pasted into a
@@ -8482,7 +8482,7 @@ const FIXTURES = [
     assert.deepEqual(sweepSecrets(['s3_key = uploads/2026/quarterly-report.pdf']), [], 'a path is not a value');
   }],
 
-  ['F188', 'cloud account identifiers, which had no producer at all', () => {
+  ['F197', 'cloud account identifiers, which had no producer at all', () => {
     // Fabricated. The SHAPE each value preserves:
     //   604812350917   a 12-digit AWS account id. Twelve digits on their own
     //                  are an order number, so it is taken only from an ARN's
@@ -8521,7 +8521,7 @@ const FIXTURES = [
     assert.deepEqual(sweepPlatformIds(mustMiss), [], `cried wolf: ${JSON.stringify(sweepPlatformIds(mustMiss))}`);
   }],
 
-  ['F189', 'a national-format phone number, which has no country code to anchor on', () => {
+  ['F196', 'a national-format phone number, which has no country code to anchor on', () => {
     // Fabricated (09 is Taiwan's mobile trunk prefix; the digits are made up).
     // The SHAPE each value preserves:
     //   0912-345-678   a national mobile with a trunk `0` and separators. The
@@ -8569,7 +8569,7 @@ const FIXTURES = [
     assert.deepEqual(sweepPhones(noise), [], `cried wolf: ${JSON.stringify(sweepPhones(noise))}`);
   }],
 
-  ['F190', 'id-number labels outside the author\u2019s own two languages', () => {
+  ['F195', 'id-number labels outside the author\u2019s own two languages', () => {
     // Fabricated. The SHAPE preserved is a passport number: two letters and
     // seven digits, which is the shape section F7 records a shape-only regex
     // matching against `M1019757`, a thermal-paste part number. The label is
