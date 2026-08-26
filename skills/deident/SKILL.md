@@ -395,11 +395,15 @@ node <repo>/deident.js export --out <workdir> --json \
   --namespace <two letters nobody has used yet>
 ```
 
-**Just run it.** Measured on 219 session files: scan 22s, triage under a
-second, preview 15s, and the export with every gate and the zip 14s. The whole
-machine side is under a minute, so wait on it rather than backgrounding it.
-The stage that costs anything is the one where a reader reads, and that one is
-not a command.
+**Time it against your own corpus, not against a number written here.**
+Two measured points, same machine: 219 session files gave scan 22s, triage under
+a second, preview 15s, export 14s. A 2.3 GB store of 4,264 files gave a 7m25s
+export. It scales with bytes read, and the tool_result surface it reads and
+discards is most of them, so a large store costs minutes rather than seconds.
+Under a minute, wait on it. Above that, background it and poll, because a
+command timeout that kills the export mid-write leaves nothing behind.
+The stage that costs a PERSON anything is still the one where a reader reads,
+and that one is not a command.
 
 `--namespace` needs a fresh value each run. The tool prints its namespace, the
 terminal is logged into the session, and the session is part of the next run's
