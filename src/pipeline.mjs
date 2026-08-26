@@ -1121,18 +1121,6 @@ export async function runExport(flags, env) {
   //     how many secrets and phone numbers were replaced and those are counted
   //     per entity, not per record.
   const entities = withOccurrences([...tier0.entities, ...tier1Assigned.entities], allStrings);
-  // A declared entity that matched NOTHING is the loudest thing this run can
-  // say. It means either the semantic pass named something that is not in the
-  // corpus, or tier 0 had already destroyed the spelling, and the second is
-  // how a declared org shipped its remainder while `--preview` alone would
-  // have shown the row reading `1 spelling, 0 occurrences`. Plain `export`
-  // printed nothing at all.
-  const unmatched = entities.filter(
-    (e) => e.tier === 1 && !e.rejected && e.spellings.length > 0 && (e.occurrences ?? 0) === 0,
-  );
-  if (unmatched.length > 0) {
-    report.renderUnmatched(unmatched.map((e) => ({ id: e.id, kind: e.kind, canonical: e.canonical })));
-  }
   // How many sessions in THIS archive a human has opened, and how many are
   // shipping unread. Keyed on the archive's own entries rather than on the
   // retained set, so the denominator is the number of files the recipient will
