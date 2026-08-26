@@ -8869,6 +8869,51 @@ const FIXTURES = [
     );
   }],
 
+  // F206. retainMode read `typeof rec.mode === 'string' ? rec.mode :
+  // JSON.stringify(rec.mode ?? null)`, so every guarantee in this file was
+  // skipped at once for a non-string. The audit's constructed record came out
+  // as one string carrying a deny-listed path, a memory filename, an intact
+  // <system-reminder> span and a credential shape, with deniedBlocks 0,
+  // deniedBytes 0, deniedPaths 0, injectedBytesDropped 0, and no refusal.
+  //
+  // CONSTRUCTED, not observed: all 7,400 `mode` records in the live corpus
+  // carry a string. That is a fact about one harness and not a guarantee, and
+  // it was the last deliberate fail-open left in the retention table:
+  // retainContent already refuses on a shape that is neither array nor string.
+  ['F206', 'a mode record that is not a string refuses, and a string one is stripped', () => {
+    const ctx = newRetentionContext((u) => u);
+    assert.throws(
+      () =>
+        retainRecord(
+          { type: 'mode', sessionId: 's1', mode: { name: 'plan', note: `see C:${BS}w${BS}private${BS}payroll.md` } },
+          ctx,
+          { file: 'a.jsonl', line: 9 },
+        ),
+      (err) => err instanceof RefusalError && /mode/.test(err.reason) && /object/.test(err.reason),
+      'a non-string mode was serialised into the export instead of refused',
+    );
+    assert.equal(ctx.stats.deniedBlocks, 0, 'nothing was withheld, so nothing may be counted as withheld');
+
+    // And the string form gets the same stripping the prose path gets, which
+    // is the half of the fail-open that a refusal alone does not close.
+    const kept = retainRecord(
+      {
+        type: 'mode',
+        sessionId: 's1',
+        mode: `plan C:${BS}w${BS}private${BS}payroll.md <system-reminder>memory index</system-reminder>`,
+      },
+      ctx,
+      null,
+    );
+    assert.ok(!kept.record.mode.includes('payroll'), `a deny-listed path shipped in a mode record: ${kept.record.mode}`);
+    assert.ok(
+      !kept.record.mode.includes('memory index'),
+      `an injected span shipped in a mode record: ${kept.record.mode}`,
+    );
+    assert.equal(ctx.stats.deniedPaths, 1, 'the withheld path was not counted');
+    assert.ok(ctx.stats.injectedBytesDropped > 0, 'the injected bytes were not counted');
+  }],
+
   ['F199', 'the fixture count in README is the number of fixtures', () => {
     // Gone stale five times in two days, every time caught by a person
     // reading rather than by the suite, and every time in a document whose

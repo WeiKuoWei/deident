@@ -190,7 +190,7 @@ function retainByType(rec, ctx, where) {
     case 'queue-operation':
       return retainPrompt(rec, ctx, 'queue-operation', rec.content, { operation: rec.operation ?? null });
     case 'mode':
-      return retainMode(rec, ctx);
+      return retainMode(rec, ctx, where);
     case 'system':
       return retainSystem(rec, ctx, where);
     default:
@@ -718,8 +718,27 @@ function retainPrompt(rec, ctx, kind, rawPrompt, extra = {}) {
   });
 }
 
-function retainMode(rec, ctx) {
-  const value = typeof rec.mode === 'string' ? rec.mode : JSON.stringify(rec.mode ?? null);
+/**
+ * The last deliberate fail-open in this table, and a high-frequency one:
+ * 7,400 `mode` records in the live corpus.
+ *
+ * This read `typeof rec.mode === 'string' ? rec.mode : JSON.stringify(...)`,
+ * so a non-string skipped every guarantee in this file at once. Constructed
+ * against the shipped code, a `mode` holding an object came out as one string
+ * carrying a deny-listed path, a memory filename, an intact
+ * `<system-reminder>` span and a credential shape, with deniedBlocks 0,
+ * deniedBytes 0, deniedPaths 0, injectedBytesDropped 0, and no refusal.
+ *
+ * Every mode in this corpus is a string, and that is a fact about one harness,
+ * not a guarantee: retainContent already refuses on a container that is
+ * neither array nor string, for the same reason (BRIEF §4.4).
+ */
+function retainMode(rec, ctx, where) {
+  if (typeof rec.mode !== 'string') {
+    throw unknown(`a mode record whose mode is not a string (${typeof rec.mode})`, where, 'a non-string mode');
+  }
+  const { text: value } = stripAuthored(rec.mode, ctx);
+  if (value.length === 0) return null;
   if (ctx.seenModes.has(value)) return null;
   ctx.seenModes.add(value);
   return prune({ type: 'mode', sessionId: ctx.rewriteUuid(rec.sessionId), mode: value });
