@@ -22,6 +22,7 @@ import {
   PATH_TOKEN_RE,
   DENIED_PATH_MARKER,
   DENIED_MARKER,
+  USER_DENY_REASON,
   DENIED_TEXT,
   INJECTED_SPANS,
 } from './constants.mjs';
@@ -462,16 +463,29 @@ function byteLength(v) {
   return typeof v === 'string' ? Buffer.byteLength(v, 'utf8') : null;
 }
 
-/** The first DENIED_TEXT pattern this prose trips, or null. */
+/** The LABEL of the first DENIED_TEXT pattern this prose trips, or null. */
 export function deniedTextReason(text) {
   if (typeof text !== 'string' || text.length === 0) return null;
-  // Same list as deniedReason at the sibling below. These two diverged and this
+  // Same lists as deniedReason at the sibling below. These two diverged and this
   // one gated user and assistant PROSE with the shipped patterns only, so a
   // per-person pattern withheld a tool result and not the sentence beside it.
-  for (const re of [...DENIED_TEXT, ...userDenyPatterns()]) {
+  //
+  // A label, never `m[0]`: the return value of this function IS the reason a
+  // DENIED_MARKER ships, so a match returned here is the withheld value handed
+  // straight to the recipient. See DENIED_PATH_REASON's comment, which reached
+  // that conclusion for the path half of the same question.
+  for (const { re, reason } of DENIED_TEXT) {
     re.lastIndex = 0;
-    const m = re.exec(text);
-    if (m !== null) return m[0].trim();
+    if (re.test(text)) return reason;
+  }
+  return userDenyReason(text);
+}
+
+/** Per-person rules, kept apart because they all collapse to one label. */
+function userDenyReason(text) {
+  for (const re of userDenyPatterns()) {
+    re.lastIndex = 0;
+    if (re.test(text)) return USER_DENY_REASON;
   }
   return null;
 }
@@ -510,14 +524,15 @@ function stripDeniedPaths(text, ctx) {
   });
 }
 
-/** The first deny pattern this text trips, shipped list first, or null. */
+/** The LABEL of the first deny pattern this text trips, shipped first, or null. */
 export function deniedReason(text) {
   if (typeof text !== 'string' || text.length === 0) return null;
-  for (const re of [...DENIED_CONTENT, ...userDenyPatterns()]) {
+  for (const { re, reason } of DENIED_CONTENT) {
     re.lastIndex = 0;
-    const m = re.exec(text);
-    if (m !== null) return m[0].trim();
+    if (re.test(text)) return reason;
   }
+  const mine = userDenyReason(text);
+  if (mine !== null) return mine;
   // The deny-list applied to the cwd only, so a Read, an Edit or a directory
   // listing of a deny-listed path from an ALLOWED directory was invisible to
   // all three levels of privacy-tiers §4. The reason is generic on purpose:

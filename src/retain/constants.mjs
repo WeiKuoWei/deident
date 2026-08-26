@@ -123,6 +123,36 @@ export const CANDIDATE_BATCH_CHARS = 120_000;
  * attachment. It used to be matched against a tool result's own text too,
  * which is now moot, since no tool result text reaches the export at all.
  */
+/**
+ * The vocabulary a denial marker is allowed to speak.
+ *
+ * Every reason below is a fixed label, because a marker is read by the
+ * RECIPIENT and the alternative is the matched substring: the withheld value
+ * re-emitted in the clear, beside the count of the bytes just withheld.
+ * Measured on the archives shipped on 2026-08-26, 243 markers in one and 110
+ * in the other did exactly that, and no gate can catch it, because the
+ * residual scan knows entity SPELLINGS and a deny token is deliberately not an
+ * entity.
+ *
+ * A label says what CLASS of thing went, which is what lets a recipient ask
+ * for it back when the removal was wrong. It never says what the thing was.
+ *
+ * Deliberately generic here for a second reason: the deny tokens themselves
+ * are `private`, `payroll`, `identity`, and a person may add their own, one of
+ * which was a real name. review.md says which token matched because review.md
+ * is local; the marker inside the archive is not.
+ */
+export const DENIED_PATH_REASON = 'a deny-listed directory';
+
+/**
+ * Every per-person rule from denied.json collapses to this one label.
+ *
+ * A pattern someone writes into their own deny file is the case most likely to
+ * BE a person's name, so it is the last one that may be quoted back. There is
+ * no per-rule label, because the rule text is the thing being withheld.
+ */
+export const USER_DENY_REASON = 'a rule you configured';
+
 // ONLY patterns that are true of the AGENT, not of one person. The first
 // draft of this list carried the author's own dictation app, his immigration
 // folder and a directory named after a real human. In a shared repository
@@ -131,7 +161,7 @@ export const CANDIDATE_BATCH_CHARS = 120_000;
 // is per-person by construction and is never committed.
 export const DENIED_CONTENT = Object.freeze([
   // The index file the harness writes. This one really is the agent's.
-  /(^|[^a-z])MEMORY[.]md/i,
+  { re: /(^|[^a-z])MEMORY[.]md/i, reason: 'an agent memory file' },
   // The second pattern is NOT a Claude Code universal, and the line above it
   // used to say it was. It is one user's memory-index taxonomy. Kept because
   // it is a filename test rather than a person's name, so it discloses nothing
@@ -139,18 +169,20 @@ export const DENIED_CONTENT = Object.freeze([
   // files are named otherwise gets none of this and has to say so in
   // DENIED_USER_FILENAME. The limits block prints that at the moment of
   // export, because a limit stated in a source comment is not a disclosure.
-  /(reference|feedback|project|user)_[a-z0-9_]+[.]md/i,
+  { re: /(reference|feedback|project|user)_[a-z0-9_]+[.]md/i, reason: 'an agent memory file' },
   // A dotted directory whose own name says it is private.
-  /[.][a-z0-9-]{2,24}-private[/\\]/i,
+  { re: /[.][a-z0-9-]{2,24}-private[/\\]/i, reason: DENIED_PATH_REASON },
   // Filenames that are a credential or an identity record by convention.
-  /(credentials|profile)[.]json/i,
+  { re: /(credentials|profile)[.]json/i, reason: 'a secret or identity file' },
   // A private key body. Not a value to substitute: half a key is still a key,
   // and the whole block goes as a count. The measured route was tool output,
   // which is gone by construction now; this stays for the two routes that are
   // left, a PEM named or pasted into a tool_use parameter and one arriving as
-  // an attachment. The header is what the reason line ships, and it names no
-  // secret.
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  // an attachment. The header used to be what the reason line shipped, on the
+  // grounds that it names no secret. It names the FILE, which is the half a
+  // recipient does not need and the half the marker was leaking everywhere
+  // else, so the label says the class and stops there.
+  { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, reason: 'a cryptographic key' },
 ]);
 
 /** Per-person additions, read from beside the salt. Never in the repository. */
@@ -186,16 +218,7 @@ export const DENIED_PATH_RE = new RegExp(
 );
 
 /**
- * The reason string a denied PATH puts in the export.
- *
- * Deliberately generic: the deny tokens themselves are `private`, `payroll`,
- * `identity`, and a person may add their own, one of which was a real name.
- * review.md says
- * which token matched because review.md is local; the marker inside the
- * archive is read by the recipient.
- */
-/**
- * The same, for a path that BEGINS with the deny-listed segment.
+ * The same as DENIED_PATH_RE, for a path that BEGINS with the segment.
  *
  * DENIED_PATH_RE requires a separator BEFORE the token, so a relative path
  * quoted as `private/vendor-search/COST-COMPARISON.md:17:` matched nothing,
@@ -209,8 +232,6 @@ export const DENIED_PATH_HEAD_RE = new RegExp(
     ')[^\\\\/\\s"' + String.fromCharCode(39) + '`]{0,60}?[\\\\/]',
   'i',
 );
-
-export const DENIED_PATH_REASON = 'a deny-listed directory';
 
 /**
  * One path-shaped token inside ordinary prose.
@@ -258,12 +279,15 @@ export const INJECTED_SPANS = Object.freeze([
  * is cheap; a key that leaves cannot be recalled, and it does not care who was
  * holding it.
  */
+// One label for all seven: the block goes because its SUBJECT is a live
+// credential, and naming which of the seven shapes matched would put the
+// credential's own wording back in the marker.
 export const DENIED_TEXT = Object.freeze([
-  /1Password[- ]?Emergency[- ]?Kit/i,
-  /Emergency Kit/i,
-  /Secret Key[ ]*[:：]/i,
-  /master password/i,
-  /(recovery|backup) codes?[ ]*[:：]/i,
-  /備份碼|復原碼/,
-  /X-Amz-Security-Token/i,
+  { re: /1Password[- ]?Emergency[- ]?Kit/i, reason: 'a credential' },
+  { re: /Emergency Kit/i, reason: 'a credential' },
+  { re: /Secret Key[ ]*[:：]/i, reason: 'a credential' },
+  { re: /master password/i, reason: 'a credential' },
+  { re: /(recovery|backup) codes?[ ]*[:：]/i, reason: 'a credential' },
+  { re: /備份碼|復原碼/, reason: 'a credential' },
+  { re: /X-Amz-Security-Token/i, reason: 'a credential' },
 ]);
