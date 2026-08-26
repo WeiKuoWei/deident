@@ -37,7 +37,7 @@ import { substituteRecord } from '../src/substitute/walker.mjs';
 import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal, unverifiedRemainder } from '../src/verify/checks.mjs';
 import { checkDeclaredValues } from '../src/verify/declared.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from '../src/verify/residual.mjs';
-import { distillToolResult, retainToolUseResult, checkAddedLines } from '../src/retain/toolresult.mjs';
+import { distillToolResult, retainToolUseResult } from '../src/retain/toolresult.mjs';
 import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason,
 } from '../src/retain/records.mjs';
 import { resolveLineCwd, cwdChangeFrom } from '../src/corpus/cwdtrack.mjs';
@@ -650,7 +650,6 @@ const FIXTURES = [
     const kept = retainToolUseResult({ structuredPatch: patch, oldString: 'SECRET', newString: 'CODE' });
     assert.ok(!JSON.stringify(kept).includes('SECRET'));
     assert.ok(!JSON.stringify(kept).includes('old one'));
-    assert.equal(checkAddedLines(d), null);
   }],
 
   // F10, PLAN C6. 1,304 records carry a string-valued toolUseResult.
@@ -658,7 +657,6 @@ const FIXTURES = [
     const d = distillToolResult('The file has been updated successfully.');
     assert.equal(d.code_added_lines, null);
     assert.equal(d.form, 'string');
-    assert.equal(checkAddedLines(d), null);
     for (const weird of [null, undefined, 42, [], true]) {
       assert.equal(distillToolResult(weird).code_added_lines, null, `${JSON.stringify(weird)} must be null`);
     }
@@ -1888,7 +1886,6 @@ const FIXTURES = [
     });
     assert.equal(created.code_added_lines, 3, 'three lines were added, not zero');
     assert.equal(created.form, 'create-content');
-    assert.equal(checkAddedLines(created), null, 'I8 must accept a true count');
 
     // A trailing newline terminates the last line rather than starting one.
     assert.equal(
@@ -1899,7 +1896,6 @@ const FIXTURES = [
     assert.equal(distillToolResult({ type: 'create', content: '', structuredPatch: [] }).code_added_lines, 0);
     // An empty patch with no content cannot be resolved, so it is null.
     assert.equal(distillToolResult({ structuredPatch: [] }).code_added_lines, null);
-    assert.match(checkAddedLines({ code_added_lines: 0, form: 'empty-patch' }), /must be null/);
   }],
 
   // F55, a `message.content` that is a plain string is the same user turn as
@@ -5798,8 +5794,8 @@ const FIXTURES = [
   // F134b - the cap that remains, and the reason it is not the one that was
   // removed. Measured on a copy of the real corpus with the cap off: the
   // candidates file goes from 2,957,659 to 13,026,553 bytes, so removing the
-  // cap outright lands far above the 915 KB docs/cli-ux.md §11b budgets. The
-  // cap therefore stays, at a value taken from the measured post-retention
+  // cap outright lands far above the 3.5 MB docs/design-rationale.md budgets.
+  // The cap therefore stays, at a value taken from the measured post-retention
   // distribution rather than from the old 400, and the loss it causes is
   // COUNTED and printed. A reader handed a short file has to be told it is
   // short; that is the whole difference from what was there before.

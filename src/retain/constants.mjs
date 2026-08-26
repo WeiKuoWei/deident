@@ -62,8 +62,8 @@ export const EXAMPLES_PER_REPORT = 5;
  * counted none of it. Removing the cap outright was measured over a copy of
  * the whole depth-0 corpus (216 files, 934 MB, one namespace shift, unclassified
  * workspaces skipped): the candidates file goes from 2,957,659 to 13,026,553
- * bytes, against the 915 KB docs/cli-ux.md §11b budgets for the stage. So a cap
- * stays.
+ * bytes, against the 3.5 MB docs/design-rationale.md budgets for the stage. So
+ * a cap stays.
  *
  * The value is above ordinary prose by a wide margin, measured rather than
  * guessed. Over the twelve largest sessions, 17,466 post-retention prose

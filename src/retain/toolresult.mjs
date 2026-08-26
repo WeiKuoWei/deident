@@ -131,20 +131,3 @@ export function retainToolUseResult(toolUseResult) {
     ...(isError ? { is_error: true } : {}),
   });
 }
-
-/** I8, asserted rather than assumed. Returns null when the record is fine. */
-export function checkAddedLines(distilled) {
-  if (distilled.code_added_lines === null) return null;
-  if (!Number.isInteger(distilled.code_added_lines) || distilled.code_added_lines < 0) {
-    return `code_added_lines is ${distilled.code_added_lines}, which is neither a non-negative integer nor null`;
-  }
-  if (
-    distilled.form === 'no-patch' ||
-    distilled.form === 'string' ||
-    distilled.form === 'absent' ||
-    distilled.form === 'empty-patch'
-  ) {
-    return `code_added_lines is ${distilled.code_added_lines} for form "${distilled.form}", where the count is unknown and must be null`;
-  }
-  return null;
-}

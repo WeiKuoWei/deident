@@ -774,13 +774,13 @@ refuses, which understates rather than the other way round.
   for.
 
   The second number exists because the first one stopped being a blind spot
-  when the tool_result payload was cut. Measured on an archive built from the
-  live corpus, the non-prose remainder is 48.4% record scaffolding and minted
-  identifiers, 16.3% `tool_use` parameters, 3.6% tool result shape, 2.1% cwd.
-  Three quarters of it is a vocabulary the tool defines in its own source and
-  cannot hold an undeclared name. Reporting only the total would overstate the
-  risk as badly as omitting it would understate it, so the parameters figure is
-  printed beside it: that is the part that is free text and unread.
+  when the tool_result payload was cut. Most of the non-prose remainder is
+  record scaffolding, minted identifiers and tool result shape: a vocabulary the
+  tool defines in its own source, which cannot hold an undeclared name.
+  Reporting only the total would overstate the risk as badly as omitting it
+  would understate it, so the parameters figure is printed beside it: that is
+  the part that is free text and unread. Both numbers are measured on the run
+  that prints them; docs/limits.md carries the archive-wide breakdown.
 
   Three units were rejected for it. **Sessions nobody read** is always zero
   here, because the semantic-pass gate refuses the export while it is not, and
@@ -901,8 +901,8 @@ If a new workspace did appear, `export` refuses (see §8) rather than guessing.
 ### 11b. `~/.deident-private/entities.json`, the remembered dictionary
 
 Stage 3 is the only stage whose cost grows with the corpus: 205 sessions and
-915 KB of prose, measured 2026-08-24. A second run days later has a handful of
-new sessions in it and must not cost the same as the first.
+about 3.5 MB of prose to budget for (§4b). A second run days later has a
+handful of new sessions in it and must not cost the same as the first.
 
 ```json
 {
@@ -1000,7 +1000,7 @@ reader read it. That is the same limit the old gate had, one session at a time
 instead of one corpus at a time.
 
 So the file is capped, at `--batch-chars` characters (120,000 by default,
-roughly 30k tokens against a corpus measured at 915 KB and 250k). The cap is
+roughly 30k tokens against a stage 3 budgeted at 3.5 MB and 900k). The cap is
 not about the file being awkward to open. It is that "shown" is the only thing
 this gate can observe, and a 915 KB file nobody could read in one pass turned
 that into a false claim: every session in it was recorded as read and the next
