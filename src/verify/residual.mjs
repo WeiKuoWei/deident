@@ -18,7 +18,7 @@ import { EXAMPLES_PER_REPORT } from '../retain/constants.mjs';
 // The left-boundary rule is imported, never re-implemented. When the scan had
 // its own copy, both copies had the same escape-tail bug and agreed with each
 // other, which is how a leak was reported as `known-entity residue: 0`.
-import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold, foldLower } from '../substitute/engine.mjs';
+import { leftBoundaryBlocks, rightBoundaryBlocks, equalsFold, foldLower, startsOnEscapeBody } from '../substitute/engine.mjs';
 
 // This file used to keep its own copy of WORD_RE and isWordChar. They were
 // dead, and they were dead wrong in the same way the substituter's were, which
@@ -221,7 +221,17 @@ export function residualScan(bytes, table, knownUuids = new Set()) {
       // The test is the standard one: a backslash is an escape introducer only
       // when preceded by an even number of backslashes, so a match starting
       // immediately after an ODD run is inside an escape.
-      if (startsInsideEscape(bytes, i)) {
+      //
+      // startsOnEscapeBody is the second layer and the substituter's own rule.
+      // A nested escape is two literal characters in the decoded text, so it
+      // reaches these bytes as a DOUBLED backslash and startsInsideEscape,
+      // which only knows the serialization layer, calls it content. The
+      // substituter declines to match there; without this the scan would
+      // disagree and refuse the export over a match nobody made. Counted as an
+      // artifact rather than left to the boundary test below, which would file
+      // it under `embedded` and put a "glued to a word" row in front of a
+      // reader for a word that is not there.
+      if (startsInsideEscape(bytes, i) || startsOnEscapeBody(bytes, i, true)) {
         escapeArtifacts += 1;
         break;
       }

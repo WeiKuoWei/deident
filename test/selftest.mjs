@@ -31,7 +31,7 @@ import {
   basenameOf,
   buildEntities,
 } from '../src/entities/seed.mjs';
-import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar } from '../src/substitute/engine.mjs';
+import { buildTable, substituteString, reverseString, allOccurrences, leftIsWordChar, startsOnEscapeBody } from '../src/substitute/engine.mjs';
 import { probeCounts, probeOutliers } from '../src/entities/probe.mjs';
 import { substituteRecord } from '../src/substitute/walker.mjs';
 import { checkSubstitution, checkSemanticPass, semanticRefusal, coverageRefusal, unverifiedRemainder } from '../src/verify/checks.mjs';
@@ -8126,6 +8126,112 @@ const FIXTURES = [
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  }],
+
+  // F187 - the only defect found that CORRUPTS rather than misses. Every other
+  // hole loses privacy; this one loses the data.
+  ['F187', 'a match may not start on the body of an escape, and a path separator is not one', () => {
+    // Reproduced against the shipped modules, 2026-08-25. These logs nest JSON
+    // inside JSON, so a nested newline arrives as the two literal characters
+    // backslash and `n`. `Nancy` matched the `n` that belongs to the escape
+    // plus the `ancy` after it, and the substitution ate the escape:
+    //
+    //   line one\nancy went home   ->   line one\X_1 went home
+    //   col\theo end               ->   col\X_2 end
+    //
+    // The output is no longer readable as the text it came from: `\X` is not
+    // an escape any parser accepts. Neither gate saw it. reverseString still
+    // restores the bytes, so I2 passed, and the residue scan found nothing
+    // because the name really was gone.
+    const nancy = buildTable([entity('P1', 'person', 'Nancy', 'X_1')]);
+    const theo = buildTable([entity('P2', 'person', 'Theo', 'X_2')]);
+    assert.equal(substituteString(`line one${BS}nancy went home`, nancy).out, `line one${BS}nancy went home`);
+    assert.equal(substituteString(`col${BS}theo end`, theo).out, `col${BS}theo end`);
+
+    // The ordinary case, and the reason the rule cannot simply be "never match
+    // after a backslash": a real newline character is not an escape.
+    assert.equal(substituteString(`line one${NL}Nancy went home`, nancy).out, `line one${NL}X_1 went home`);
+    // F39's case is the other half of the same rule and must not move: a name
+    // written AFTER an escape is a real occurrence.
+    assert.equal(substituteString(`Best${BS}nNancy here`, nancy).out, `Best${BS}nX_1 here`);
+
+    // Every escape whose body is a word character can do this, not just the
+    // two that were reported. Each of these is one letter of a name welded to
+    // the escape that precedes it.
+    for (const [body, name, token] of [
+      ['b', 'Bella', 'X_b'], ['f', 'Fiona', 'X_f'], ['n', 'Nina', 'X_n'], ['r', 'Rosa', 'X_r'],
+      ['t', 'Tara', 'X_t'], ['v', 'Vera', 'X_v'], ['u', 'Umar', 'X_u'], ['x', 'Xena', 'X_x'],
+    ]) {
+      const one = buildTable([entity(`E_${body}`, 'person', name, token)]);
+      const text = `head${BS}${name.toLowerCase()} tail`;
+      assert.equal(substituteString(text, one).out, text, `${BS}${body} still loses its body`);
+      // And the same name one character further on, where the escape is whole,
+      // is a real occurrence. This is the half that must not regress.
+      assert.equal(
+        substituteString(`head${BS}${body}${name} tail`, one).out,
+        `head${BS}${body}${token} tail`,
+        `${BS}${body} followed by the name is an occurrence`,
+      );
+    }
+    // `\"`, `\\` and `\/` are escapes too and cannot do it: their body is not a
+    // word character, so no spelling that starts with one is subject to the
+    // left-boundary rule in the first place. The hex tail of `\uXXXX` is not
+    // covered either: a match would have to start on the third character of
+    // the escape, which needs a spelling that begins with a hex digit.
+
+    // The measurement that decides the rule, and the leak it exists to avoid.
+    // Over the live corpus (220 session files, 150,829 lines, 6,749,630
+    // decoded strings): 161,655 places where a lone backslash is followed by
+    // the OS username, and `\r` is an escape letter, so a rule that read every
+    // lone backslash as an escape would stop substituting the username at all
+    // of them. Every one of those strings also carries a backslash that NO
+    // escape may take (`\U` of `\Users`), which is what proves the backslashes
+    // are literal. With that test the count of refused username occurrences is
+    // 0 of 161,655; without it, 161,655 of 161,655.
+    const ravi = buildTable([entity('P3', 'person', 'ravi', 'X_3')]);
+    assert.equal(
+      substituteString(`C:${BS}Users${BS}ravi${BS}Downloads`, ravi).out,
+      `C:${BS}Users${BS}X_3${BS}Downloads`,
+      'a path separator is not an escape introducer, whatever letter follows it',
+    );
+
+    // Reversal is still exact where the rule DOES fire, because a refused
+    // match records no span at all.
+    const r = substituteString(`line one${BS}nancy went home`, nancy);
+    assert.equal(reverseString(r.out, r.spans), `line one${BS}nancy went home`);
+
+    // The two gates have to give the same answer or the export is refused over
+    // a match the substituter declined on purpose. Serialized, the literal
+    // backslash is doubled, so the residue scan meets the same site with an
+    // even run and has to reach the same verdict.
+    const bytes = JSON.stringify({ text: `line one${BS}nancy went home` });
+    const scan = residualScan(bytes, nancy, new Set());
+    assert.equal(scan.entityCount, 0, 'the scan must not fail an export over a match the substituter declined');
+    assert.equal(scan.escapeArtifacts, 1, 'and it must say so out loud rather than counting nothing');
+
+    // The negative control, and the one that matters most: the same doubled
+    // run, over a path separator, is still a leak. A rule that exempted this
+    // would be the green gate over a real leak, in the direction that hurts.
+    const pathBytes = JSON.stringify({ text: `C:${BS}Users${BS}ravi${BS}Downloads` });
+    assert.equal(residualScan(pathBytes, ravi, new Set()).entityCount, 1, 'a username after a path separator is a leak');
+
+    // startsInsideEscape answers the serialization layer only, so it is not
+    // the helper this needed: on the decoded string it calls a path separator
+    // an escape, which is the leak above.
+    assert.equal(startsInsideEscape(`C:${BS}Users${BS}ravi`, 9), true);
+    assert.equal(startsOnEscapeBody(`C:${BS}Users${BS}ravi`, 9), false);
+    assert.equal(startsOnEscapeBody(`line one${BS}nancy`, 9), true);
+
+    // The property the agreement rests on, stated directly: the scan's answer
+    // is a SUPERSET of the substituter's. Serializing doubles a literal
+    // backslash, so the site the substituter declined at a run of one arrives
+    // at the scan as a run of two, and only the scan's form answers for both.
+    // Checked over the live corpus at 1,545,309 sites: 0 where the substituter
+    // declines and the scan does not, 188 the other way, all of them counted
+    // as artifacts and none of them a tier-0 spelling.
+    assert.equal(startsOnEscapeBody(`line one${BS}${BS}nancy`, 10), false, 'the substituter reads two backslashes as two');
+    assert.equal(startsOnEscapeBody(`line one${BS}${BS}nancy`, 10, true), true, 'the scan reads them as one, serialized');
+    assert.equal(startsOnEscapeBody(`C:${BS}${BS}Users${BS}${BS}ravi`, 11, true), false, 'and a serialized path separator is still not an escape');
   }],
 
   ['F186', 'a document block is dropped on the nested path too, not only the top-level one', () => {

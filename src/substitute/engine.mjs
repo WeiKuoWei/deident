@@ -81,6 +81,11 @@ export function leftBoundaryBlocks(s, at, entry) {
   if (!entry.needsLeft) return false;
   const ch = s[at - 1];
   if (ch === undefined) return false;
+  // A match cannot START on the body of an escape. See startsOnEscapeBody:
+  // `Nancy` matched the `n` of a nested `\n` and the substitution ate the
+  // escape. Tested here so the substituter, allOccurrences and residualScan
+  // all get it from one function.
+  if (ch === '\\' && startsOnEscapeBody(s, at)) return true;
   // The case of the MATCHED TEXT, not of the entry's spelling. Matching is
   // case-insensitive, so the entry for `Northwind` reads `northwind`, and asking
   // the spelling whether it starts a hump would answer for a casing that is not
@@ -247,6 +252,113 @@ export function leftIsWordChar(s, at) {
   let backslashes = 0;
   for (let j = at - m[0].length - 1; j >= 0 && s[j] === '\\'; j -= 1) backslashes += 1;
   return backslashes % 2 === 1;
+}
+
+// Everything a backslash may legally introduce, in JSON and in the JS string
+// literals these logs carry: the JSON seven, plus `v`, `0`, `x` and the quote
+// forms JSON never emits but other serializers do.
+const ESCAPABLE_RE = /["'`\\/0bfnrtuvx]/;
+
+// The subset of those whose body is a WORD character, so a match starting on
+// it welds the escape's own character onto the entity. Measured 2026-08-25
+// over the live corpus, sites where a lone backslash is followed by one of
+// these: n 199,716 | r 175,416 | u 78,240 | t 71,958 | b 15,701 | f 9,049 |
+// 0 2,441 | v 1,300 | x 217. The others (`"` `\` `/` and the quote forms)
+// cannot weld: their body is not a word character, so no spelling that starts
+// with one is subject to the left-boundary rule at all.
+const ESCAPE_BODY_RE = /[0bfnrtuvx]/;
+
+/**
+ * Does anything in `s` prove its backslashes are LITERAL rather than escape
+ * introducers?
+ *
+ * The two readings are indistinguishable one character at a time. `line one\n`
+ * and `C:\Users\` both hold a lone backslash before a letter that names an
+ * escape, and reading the first as a path or the second as escaped text is
+ * wrong in opposite directions: one corrupts the output, the other leaves the
+ * username in it.
+ *
+ * What separates them is the REST of the string. A backslash run followed by a
+ * character no escape may take is a backslash that has to be literal, and one
+ * literal backslash means the writer was not escaping. `C:\Users\ravi` carries
+ * `\U`, and `\U` is not an escape in any of these dialects.
+ *
+ * Measured over the live corpus (220 session files, 150,829 lines, 6,749,630
+ * decoded strings): 161,655 sites where a lone backslash is followed by the OS
+ * username, whose first letter names an escape. This test refuses 0 of them.
+ * Without it, all 161,655 stop being substituted, and the boundary rule is the
+ * only thing standing between the username and the archive at every one.
+ *
+ * Deliberately representation-independent, because residualScan is handed the
+ * DECODED prose in one place and the SERIALIZED bytes in another, and a rule
+ * that answered differently for the two forms of one string is the shape that
+ * put a green gate over a real leak here before. Serializing doubles every
+ * literal backslash and leaves every escape single, so a run followed by a
+ * non-escapable character stays a run followed by a non-escapable character.
+ */
+function escapeBearing(s) {
+  // One slot, because both callers ask about the same string many times over:
+  // substituteString walks one string to the end, residualScan sweeps one
+  // 19 MB blob. Without it a long string with no literal backslash anywhere,
+  // a code chunk is the measured case, is rescanned per match and the sweep
+  // goes quadratic, which is §F7 arriving as latency.
+  if (s === bearingKey) return bearingValue;
+  let bearing = true;
+  for (let i = 0; i < s.length; i += 1) {
+    if (s[i] !== '\\') continue;
+    let run = 1;
+    while (s[i + run] === '\\') run += 1;
+    const next = s[i + run];
+    if (next === undefined || !ESCAPABLE_RE.test(next)) {
+      bearing = false;
+      break;
+    }
+    i += run - 1;
+  }
+  bearingKey = s;
+  bearingValue = bearing;
+  return bearing;
+}
+
+let bearingKey = null;
+let bearingValue = false;
+
+/**
+ * Would a match starting at `at` eat the body of an escape sequence?
+ *
+ * The mirror of leftIsWordChar. That one asks whether the character to the
+ * LEFT is the tail of an escape and therefore not a letter of a word; this
+ * asks whether the character AT `at` is the body of one and therefore not the
+ * start of a word. Only the first question was ever asked, so `Nancy` matched
+ * the `n` of a nested `\n` and the substitution consumed an escape the text
+ * needed: `line one\nancy went home` came out as `line one\X_1 went home`.
+ *
+ * `eitherLayer` is for residualScan and nothing else. The substituter is only
+ * ever handed DECODED strings (walker.mjs parses first), where one literal
+ * backslash is a run of 1, so an odd run means the last backslash introduces
+ * an escape. residualScan is handed the decoded prose for the candidates file
+ * and the SERIALIZED bytes for the zip, and serializing doubles every literal
+ * backslash, so the same site arrives there as a run of 2. It cannot tell the
+ * two apart, so it asks for both, and its answer is a superset of the
+ * substituter's: whatever the substituter declines, the scan exempts. That
+ * direction is the one that matters. The other would refuse an export over a
+ * match nobody made.
+ *
+ * The union is not free and the price is measured. Over the live corpus,
+ * 1,545,309 sites where a backslash run precedes another character: the two
+ * rules give the same verdict at all but 188, and every one of the 188 is the
+ * scan exempting where the substituter substitutes, never the reverse. The
+ * scan reports them in the artifact count rather than hiding them. The
+ * reverse, which would refuse an export over a match nobody made, is 0.
+ *
+ * Exported so the residual scan cannot drift from the substituter.
+ */
+export function startsOnEscapeBody(s, at, eitherLayer = false) {
+  if (at === 0 || !ESCAPE_BODY_RE.test(s[at] ?? '')) return false;
+  let run = 0;
+  for (let j = at - 1; j >= 0 && s[j] === '\\'; j -= 1) run += 1;
+  if (run % 2 !== 1 && !(eitherLayer && run % 4 === 2)) return false;
+  return escapeBearing(s);
 }
 
 /**
