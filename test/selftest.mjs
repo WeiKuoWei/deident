@@ -8575,6 +8575,137 @@ const FIXTURES = [
     );
   }],
 
+  // F200 to F203 all come from one leak, found by reading the bytes of a
+  // shipped archive rather than by this suite: `sessions.attachment:
+  // attachment.queued_command:prompt.image:source.base64:data` carried 13
+  // images, 2.7 MB, in full. `retainAttachment` copied `att.prompt` into the
+  // output verbatim, so a block array reached the recipient without
+  // BLOCK_DECISIONS ever being consulted. The suite was green throughout,
+  // because every fixture that reads BLOCK_DECISIONS reaches it down the
+  // message path, and this was the other path.
+  //
+  // A queued command is a prompt the person typed while the agent was busy. It
+  // carries exactly what a message carries, screenshots included, and no
+  // reader ever sees it: the candidates file is built from prose.
+  ['F200', 'an image pasted into a queued command ships a placeholder, not its base64', () => {
+    const ctx = newRetentionContext((u) => u);
+    const kept = retainRecord(
+      {
+        type: 'attachment',
+        uuid: '11111111-2222-3333-4444-555555555555',
+        sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+        timestamp: '2026-08-20T10:00:00.000Z',
+        attachment: {
+          type: 'queued_command',
+          // The live shape: a content-block array, the same one `message.content`
+          // holds. `iVBORw0KGgo` is the base64 prefix of every PNG, which is what
+          // was grepped for in the shipped zip.
+          prompt: [
+            { type: 'text', text: 'why does this dashboard say that' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgoSECRET' } },
+          ],
+        },
+      },
+      ctx,
+      { file: 'a.jsonl', line: 1 },
+    );
+
+    assert.equal(kept.keep, true, 'the record still carries the typed prose');
+    const json = JSON.stringify(kept.record);
+    assert.ok(!json.includes('iVBORw0KGgo'), `the base64 shipped: ${json}`);
+    assert.deepEqual(
+      kept.record.attachment.prompt,
+      [
+        { type: 'text', text: 'why does this dashboard say that' },
+        { type: 'image', redacted: 'replaced with a placeholder' },
+      ],
+      'the placeholder BLOCK_DECISIONS specifies for `image`, not the block',
+    );
+    // The manifest and the terminal report this number. Un-counted images are
+    // an under-report of what was withheld, which is the half of the bug a
+    // reader could otherwise never notice.
+    assert.equal(ctx.stats.images, 1, 'the image counter did not see it');
+  }],
+
+  ['F201', 'an unknown block type inside a queued command refuses, as it does in a message', () => {
+    // I7 held on one of the two paths. A block type nobody has reviewed is the
+    // case BRIEF §4.4 exists for, and arriving inside `prompt` rather than
+    // inside `message.content` is not a reason to guess about it.
+    const ctx = newRetentionContext((u) => u);
+    assert.throws(
+      () =>
+        retainRecord(
+          { type: 'attachment', attachment: { type: 'queued_command', prompt: [{ type: 'hologram' }] } },
+          ctx,
+          null,
+        ),
+      (err) => err instanceof RefusalError && /hologram/.test(err.reason),
+      'the same block refuses on the message path; F15 asserts that',
+    );
+  }],
+
+  ['F202', 'a queued command given as a plain string is kept, and an empty one is dropped', () => {
+    // `message.content` is a block array OR a string, and `prompt` inherits
+    // both shapes from the one dispatch. The string form must not fall out of
+    // the export, which is the bug the message path already had once.
+    const ctx = newRetentionContext((u) => u);
+    const rec = (prompt) => ({
+      type: 'attachment',
+      uuid: '11111111-2222-3333-4444-555555555555',
+      sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+      timestamp: '2026-08-20T10:00:00.000Z',
+      attachment: { type: 'queued_command', prompt },
+    });
+
+    const kept = retainRecord(rec('run the tests again'), ctx, null);
+    assert.equal(kept.keep, true, 'a string prompt fell out of the export');
+    assert.deepEqual(kept.record.attachment.prompt, [{ type: 'text', text: 'run the tests again' }]);
+
+    // An empty prompt, and a prompt whose every block was dropped, are the
+    // same nothing an absent `prompt` was: the record is dropped, not kept as
+    // an empty shell for the residual scan to walk.
+    assert.equal(retainRecord(rec([]), ctx, null).keep, false, 'an empty block array became a shell');
+    assert.equal(retainRecord(rec(''), ctx, null).keep, false, 'an empty string became a shell');
+    assert.equal(
+      retainRecord(rec([{ type: 'redacted_thinking', data: 'x' }]), ctx, null).keep,
+      false,
+      'a prompt of nothing but dropped blocks became a shell',
+    );
+  }],
+
+  ['F203', 'a queued command gets the same path and injection stripping prose gets', () => {
+    // The third class the verbatim copy let through, and the one no later pass
+    // covers: substitution rewrites entity SPELLINGS, and `private` is a
+    // deny-list token, not an entity. Nothing downstream of retain looks at
+    // denied paths at all, so this text reached the zip.
+    const ctx = newRetentionContext((u) => u);
+    const kept = retainRecord(
+      {
+        type: 'attachment',
+        uuid: '11111111-2222-3333-4444-555555555555',
+        sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+        timestamp: '2026-08-20T10:00:00.000Z',
+        attachment: {
+          type: 'queued_command',
+          prompt: [
+            {
+              type: 'text',
+              text: `open C:${BS}Users${BS}dev${BS}private${BS}payroll.md <system-reminder>memory index</system-reminder>`,
+            },
+          ],
+        },
+      },
+      ctx,
+      null,
+    );
+
+    const text = kept.record.attachment.prompt[0].text;
+    assert.ok(!text.includes('payroll'), `a deny-listed path shipped in a queued command: ${text}`);
+    assert.ok(!text.includes('memory index'), `an injected span shipped in a queued command: ${text}`);
+    assert.equal(ctx.stats.deniedPaths, 1, 'the withheld path was not counted');
+    assert.ok(ctx.stats.injectedBytesDropped > 0, 'the injected bytes were not counted');
+  }],
+
   ['F199', 'the fixture count in README is the number of fixtures', () => {
     // Gone stale five times in two days, every time caught by a person
     // reading rather than by the suite, and every time in a document whose
