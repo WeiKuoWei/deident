@@ -14,6 +14,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
+import { loadSchema } from '../src/retain/schema.mjs';
 import { expandVariants, looseVariants, squashedForm, isCjkOnly, backslashUEscape } from '../src/entities/variants.mjs';
 import { hanVariants, foldTable } from '../src/entities/hanfold.mjs';
 import {
@@ -9621,6 +9622,143 @@ const FIXTURES = [
       String(caught.message).includes(invented),
       `the refusal does not name the type: ${caught.message}`,
     );
+  }],
+
+  ['F219', 'the reviewed decisions this corpus depended on are the ones the schema ships', () => {
+    // F219 was originally written as deepEqual(RETENTION_TABLE, schema data),
+    // which cannot fail: after the extraction the table IS the data, so it
+    // asserted the mechanism rather than the property. Replaced with the
+    // decisions themselves. Editing any of these in schemas/ now fails here,
+    // which is the point -- they were each argued for, and a silent flip is
+    // how a reviewed drop turns back into a keep.
+    const s = loadSchema('claude-code');
+    const expected = [
+      ['recordTypes', 'user', 'keep'],
+      ['recordTypes', 'assistant', 'keep'],
+      ['recordTypes', 'attachment', 'keep'],
+      ['recordTypes', 'custom-title', 'drop'],
+      ['recordTypes', 'history-suppression', 'drop'],
+      ['recordTypes', 'cost-state', 'drop'],
+      ['recordTypes', 'ai-title', 'drop'],
+      ['attachmentTypes', 'directory', 'drop'],
+      ['attachmentTypes', 'pdf_reference', 'drop'],
+      ['attachmentTypes', 'already_read_file', 'drop'],
+      ['attachmentTypes', 'plan_mode_exit', 'drop'],
+      ['attachmentTypes', 'hook_non_blocking_error', 'drop'],
+      ['systemSubtypes', 'compact_boundary', 'keep'],
+      ['systemSubtypes', 'away_summary', 'drop'],
+      ['systemSubtypes', 'bridge_status', 'drop'],
+      ['contentBlocks', 'fallback', 'drop'],
+    ];
+    for (const [section, name, decision] of expected) {
+      assert.equal(s[section][name], decision, `${section}.${name} should be ${decision}, schema says ${JSON.stringify(s[section][name])}`);
+    }
+  }],
+
+  ['F220', 'an unknown type is still refused after the vocabulary became data', () => {
+    // The property the extraction must not cost. Moving the vocabulary out of
+    // code is only acceptable while a name nobody decided still refuses rather
+    // than being guessed, so it is asserted against the enforcement path
+    // itself and not against the loader.
+    const ctx = newRetentionContext((u) => u);
+    const invented = 'zz-a-type-no-schema-ships';
+    assert.equal(RETENTION_TABLE.topLevel[invented], undefined, 'this fixture needs an unshipped type');
+    assert.throws(
+      () => retainRecord({ type: invented, sessionId: 's1' }, ctx, { file: 'a.jsonl', line: 1 }),
+      (err) => String(err.message).includes(invented),
+      'an unshipped record type was accepted, or the refusal did not name it',
+    );
+  }],
+
+  ['F221', 'every decision in a schema file is one deident acts on, and a typo refuses at load', () => {
+    // A schema is data now, so a misspelled decision is a data error rather
+    // than a syntax error, and would otherwise read as reviewed while
+    // refusing at export time.
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const dir = path.join(repo, 'schemas', 'claude-code');
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+    assert.ok(files.length > 0, 'no schema files ship for claude-code');
+    const allowed = {
+      recordTypes: ['keep', 'drop', 'drop-after-use'],
+      attachmentTypes: ['keep', 'drop'],
+      systemSubtypes: ['keep', 'drop'],
+      contentBlocks: ['keep', 'drop', 'drop-counted', 'shape-only'],
+    };
+    for (const f of files) {
+      const doc = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+      for (const [section, ok] of Object.entries(allowed)) {
+        for (const [name, decision] of Object.entries(doc[section] ?? {})) {
+          assert.ok(ok.includes(decision), `${f}: ${section}.${name} is ${JSON.stringify(decision)}`);
+        }
+      }
+    }
+  }],
+
+  ['F222', 'the rationale block explains decisions that exist, and nothing that does not', () => {
+    // The prose that used to sit above each literal moved into the data. A
+    // rationale for a name nobody ships is a leftover from a decision that was
+    // reverted, and reads as though the type is still handled.
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const dir = path.join(repo, 'schemas', 'claude-code');
+    const s = loadSchema('claude-code');
+    const live = { recordTypes: s.recordTypes, attachmentTypes: s.attachmentTypes,
+                   systemSubtypes: s.systemSubtypes, contentBlocks: s.contentBlocks };
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.json'))) {
+      const doc = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+      for (const key of Object.keys(doc.rationale ?? {})) {
+        const dot = key.indexOf('.');
+        const section = key.slice(0, dot);
+        const name = key.slice(dot + 1);
+        assert.ok(live[section] !== undefined, `${f}: rationale names an unknown section ${section}`);
+        assert.ok(live[section][name] !== undefined, `${f}: rationale explains ${key}, which no schema file decides`);
+      }
+    }
+  }],
+
+  ['F223', 'two version files that disagree about one name refuse, rather than letting file order decide', () => {
+    // Versions UNION rather than supersede, because logs are historical. That
+    // makes disagreement ambiguous instead of resolvable, so it must refuse.
+    // Tested against a temporary root: a deliberately broken file under
+    // schemas/ would refuse at import and take the whole suite with it.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'deident-schema-'));
+    const dir = path.join(root, 'claude-code');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '2026-01.json'), JSON.stringify({ agent: 'claude-code', version: '2026-01', recordTypes: { user: 'keep' } }));
+    fs.writeFileSync(path.join(dir, '2026-02.json'), JSON.stringify({ agent: 'claude-code', version: '2026-02', recordTypes: { user: 'keep' } }));
+    assert.equal(loadSchema('claude-code', null, root).recordTypes.user, 'keep', 'agreeing files should union');
+
+    fs.writeFileSync(path.join(dir, '2026-02.json'), JSON.stringify({ agent: 'claude-code', version: '2026-02', recordTypes: { user: 'drop' } }));
+    assert.throws(
+      () => loadSchema('claude-code', null, root),
+      (err) => String(err.message).includes('user'),
+      'contradicting version files did not refuse, or the refusal did not name the type',
+    );
+    fs.rmSync(root, { recursive: true, force: true });
+  }],
+
+  ['F224', 'a local overlay may decide a name nobody shipped, and may never override one that was', () => {
+    // The overlay is how somebody unblocks themselves the day a new record
+    // type ships. It must not become a way to quietly reverse a reviewed
+    // decision from a file outside the repository.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'deident-overlay-'));
+    const dir = path.join(root, 'claude-code');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '2026-01.json'), JSON.stringify({ agent: 'claude-code', version: '2026-01', recordTypes: { user: 'keep' } }));
+
+    const add = path.join(root, 'add.json');
+    fs.writeFileSync(add, JSON.stringify({ recordTypes: { 'brand-new-type': 'drop' } }));
+    const widened = loadSchema('claude-code', add, root);
+    assert.equal(widened.recordTypes['brand-new-type'], 'drop', 'the overlay did not supply a new decision');
+    assert.equal(widened.recordTypes.user, 'keep', 'the overlay disturbed a shipped decision');
+
+    const override = path.join(root, 'override.json');
+    fs.writeFileSync(override, JSON.stringify({ recordTypes: { user: 'drop' } }));
+    assert.throws(
+      () => loadSchema('claude-code', override, root),
+      (err) => String(err.message).includes('user'),
+      'an overlay silently overrode a shipped decision',
+    );
+    fs.rmSync(root, { recursive: true, force: true });
   }],
 
 ];

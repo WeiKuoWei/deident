@@ -9,6 +9,7 @@
 // Counts in the comments were measured over the full depth-0 corpus.
 
 import { RefusalError } from '../cli/errors.mjs';
+import { loadSchema, schemaOverlayPath } from './schema.mjs';
 import { userDenyTokens, userDenyPatterns } from '../policy/userdeny.mjs';
 import { retainToolUseResult, distillToolResult, lineCount } from './toolresult.mjs';
 import {
@@ -29,155 +30,39 @@ import {
 
 // PLAN §3.1. DROP-AFTER-USE types are consumed by cwdtrack at step 4 and
 // dropped here at step 7; the ordering is load-bearing (PLAN §2).
-const TOP_LEVEL = Object.freeze({
-  assistant: 'keep',
-  user: 'keep',
-  attachment: 'keep',
-  'last-prompt': 'keep',
-  mode: 'keep',
-  'queue-operation': 'keep',
-  system: 'keep',
-  'permission-mode': 'drop',
-  'bridge-session': 'drop',
-  'ai-title': 'drop',
-  'file-history-snapshot': 'drop',
-  'file-history-delta': 'drop',
-  'atis-latch': 'drop',
-  'agent-name': 'drop',
-  'agent-setting': 'drop',
-  'frame-link': 'drop',
-  'pr-link': 'drop',
-  relocated: 'drop-after-use',
-  'worktree-state': 'drop-after-use',
+// The retention VOCABULARY -- which record types, attachment types, system
+// subtypes and content blocks exist, and what was decided about each -- now
+// lives in schemas/<agent>/*.json as versioned data. src/retain/schema.mjs
+// explains why, and states the fail-closed guarantee this deliberately does
+// not touch: a name in no schema file and no overlay is still refused.
+//
+// The DECISIONS stay here. What "keep" or "drop-after-use" actually does to a
+// record is behaviour, and behaviour belongs in code.
+//
+// The prose that used to sit above each literal, explaining WHY a type was
+// dropped, moved into the schema file's `rationale` block so the reason
+// travels with the decision instead of with the code that reads it.
+const SCHEMA = loadSchema('claude-code', schemaOverlayPath());
+const namesWith = (obj, decision) =>
+  Object.entries(obj).filter(([, d]) => d === decision).map(([name]) => name);
 
-  // These two did not exist when BRIEF §4.4 was written. They appeared in the
-  // live corpus DURING the acceptance run and were caught by I7, the refusal
-  // is the mechanism working, not a defect in it.
-  //
-  // Both are artifact-comment bookkeeping and neither carries a user turn.
-  // `artifact-comment-monitor` holds an artifact uuid, its human title and a
-  // millisecond stamp. `artifact-autoreact-ledger` holds `accountUuid`, and on
-  // the development machine that was the SAME account uuid that §F5 names as
-  // the identifier no detector matches, arriving on a record
-  // type the brief never saw. Dropping `bridge-session` alone would no longer
-  // have been enough.
-  'artifact-comment-monitor': 'drop',
-  'artifact-autoreact-ledger': 'drop',
-
-  // Three more that appeared in a live corpus after the two above, caught by
-  // the same refusal. Measured over 261 depth-0 sessions: custom-title 12,319
-  // records, history-suppression 412, cost-state 6.
-  //
-  // `custom-title` is `{customTitle, sessionId}` and customTitle is written by
-  // the HUMAN, so it is the one of the three that can carry a client name or a
-  // person. `ai-title` is already dropped for the machine-written equivalent;
-  // a hand-typed title is strictly more identifying, not less.
-  //
-  // `history-suppression` is `{sessionId, cause, ts}` where cause is a token
-  // such as `fork_inherit`. No user text.
-  //
-  // `cost-state` is per-session bookkeeping: totalCostUSD, the tool durations,
-  // totalLinesAdded/Removed, a modelUsage map and `startTime` as a raw
-  // millisecond epoch. The line counts are tempting -- they are the same
-  // measurement §4.1 reconstructs from structuredPatch -- but startTime alone
-  // would reinstate to the millisecond exactly what quantise() spent the
-  // timestamp budget removing, so the record is dropped whole rather than
-  // filtered. Admitting the counts is a separate decision with its own review.
-  'custom-title': 'drop',
-  'history-suppression': 'drop',
-  'cost-state': 'drop',
-});
+const TOP_LEVEL = SCHEMA.recordTypes;
 
 // PLAN §3.2. Only three of the 26 carry user text.
-const ATTACHMENT_KEEP = Object.freeze(['queued_command', 'edited_text_file', 'file']);
-const ATTACHMENT_DROP = Object.freeze([
-  'total_tokens_reminder',
-  'hook_additional_context',
-  'hook_success',
-  'task_reminder',
-  'output_style',
-  'skill_listing',
-  'goal_status',
-  'deferred_tools_delta',
-  'ultra_effort_enter',
-  'mcp_instructions_delta',
-  'agent_listing_delta',
-  'command_permissions',
-  'date_change',
-  'async_hook_response',
-  'auto_mode',
-  'nested_memory',
-  'compact_file_reference',
-  'read_truncation_notice',
-  'invoked_skills',
-  'hook_system_message',
-  'hook_cancelled',
-  'workflow_size_guideline_change',
-  'dynamic_skill',
-
-  // Eight more from the same live corpus that produced the three top-level
-  // additions. None carries a user turn; several carry identity, which is why
-  // they are dropped rather than left to the reader.
-  //
-  // `directory` is a listing: a path plus the FILE NAMES under it, which is
-  // the client and project vocabulary in its most concentrated form.
-  // `pdf_reference` and `already_read_file` are absolute paths plus a
-  // displayPath; the pdf_reference measured here named a client solicitation document
-  // in the filename alone. `plan_mode_exit` is a plan file path.
-  // `hook_non_blocking_error` carries up to a kilobyte of raw stderr plus the
-  // command line that produced it. `task_status` carries a model-written
-  // description and deltaSummary of the work -- prose, but not the user's.
-  // `workflow_keyword_request` and `ultra_effort_exit` are bare markers with
-  // no payload at all and are dropped for consistency, not for risk.
-  'directory',
-  'task_status',
-  'hook_non_blocking_error',
-  'workflow_keyword_request',
-  'ultra_effort_exit',
-  'pdf_reference',
-  'already_read_file',
-  'plan_mode_exit',
-]);
+const ATTACHMENT_KEEP = Object.freeze(namesWith(SCHEMA.attachmentTypes, 'keep'));
+const ATTACHMENT_DROP = Object.freeze(namesWith(SCHEMA.attachmentTypes, 'drop'));
 
 // PLAN §3.1 row 9: keep compact_boundary only. away_summary is prose naming
 // third parties who never consented (§F2) and is dropped even though it is
 // user-adjacent.
-const SYSTEM_KEEP = Object.freeze(['compact_boundary']);
-const SYSTEM_DROP = Object.freeze([
-  'stop_hook_summary',
-  'turn_duration',
-  'away_summary',
-  'informational',
-  'local_command',
-  'scheduled_task_fire',
-  'model_consent_fallback',
-  'model_refusal_fallback',
-
-  // `bridge_status` is the /remote-control banner. Its `content` is prose, but
-  // the record also carries a live `https://claude.ai/code/session_...` URL
-  // naming an account-scoped session id -- an identifier of exactly the class
-  // §F5 names as the one no detector matches, arriving on a subtype the plan
-  // never listed. Dropped whole.
-  'bridge_status',
-]);
+const SYSTEM_KEEP = Object.freeze(namesWith(SCHEMA.systemSubtypes, 'keep'));
+const SYSTEM_DROP = Object.freeze(namesWith(SCHEMA.systemSubtypes, 'drop'));
 
 // `shape-only` is a third decision beside keep and drop, and it exists for one
 // block type. Calling it `keep` would put a reviewed decision in this table
 // that no longer describes what happens: the block survives and its payload
 // does not. See retainBlock's tool_result case for the measurement.
-const BLOCK_DECISIONS = Object.freeze({
-  tool_result: 'shape-only',
-  tool_use: 'keep',
-  thinking: 'keep',
-  redacted_thinking: 'drop',
-  text: 'keep',
-  image: 'drop-counted',
-  document: 'drop-counted',
-  // A model-fallback marker, `{from:{model}, to:{model}}`. No text, no
-  // identifier; it is here because an unreviewed block type refuses the export
-  // and this one has now been reviewed.
-  fallback: 'drop',
-});
+const BLOCK_DECISIONS = SCHEMA.contentBlocks;
 
 /**
  * The prose half of the two tables above: which fields of a RETAINED record

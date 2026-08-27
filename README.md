@@ -147,7 +147,40 @@ edits have added > 0 with net == 0 (BRIEF §4.2).
 
 ## Development
 
-`node deident.js --selftest` runs 215 fixtures on plain `node:assert`, no framework,
+## The retention schema
+
+What deident keeps is decided per record type, and those decisions live in `schemas/<agent>/`
+as versioned JSON rather than in the code that reads them.
+
+```
+schemas/
+  claude-code/
+    2026-08.json      recordTypes, attachmentTypes, systemSubtypes, contentBlocks
+                      + a rationale block saying why each drop was a drop
+```
+
+Three rules:
+
+- **A name in no schema file is refused, never guessed.** Moving the vocabulary out of code does
+  not widen what deident accepts on its own. It changes who can record a decision, and how fast.
+- **Version files union, they do not supersede.** Logs are historical: a corpus written last
+  quarter still contains the types that existed then, so a loader that took only the newest file
+  would start refusing records it used to handle. Two files disagreeing about one name is a
+  contradiction and refuses at load.
+- **Agents are separate directories.** Adding Codex or Cursor is a directory plus a reader rather
+  than a rewrite. Neither is read yet — they write a different layout.
+
+If a new release adds a record type before deident ships a decision for it, record one yourself in
+`~/.deident-private/schema-overlay.json`, in the same shape as a version file. An overlay may
+supply the FIRST decision for a name; it may never override one that shipped.
+
+```json
+{ "recordTypes": { "some-new-type": "drop" } }
+```
+
+`deident types` lists everything in your corpus that has no decision yet.
+
+`node deident.js --selftest` runs 221 fixtures on plain `node:assert`, no framework,
 in `test/selftest.mjs`; each catches a specific bug, named in the fixture. Section
 numbers in the source refer to `BRIEF.md` and `PLAN.md`. Never commit a session log,
 an export, a preview diff or the salt; `.gitignore` covers all of them.
