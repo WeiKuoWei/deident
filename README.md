@@ -8,7 +8,8 @@ Slice 1, Claude Code logs only, depth-0 sessions only, MIT licensed.
 
 **The promise.** Every byte in the archive is either a value from a vocabulary this
 tool defines in its own source, or a line of prose a person read on screen. The one
-exception is your tool call parameters, 16.3% of the archive.
+exception is your tool call parameters: 12.2% and 16.3% of the archive on the two
+corpora measured so far, and the export prints the figure for yours.
 
 **The cost, plainly.** A consumer whose scoring reads tool result CONTENT gets
 less than it did. Results leave as shape alone, so a pipeline that greps result
@@ -108,7 +109,9 @@ mandatory](docs/design-rationale.md#the-semantic-pass-is-mandatory)).
 
 `review.md` (raw paths and workspace names), `deident-candidates.txt` (prose the
 semantic pass has not seen yet), `known-values.json` (what you declared as your
-own), `export-map.txt` (real session ids against archive entries), and
+own), `export-map.txt` (real session ids against archive entries),
+`deident-preview-<date>.diff` (the original text beside the redacted text, written
+into the output directory, so move it before you send that directory), and
 `~/.deident-private/occurrences.json`, the most re-identifying thing deident writes,
 which pairs every pseudonym with its real text and so backs `review --entity
 PERSON_11`, the only way to tell a name replaced 991 times from an ordinary word.
