@@ -1390,6 +1390,57 @@ const FIXTURES = [
     }
   }],
 
+  // F215, the fourth `file` attachment shape, and the first that is not text.
+  // A pasted PDF is `{type:'pdf', file:{filePath, base64, originalSize}}`: the
+  // same box as the string form, no `.content` at all, so unwrap returned the
+  // box and retainContent refused it -- "a file attachment content that is
+  // neither an array nor a string (object)". Measured on a live corpus: one
+  // 206 KB client solicitation document, 274,964 base64 characters, and the export
+  // stopped dead on it.
+  //
+  // The bytes are a pasted document whichever box they arrive in, and
+  // `document: 'drop-counted'` is already the reviewed decision for that. So
+  // the assertion is not "it exports" -- it is that the body is COUNTED and
+  // NOT SHIPPED, which is what README promises about pasted documents.
+  ['F215', 'a pasted PDF attachment is counted and placeheld, not refused and not shipped', () => {
+    const ctx = newRetentionContext((u) => u);
+    const body = 'JVBERi0xLjYNJeLjz9MN' + 'A'.repeat(500);
+    const rec = {
+      type: 'attachment',
+      uuid: '00000000-0000-4000-8000-000000000001',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      timestamp: '2026-08-20T10:11:12.345Z',
+      cwd: '/w',
+      attachment: {
+        type: 'file',
+        filename: '/w/solicitation.pdf',
+        content: { type: 'pdf', file: { filePath: '/w/solicitation.pdf', base64: body, originalSize: 206223 } },
+        displayPath: 'solicitation.pdf',
+      },
+    };
+
+    const out = retainRecord(rec, ctx, null);
+    assert.equal(out.keep, true, 'the attachment must survive as a placeholder, not refuse the export');
+    const blocks = out.record.attachment.content;
+    assert.equal(blocks.length, 1, 'one block');
+    assert.equal(blocks[0].type, 'document');
+    assert.ok(!('source' in blocks[0]), 'the source must be gone, not merely shortened');
+    assert.equal(blocks[0].redacted, 'replaced with a placeholder');
+
+    // Counted, so the manifest can state what was withheld.
+    assert.ok(ctx.stats.documents > 0, 'the document must be counted');
+
+    // And the body does not reach the export in any form.
+    assert.ok(!JSON.stringify(out.record).includes(body.slice(0, 40)), 'the base64 body must not survive');
+
+    // A box with neither .content nor .base64 is still a shape nobody reviewed.
+    assert.throws(
+      () => retainRecord({ ...rec, attachment: { ...rec.attachment, content: { type: 'zip', file: { filePath: '/w/x.zip' } } } }, newRetentionContext((u) => u), null),
+      /neither an array nor a string/,
+      'an unreviewed box must still refuse',
+    );
+  }],
+
   ['F35', 'the serialized-form scan catches an escaped CJK entity (§4.6)', () => {
     const t = buildTable([entity('P1', 'person', '林大明', 'PERSON_1')]);
     // JSON.stringify does not escape CJK by default, so the decoded form is

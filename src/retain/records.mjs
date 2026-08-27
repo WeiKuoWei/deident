@@ -831,8 +831,36 @@ const nullIfEmpty = (blocks) => (blocks.length === 0 ? null : blocks);
  * name rather than unwrapped on a guess.
  */
 function unwrap(value) {
-  const inner = value === null || typeof value !== 'object' ? undefined : value.file?.content;
-  return inner === undefined ? value : inner;
+  if (value === null || typeof value !== 'object') return value;
+  const inner = value.file?.content;
+  if (inner !== undefined) return inner;
+
+  // The fourth shape, and it is not a text file. A pasted PDF arrives as
+  // `{type:'pdf', file:{filePath, base64, originalSize}}`: same box as the
+  // string form above, but the payload is a base64 body and there is no
+  // `.content` at all, so the line above returned the box and retainContent
+  // refused it by name -- "a file attachment content that is neither an array
+  // nor a string (object)". Measured: one 206 KB PDF, 274,964 base64
+  // characters, and the export stopped on it.
+  //
+  // Refusing is the wrong answer because deident already HAS a reviewed
+  // decision for this exact payload: `document: 'drop-counted'`, which is what
+  // README means by "Dropped: all pasted documents". The bytes are a document
+  // whichever box they arrive in. So the box is converted to the block the
+  // dispatch already knows, and F207's counted-not-shipped guarantee covers it
+  // without a second code path to keep in step.
+  //
+  // A box with neither `.content` nor `.base64` still refuses: a shape nobody
+  // has looked at is not a shape to guess at.
+  const base64 = value.file?.base64;
+  if (typeof base64 === 'string') {
+    const kind = typeof value.type === 'string' ? value.type : 'document';
+    return [{
+      type: 'document',
+      source: { type: 'base64', media_type: kind === 'pdf' ? 'application/pdf' : 'application/octet-stream', data: base64 },
+    }];
+  }
+  return value;
 }
 
 /**
