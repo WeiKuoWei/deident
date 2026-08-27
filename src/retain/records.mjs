@@ -63,6 +63,29 @@ const TOP_LEVEL = Object.freeze({
   // have been enough.
   'artifact-comment-monitor': 'drop',
   'artifact-autoreact-ledger': 'drop',
+
+  // Three more that appeared in a live corpus after the two above, caught by
+  // the same refusal. Measured over 261 depth-0 sessions: custom-title 12,319
+  // records, history-suppression 412, cost-state 6.
+  //
+  // `custom-title` is `{customTitle, sessionId}` and customTitle is written by
+  // the HUMAN, so it is the one of the three that can carry a client name or a
+  // person. `ai-title` is already dropped for the machine-written equivalent;
+  // a hand-typed title is strictly more identifying, not less.
+  //
+  // `history-suppression` is `{sessionId, cause, ts}` where cause is a token
+  // such as `fork_inherit`. No user text.
+  //
+  // `cost-state` is per-session bookkeeping: totalCostUSD, the tool durations,
+  // totalLinesAdded/Removed, a modelUsage map and `startTime` as a raw
+  // millisecond epoch. The line counts are tempting -- they are the same
+  // measurement §4.1 reconstructs from structuredPatch -- but startTime alone
+  // would reinstate to the millisecond exactly what quantise() spent the
+  // timestamp budget removing, so the record is dropped whole rather than
+  // filtered. Admitting the counts is a separate decision with its own review.
+  'custom-title': 'drop',
+  'history-suppression': 'drop',
+  'cost-state': 'drop',
 });
 
 // PLAN §3.2. Only three of the 26 carry user text.

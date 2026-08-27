@@ -494,6 +494,48 @@ function setTier(reviewPath, name, tier) {
 
 // ----------------------------------------------------------------- suite
 
+/**
+ * The nesting depth at which THIS runtime exhausts the stack on a JSON
+ * round-trip, or null if none up to the bound does.
+ *
+ * F66 and F74 hard-coded 6,000, which made them a test of the runtime rather
+ * than of deident. Measured on the development machine:
+ *
+ *   depth    node 18.17.0            node 24.10.0
+ *   1,500    parse ok / stringify ok  parse ok / stringify ok
+ *   6,000    parse ok / stringify RangeError  parse ok / stringify ok
+ *   20,000   parse ok / stringify RangeError  parse ok / stringify RangeError
+ *
+ * JSON.parse never overflows on either -- V8 parses iteratively. JSON.stringify
+ * is the recursive half, and its threshold MOVED between the two. So both
+ * fixtures failed on node 24 with "expected a ReadError, got null" while the
+ * code they guard was untouched and correct.
+ *
+ * Discovering the depth keeps the fixture pinned to the behaviour instead of to
+ * one V8 version. reader.mjs catches RangeError from BOTH JSON.parse and the
+ * round-trip JSON.stringify and turns either into the same nestingError, so a
+ * depth found this way exercises the branch that is reachable here.
+ */
+function stackOverflowDepth(limit = 512000) {
+  for (let depth = 4000; depth <= limit; depth *= 2) {
+    const nested = '{"n":'.repeat(depth) + '1' + '}'.repeat(depth);
+    try {
+      JSON.stringify(JSON.parse(nested));
+    } catch (err) {
+      if (err instanceof RangeError) return depth;
+      throw err;
+    }
+  }
+  return null;
+}
+
+/** The nested payload at that depth, plus the depth, or null. */
+function deeplyNested() {
+  const depth = stackOverflowDepth();
+  if (depth === null) return null;
+  return { depth, json: '{"n":'.repeat(depth) + '1' + '}'.repeat(depth) };
+}
+
 const FIXTURES = [
   // F01, BRIEF §4.5 row 1. Python \b MISSES this; Node \b happens to hit it.
   // The regression guard is against anyone "simplifying" the lookaround back
@@ -1249,6 +1291,46 @@ const FIXTURES = [
       const out = retainRecord(rec, ctx, null);
       assert.equal(out.keep, false, `${rec.type} must be dropped`);
       assert.equal(out.record, null);
+    }
+  }],
+
+  // F213, three more record types arrived in a live corpus after F36's two,
+  // and each one refuses the whole export until it has a reviewed decision.
+  // Measured over 261 depth-0 sessions: custom-title 12,319 records,
+  // history-suppression 412, cost-state 6.
+  //
+  // custom-title is the one that matters. `customTitle` is typed by the HUMAN,
+  // so unlike the machine-written `ai-title` beside it in the drop table it can
+  // carry a client, a person or a project nobody has named anywhere else in the
+  // session. cost-state carries `startTime` as a raw millisecond epoch, which
+  // would put back to the millisecond exactly what quantise() removes from
+  // every other timestamp.
+  ['F213', 'the three post-F36 record types are dropped, human-typed title and raw epoch and all', () => {
+    const ctx = newRetentionContext((u) => u);
+    const records = [
+      // Fabricated values, real shapes.
+      { type: 'custom-title', customTitle: 'acme-q3-pricing', sessionId: 's' },
+      { type: 'history-suppression', sessionId: 's', cause: 'fork_inherit', ts: '2026-08-21T07:33:48.127Z' },
+      {
+        type: 'cost-state',
+        sessionId: 's',
+        totalCostUSD: 12.5,
+        totalLinesAdded: 640,
+        totalLinesRemoved: 21,
+        modelUsage: {},
+        startTime: 1787705144708,
+      },
+    ];
+    for (const rec of records) {
+      const out = retainRecord(rec, ctx, null);
+      assert.equal(out.keep, false, `${rec.type} must be dropped`);
+      assert.equal(out.record, null, `${rec.type} must emit no record`);
+    }
+
+    // The point of the drop: none of the three values reaches an export.
+    const serialized = JSON.stringify(records.map((rec) => retainRecord(rec, ctx, null).record));
+    for (const leaked of ['acme-q3-pricing', 'fork_inherit', '1787705144708']) {
+      assert.ok(!serialized.includes(leaked), `${leaked} must not survive`);
     }
   }],
 
@@ -2333,10 +2415,14 @@ const FIXTURES = [
   //, naming the wrong culprit and sending the user to file an issue about
   // their own file. Threshold measured between 1,500 (passes) and 3,000 (fails).
   ['F66', 'a record nested too deeply is a read error naming the line, not a bug report', () => {
+    const deep = deeplyNested();
+    assert.ok(
+      deep !== null,
+      'no nesting depth up to 512,000 exhausts this runtime\'s stack, so the branch this fixture guards is unreachable here and the fixture needs revisiting',
+    );
     const dir = tmpdir();
     const file = path.join(dir, 'deep.jsonl');
-    const depth = 6000;
-    const nested = '{"n":'.repeat(depth) + '1' + '}'.repeat(depth);
+    const nested = deep.json;
     fs.writeFileSync(
       file,
       `{"type":"user","uuid":"a","sessionId":"s","message":{"role":"user","content":[]},"toolUseResult":${nested}}` + NL,
@@ -2651,10 +2737,14 @@ const FIXTURES = [
   // branch ran BEFORE the skip branch. A remedy that cannot work is worse than
   // none (cli-ux §8), and there was no other route past the file.
   ['F74', '--skip-unreadable actually skips a record nested too deeply', () => {
+    const deep = deeplyNested();
+    assert.ok(
+      deep !== null,
+      'no nesting depth up to 512,000 exhausts this runtime\'s stack, so the branch this fixture guards is unreachable here and the fixture needs revisiting',
+    );
     const dir = tmpdir();
     const file = path.join(dir, 'deep.jsonl');
-    const depth = 6000;
-    const nested = '{"n":'.repeat(depth) + '1' + '}'.repeat(depth);
+    const nested = deep.json;
     fs.writeFileSync(
       file,
       [
