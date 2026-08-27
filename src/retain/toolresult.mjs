@@ -122,12 +122,14 @@ export function retainToolUseResult(toolUseResult) {
       : false;
 
   // `toolStats` is the SAME two counts under the names a consumer reads them
-  // by. Measured on a live 263-session corpus: the harness emits toolStats on
-  // 1 file in 300, so a consumer keying on it scores null for code work on
-  // essentially every session -- including the raw, un-de-identified ones.
-  // §4.1's structuredPatch reconstruction is strictly better data than the
-  // field it is filling, so emitting it here does not merely preserve the
-  // measurement, it supplies one that was almost never there.
+  // by. Measured 2026-08-27 over one machine's whole log tree -- 2,155 .jsonl
+  // files, 261 of them top-level sessions -- the harness emitted toolStats on
+  // ZERO of them, so a consumer keying on it scores null for code work on
+  // every session in that corpus, the raw un-de-identified ones included.
+  // One machine is not every machine: read this as "absent here", not as a
+  // claim about the format. §4.1's structuredPatch reconstruction is strictly
+  // better data than the field it is filling, so emitting it here does not
+  // merely preserve the measurement, it supplies one that was not there.
   //
   // Two integers, no new information: everything here is already published one
   // line below under deident's own names. Omitted entirely when the count is
