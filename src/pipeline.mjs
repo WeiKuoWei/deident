@@ -212,6 +212,109 @@ function checkOutDir(resolved) {
 
 // ------------------------------------------------------------------- scan
 
+/**
+ * `deident types` -- name every record shape in this corpus that has no
+ * reviewed decision, in one pass, before an export is attempted.
+ *
+ * Why this exists. An unknown type is a refusal by design (records.mjs, BRIEF
+ * section 4.4), and that is right: a silent drop is how the highest-value user
+ * turns get lost. But the refusal names ONE type, the one that happened to be
+ * reached first, and says nothing about how many more are behind it. On a
+ * corpus carrying thirteen unreviewed types that is thirteen sequential
+ * export attempts to discover a list this command prints in seconds. Measured
+ * 2026-08-27 on a 261-session corpus: four export passes were spent finding
+ * three of them one at a time.
+ *
+ * It reads RETENTION_TABLE, never its own copy of the vocabulary. A second
+ * copy of a decision list drifts from the first and then reports a type as
+ * reviewed that the export still refuses, which is worse than not having the
+ * command at all.
+ */
+export async function runTypes(flags, env) {
+  const corpus = resolveCorpus(env, flags.root);
+  const table = RETENTION_TABLE;
+
+  const known = {
+    topLevel: new Set(Object.keys(table.topLevel)),
+    attachment: new Set([...table.attachmentKeep, ...table.attachmentDrop]),
+    system: new Set([...table.systemKeep, ...table.systemDrop]),
+    block: new Set(Object.keys(table.blocks)),
+  };
+  const seen = { topLevel: new Map(), attachment: new Map(), system: new Map(), block: new Map() };
+
+  const note = (axis, value, file, line) => {
+    if (typeof value !== 'string' || value.length === 0) return;
+    if (!seen[axis].has(value)) seen[axis].set(value, { file, line, count: 0 });
+    seen[axis].get(value).count += 1;
+  };
+
+  let unreadable = 0;
+  let read = 0;
+  for (const entry of corpus.files) {
+    // corpus.files holds file OBJECTS, not paths. Reading the object coerced
+    // every path to "[object Object]", so every read threw and the command
+    // still printed "no unknown types" over a corpus it had never opened --
+    // a green built from zero measurements. The read counter below is what
+    // makes that shape impossible to print again.
+    const file = entry.path;
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); read += 1; } catch { unreadable += 1; continue; }
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim().length === 0) continue;
+      let rec;
+      try { rec = JSON.parse(lines[i]); } catch { continue; }
+      if (rec === null || typeof rec !== 'object') continue;
+      note('topLevel', rec.type, file, i + 1);
+      if (rec.type === 'attachment' && rec.attachment !== null && typeof rec.attachment === 'object') {
+        note('attachment', rec.attachment.type, file, i + 1);
+      }
+      if (Array.isArray(rec.attachments)) {
+        for (const a of rec.attachments) {
+          if (a !== null && typeof a === 'object') note('attachment', a.type, file, i + 1);
+        }
+      }
+      if (rec.type === 'system') note('system', rec.subtype, file, i + 1);
+      const content = rec.message === null || typeof rec.message !== 'object' ? null : rec.message.content;
+      if (Array.isArray(content)) {
+        for (const b of content) if (b !== null && typeof b === 'object') note('block', b.type, file, i + 1);
+      }
+    }
+  }
+
+  const axes = ['topLevel', 'attachment', 'system', 'block'].map((axis) => {
+    const unknown = [...seen[axis]]
+      .filter(([v]) => !known[axis].has(v))
+      .map(([value, at]) => ({ value, count: at.count, file: at.file, line: at.line }))
+      .sort((a, b) => b.count - a.count);
+    return { axis, distinct: seen[axis].size, reviewed: known[axis].size, unknown };
+  });
+
+  const unknownCount = axes.reduce((a, x) => a + x.unknown.length, 0);
+  const totalSeen = axes.reduce((a, x) => a + x.distinct, 0);
+
+  // A corpus that yielded no shapes at all did not pass; it was not measured.
+  // Reporting "every shape has a decision" from zero observations is the
+  // failure this refusal exists to prevent.
+  if (read > 0 && totalSeen === 0) {
+    throw new RefusalError(`read ${read} session files and found no records in any of them`, {
+      why: [
+        'Every file parsed to nothing, so this command measured no shapes at all.',
+        'Reporting a clean result from zero observations would be false.',
+      ],
+      remedies: [{ label: 'Report this', command: 'file an issue against deident' }],
+    });
+  }
+  const result = { files: corpus.files.length, read, unreadable, axes, unknownCount };
+
+  if (flags.json) {
+    report.machineAdd(result);
+    return unknownCount === 0 ? 0 : 1;
+  }
+  report.renderTypes(result);
+  return unknownCount === 0 ? 0 : 1;
+}
+
 export async function runScan(flags, env) {
   const outDir = resolveOutDir(flags);
   const saltDir = flags.saltDir ?? defaultSaltDir(env);

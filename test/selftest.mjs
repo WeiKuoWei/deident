@@ -9576,6 +9576,53 @@ const FIXTURES = [
     assert.ok(ctx.stats.injectedBytesDropped > 0, 'the injected bytes were not counted');
   }],
 
+  ['F217', 'every vocabulary the export enforces is published on RETENTION_TABLE, so a diagnostic cannot drift from it', () => {
+    // `deident types` answers "will an export refuse, and on what". It is only
+    // trustworthy while it reads the SAME tables retainRecord enforces. A
+    // second copy of a decision list drifts and then reports a type as
+    // reviewed that the export still refuses, which is worse than having no
+    // command at all. This fixture fails the moment a vocabulary is added to
+    // records.mjs without being published here.
+    for (const key of ['topLevel', 'attachmentKeep', 'attachmentDrop', 'systemKeep', 'systemDrop', 'blocks']) {
+      assert.ok(RETENTION_TABLE[key] !== undefined, `RETENTION_TABLE does not publish ${key}`);
+    }
+    const topLevel = Object.keys(RETENTION_TABLE.topLevel);
+    const blocks = Object.keys(RETENTION_TABLE.blocks);
+    assert.ok(topLevel.length > 0 && blocks.length > 0, 'a published vocabulary is empty');
+
+    // The decision for every published name must be one deident acts on. A
+    // typo'd decision reads as reviewed to the diagnostic and refuses at
+    // export.
+    const allowed = new Set(['keep', 'drop', 'drop-counted', 'drop-after-use']);
+    for (const [name, decision] of Object.entries(RETENTION_TABLE.topLevel)) {
+      assert.ok(allowed.has(decision), `top-level ${name} has decision ${JSON.stringify(decision)}, which is not one deident acts on`);
+    }
+  }],
+
+  ['F218', 'a type with no decision is refused rather than guessed, and the refusal names it', () => {
+    // The property `deident types` exists to make cheap to discover. Asserted
+    // here on the enforcement path itself, so the guarantee is the export's,
+    // not the diagnostic's: an unreviewed record type must refuse, and the
+    // refusal must NAME the type, or a reader cannot act on it.
+    const ctx = newRetentionContext((u) => u);
+    const invented = 'zz-not-a-real-record-type';
+    assert.ok(
+      RETENTION_TABLE.topLevel[invented] === undefined,
+      'this fixture needs a type deident has never seen',
+    );
+    let caught = null;
+    try {
+      retainRecord({ type: invented, sessionId: 's1' }, ctx, { file: 'a.jsonl', line: 3 });
+    } catch (err) {
+      caught = err;
+    }
+    assert.ok(caught !== null, 'an unknown record type was accepted instead of refused');
+    assert.ok(
+      String(caught.message).includes(invented),
+      `the refusal does not name the type: ${caught.message}`,
+    );
+  }],
+
 ];
 
 export function selftest() {

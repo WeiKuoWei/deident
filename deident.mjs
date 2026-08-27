@@ -74,6 +74,11 @@ export async function main(argv, env) {
             report.endMachine();
             return code;
           }
+          case 'types': {
+            const code = await pipeline.runTypes(opts.flags, env);
+            report.endMachine();
+            return code;
+          }
           default:
             // parseCliArgs already rejected anything else.
             report.renderUsage();

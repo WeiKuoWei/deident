@@ -6,7 +6,7 @@ import { UsageError } from './errors.mjs';
 import { DEFAULT_TRIAGE_CHARS, MAX_TRIAGE_CHARS } from '../policy/triage.mjs';
 import { CANDIDATE_BATCH_CHARS } from '../retain/constants.mjs';
 
-export const COMMANDS = Object.freeze(['scan', 'review', 'triage', 'export']);
+export const COMMANDS = Object.freeze(['scan', 'review', 'triage', 'export', 'types']);
 
 // flag -> {type, multiple?, commands}. `commands: null` means every command.
 const FLAGS = Object.freeze({
@@ -31,7 +31,7 @@ const FLAGS = Object.freeze({
   // An encoding of the values already in hand at each render call, not a
   // second code path. The settled operator is an agent, and the alternative is
   // parsing padded columns whose width is data-dependent.
-  json: { type: 'boolean', commands: ['scan', 'review', 'triage', 'export'] },
+  json: { type: 'boolean', commands: ['scan', 'review', 'triage', 'export', 'types'] },
   // triage writes a file for a reader, then reads that reader's answer back.
   // Two directions, one command, because they are one contract: the file states
   // the rubric the verdicts are judged against.

@@ -195,6 +195,7 @@ export function renderUsage() {
   say(`deident ${VERSION}: de-identify AI coding-agent session logs
 
   ${INVOCATION} scan      survey what is here and propose tiers. Writes review.md only.
+  ${INVOCATION} types     name every record shape here that has no decision. Reads only.
   ${INVOCATION} review    render review.md as a readable HTML file.
   ${INVOCATION} triage    offer each still-kept session's first prompt, and apply
                      the verdicts. A verdict can only ever drop a session.
@@ -229,6 +230,45 @@ Flags
 Exit codes
   0 success or informational   1 check failed / refused (nothing written)
   2 bad usage                  3 an input could not be read`);
+}
+
+const AXIS_LABEL = Object.freeze({
+  topLevel: 'record type',
+  attachment: 'attachment type',
+  system: 'system subtype',
+  block: 'content block',
+});
+
+/**
+ * The answer to "will an export refuse, and on what" -- all of it, at once.
+ * The refusal itself can only ever name the first unreviewed type it reaches,
+ * so a corpus with several costs one export attempt per type to enumerate.
+ */
+export function renderTypes(r) {
+  say('');
+  say(`  Read ${n(r.read ?? r.files)} of ${n(r.files)} session file${r.files === 1 ? '' : 's'}${r.unreadable > 0 ? `, ${n(r.unreadable)} unreadable` : ''}`);
+  say('');
+  for (const a of r.axes) {
+    const label = AXIS_LABEL[a.axis] ?? a.axis;
+    say(`  ${label.padEnd(18)} ${String(a.distinct).padStart(4)} in this corpus · ${String(a.reviewed).padStart(4)} reviewed · ${String(a.unknown.length).padStart(3)} unknown`);
+    for (const u of a.unknown) {
+      say(`      UNKNOWN  ${u.value}`);
+      say(`               ${n(u.count)} occurrence${u.count === 1 ? '' : 's'}, first at ${u.file} line ${u.line}`);
+    }
+  }
+  say('');
+  if (r.unknownCount === 0) {
+    say('  Every shape in this corpus has a reviewed decision. An export will not');
+    say('  refuse on an unknown type.');
+    say('');
+    return;
+  }
+  say(`  ${n(r.unknownCount)} shape${r.unknownCount === 1 ? '' : 's'} ha${r.unknownCount === 1 ? 's' : 've'} no decision, so an export will refuse.`);
+  say('  Nothing here has been written or changed; this command only reads.');
+  say('');
+  say('  Decide them:   file an issue against deident with the list above');
+  say(`  Or drop them:  ${INVOCATION} export --skip-unknown-types`);
+  say('');
 }
 
 export function renderVersion() {
