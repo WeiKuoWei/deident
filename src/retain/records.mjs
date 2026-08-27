@@ -322,6 +322,57 @@ function retainByType(rec, ctx, where) {
 
 // ------------------------------------------------------------------- turns
 
+/**
+ * The eight interactive surface names, and nothing else.
+ *
+ * A consumer drops a whole session when `entrypoint` is present and not one of
+ * these, and KEEPS it when the field is absent -- so passing an unknown value
+ * through is the one option that can silently delete a session's worth of
+ * scoring, while dropping the field is the safe direction. An allowlist rather
+ * than a passthrough because the field is a free string in the input and this
+ * table is what makes it non-identifying: eight fixed words, no user content.
+ */
+const INTERACTIVE_ENTRYPOINTS = Object.freeze([
+  'cli', 'claude-desktop', 'claude-desktop-3p', 'claude-vscode',
+  'claude_in_slack', 'remote_desktop', 'remote_mobile', 'ssh-remote',
+]);
+
+function retainEntrypoint(value) {
+  return typeof value === 'string' && INTERACTIVE_ENTRYPOINTS.includes(value) ? value : null;
+}
+
+/**
+ * Per-turn token counts: four non-negative integers, or nothing.
+ *
+ * BRIEF §3 keeps code and prose out; a token count is neither. `usage` also
+ * carries `service_tier`, `server_tool_use` and whatever ships next, so this
+ * is a whitelist of four names rather than a copy of the object -- the same
+ * rule the top-level record follows, for the same reason.
+ *
+ * All-or-nothing on purpose: a consumer that reads three of the four and
+ * defaults the fourth to 0 would report a wrong total as if it were measured,
+ * which is §4.3's dangerous-zero failure in a different field. Absent is
+ * honest, 0 is a claim.
+ */
+function retainUsage(usage) {
+  if (usage === null || typeof usage !== 'object' || Array.isArray(usage)) return null;
+  const int = (v) => (Number.isSafeInteger(v) && v >= 0 ? v : undefined);
+  const input = int(usage.input_tokens);
+  const output = int(usage.output_tokens);
+  if (input === undefined || output === undefined) return null;
+  // The cache pair is genuinely optional upstream; absent means zero, but a
+  // PRESENT-and-malformed value is a broken record, not a zero.
+  const create = usage.cache_creation_input_tokens === undefined ? 0 : int(usage.cache_creation_input_tokens);
+  const read = usage.cache_read_input_tokens === undefined ? 0 : int(usage.cache_read_input_tokens);
+  if (create === undefined || read === undefined) return null;
+  return Object.freeze({
+    input_tokens: input,
+    output_tokens: output,
+    cache_creation_input_tokens: create,
+    cache_read_input_tokens: read,
+  });
+}
+
 function retainTurn(rec, ctx, where) {
   const msg = rec.message;
   const content = retainMessageContent(msg, ctx, where);
@@ -348,9 +399,21 @@ function retainTurn(rec, ctx, where) {
     cwd: rec.cwd ?? null,
     isSidechain: rec.isSidechain === true ? true : null,
     isMeta: rec.isMeta === true ? true : null,
+    // Three scoring fields, admitted deliberately and narrowly. Each is a
+    // fixed vocabulary or an integer, so none can carry identity, and each is
+    // read by a consumer that silently degrades without it rather than saying
+    // so. See retainEntrypoint / retainUsage for what is NOT copied.
+    entrypoint: retainEntrypoint(rec.entrypoint),
+    isCompactSummary: rec.isCompactSummary === true ? true : null,
     message: {
       role: msg?.role ?? null,
       model: msg?.model ?? null,
+      // Spread rather than `usage: retainUsage(...)`: prune() is shallow and
+      // only reaches the outer object, so a null here would ship as
+      // `"usage": null` on every turn that has none -- a key that says
+      // "measured, and the answer is nothing" about a measurement that was
+      // never taken. F216 caught exactly that.
+      ...(retainUsage(msg?.usage) === null ? {} : { usage: retainUsage(msg?.usage) }),
       content,
     },
     toolUseResult: distilled,

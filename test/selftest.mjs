@@ -1441,6 +1441,79 @@ const FIXTURES = [
     );
   }],
 
+  // F216, the four scoring fields, and the boundary on each.
+  //
+  // A consumer of these logs reads per-turn token usage, `entrypoint`,
+  // `isCompactSummary` and `toolUseResult.toolStats`. All four were dropped by
+  // the whitelist, and every one of them degrades SILENTLY when absent: output
+  // tokens read 0, compaction summaries are counted as turns the human wrote,
+  // and code-line work reads null. Silent is the problem -- a number that is
+  // wrong and confident is worse than one that is missing and says so.
+  //
+  // Each is a fixed vocabulary or an integer, so admitting them carries no
+  // identity. The assertions below are as much about what is NOT copied.
+  ['F216', 'the four scoring fields survive, and nothing beside them is widened', () => {
+    const ctx = newRetentionContext((u) => u);
+    const base = {
+      type: 'assistant', uuid: 'a', parentUuid: 'b', sessionId: 's',
+      timestamp: '2026-08-20T10:11:12.345Z', cwd: '/w',
+    };
+    const msg = (usage) => ({ role: 'assistant', model: 'm', content: [{ type: 'text', text: 'hi' }], ...(usage ? { usage } : {}) });
+
+    // 1. usage: exactly four integers, and nothing else from the object.
+    const out = retainRecord({
+      ...base, entrypoint: 'cli', isCompactSummary: true,
+      message: msg({
+        input_tokens: 10, output_tokens: 20,
+        cache_creation_input_tokens: 3, cache_read_input_tokens: 4,
+        service_tier: 'standard', server_tool_use: { web_search_requests: 9 },
+      }),
+    }, ctx, null).record;
+    assert.deepEqual(Object.keys(out.message.usage).sort(),
+      ['cache_creation_input_tokens', 'cache_read_input_tokens', 'input_tokens', 'output_tokens'],
+      'usage must be a whitelist of four, not a copy of the object');
+    assert.equal(out.message.usage.input_tokens, 10);
+    assert.ok(!JSON.stringify(out).includes('service_tier'), 'service_tier must not be copied');
+    assert.ok(!JSON.stringify(out).includes('web_search_requests'), 'server_tool_use must not be copied');
+
+    // 2. entrypoint: allowlisted through, anything else dropped.
+    assert.equal(out.entrypoint, 'cli');
+    assert.equal(out.isCompactSummary, true);
+    for (const bad of ['sdk', 'mcp', 'my-custom-harness', 42, null]) {
+      const r = retainRecord({ ...base, entrypoint: bad, message: msg(null) }, ctx, null).record;
+      assert.ok(!('entrypoint' in r), `entrypoint ${String(bad)} must not survive`);
+    }
+
+    // 3. absent stays absent, and a malformed usage is omitted whole rather
+    //    than defaulted -- an absent count is honest, a 0 is a claim.
+    const plain = retainRecord({ ...base, message: msg(null) }, ctx, null).record;
+    assert.ok(!('usage' in plain.message), 'no usage key when the source had none');
+    assert.ok(!('isCompactSummary' in plain), 'no isCompactSummary key when the source had none');
+    for (const bad of [{ input_tokens: 1 }, { input_tokens: -1, output_tokens: 2 },
+                       { input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 'x' }]) {
+      const r = retainRecord({ ...base, message: msg(bad) }, ctx, null).record;
+      assert.ok(!('usage' in r.message), `malformed usage ${JSON.stringify(bad)} must be omitted, not defaulted`);
+    }
+
+    // 4. toolStats carries the same counts under the names a consumer reads.
+    const patch = [{ lines: ['+one', '+two', '-gone'] }];
+    const t = retainRecord({
+      ...base, type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'x' }] },
+      toolUseResult: { structuredPatch: patch },
+    }, ctx, null).record;
+    assert.equal(t.toolUseResult.toolStats.linesAdded, 2);
+    assert.equal(t.toolUseResult.toolStats.linesRemoved, 1);
+    assert.equal(t.toolUseResult.toolStats.linesAdded, t.toolUseResult.code_added_lines,
+      'toolStats and deident\'s own names must be the same measurement');
+
+    // An unknown count emits no toolStats rather than a zero.
+    const unknown = retainRecord({
+      ...base, type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'x' }] },
+      toolUseResult: { someOtherShape: true },
+    }, ctx, null).record;
+    assert.ok(!('toolStats' in unknown.toolUseResult), 'an unknown count must not become 0');
+  }],
+
   ['F35', 'the serialized-form scan catches an escaped CJK entity (§4.6)', () => {
     const t = buildTable([entity('P1', 'person', '林大明', 'PERSON_1')]);
     // JSON.stringify does not escape CJK by default, so the decoded form is
