@@ -97,7 +97,7 @@ import {
 } from '../src/policy/reviewfile.mjs';
 import { readEntities, writeCandidates } from '../src/entities/tier1.mjs';
 import { estimateTokens, roundEstimate, tokenCost } from '../src/cli/tokens.mjs';
-import { CANDIDATE_CHUNK_CHARS } from '../src/retain/constants.mjs';
+import { CANDIDATE_CHUNK_CHARS, DENIED_CONTENT, DENIED_TEXT } from '../src/retain/constants.mjs';
 import { DICTIONARY_FILENAME, mergeEntities } from '../src/policy/dictionary.mjs';
 import { parseCliArgs } from '../src/cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from '../src/cli/runtime.mjs';
@@ -6063,7 +6063,10 @@ const FIXTURES = [
       'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAAB',
       '-----END OPENSSH PRIVATE KEY-----',
     ].join(NL);
-    assert.equal(deniedReason(pem), '-----BEGIN OPENSSH PRIVATE KEY-----');
+    // The reason is a LABEL, not the header it matched. The header names the
+    // file rather than the key, which is why it looked safe to ship, and it is
+    // the same argument every other marker made on its way to F212.
+    assert.equal(deniedReason(pem), 'a cryptographic key');
     assert.equal(deniedReason('we discussed rotating the deploy key'), null);
   }],
 
@@ -6336,8 +6339,10 @@ const FIXTURES = [
     // Pinned here so the disclosure and the list cannot drift. Fabricated
     // names. The SHAPE: one file using a recognised prefix, the index file
     // itself, and one ordinary name a different user would plausibly choose.
-    assert.equal(deniedReason('reference_local_setup.md'), 'reference_local_setup.md');
-    assert.equal(deniedReason('MEMORY.md'), 'MEMORY.md');
+    // Recognised, and the reason says only the class: the filename itself is a
+    // memory-file name, so returning it is F212's leak.
+    assert.equal(deniedReason('reference_local_setup.md'), 'an agent memory file');
+    assert.equal(deniedReason('MEMORY.md'), 'an agent memory file');
     assert.equal(
       deniedReason('brain/what-i-know-about-people.md'),
       null,
@@ -9131,6 +9136,173 @@ const FIXTURES = [
 
     // One statement of it, so there is no second copy to drift.
     assert.equal((readme.match(/\d+ fixtures/g) || []).length, 1, 'the count is stated more than once');
+  }],
+
+  ['F212', 'a denial marker names the class withheld, never the value', () => {
+    // One sample per pattern, in list order, every one fabricated. A pattern
+    // added without a sample fails the two count assertions, which is what
+    // makes this close the class rather than the two instances measured.
+    const contentSamples = [
+      'MEMORY.md',
+      'project_northwind_ledger.md',
+      `.vault-private${BS}notes.md`,
+      `C:${BS}keys${BS}credentials.json`,
+      [
+        '-----BEGIN OPENSSH PRIVATE KEY-----',
+        'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAAB',
+        '-----END OPENSSH PRIVATE KEY-----',
+      ].join(NL),
+    ];
+    const textSamples = [
+      'the 1Password Emergency Kit is in the safe',
+      'she keeps the Emergency Kit in the top drawer',
+      'Secret Key: A3-XXXXXX-YYYYYY-ZZZZZ',
+      'the master password is written down somewhere',
+      'recovery codes: 11111 22222 33333',
+      '備份碼放在保險箱裡面沒有拍照存檔',
+      'X-Amz-Security-Token: AQoDYXdzEJrFAKE',
+    ];
+    assert.equal(contentSamples.length, DENIED_CONTENT.length, 'a DENIED_CONTENT pattern has no sample here');
+    assert.equal(textSamples.length, DENIED_TEXT.length, 'a DENIED_TEXT pattern has no sample here');
+
+    // The marker is read by the RECIPIENT, and what they need from it is the
+    // class of thing removed, so they can ask for it back if the removal was
+    // wrong. Eight characters is far below the length of any of these samples
+    // and far above the class words a reason is allowed to share with one.
+    const leaked = (marker, sample) => {
+      const hay = marker.toLowerCase();
+      const needle = sample.toLowerCase();
+      for (let i = 0; i + 8 <= needle.length; i += 1) {
+        if (hay.includes(needle.slice(i, i + 8))) return needle.slice(i, i + 8);
+      }
+      return null;
+    };
+
+    const ctx = newRetentionContext((u) => u);
+    // DENIED_CONTENT gates a tool_use parameter: the whole input goes, and the
+    // marker is all the recipient is left holding in its place.
+    for (const [i, sample] of contentSamples.entries()) {
+      const kept = retainRecord(
+        {
+          type: 'assistant',
+          uuid: 'u1',
+          sessionId: 's1',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: sample } }],
+          },
+        },
+        ctx,
+        null,
+      );
+      const marker = kept.record.message.content[0].input.redacted;
+      assert.equal(leaked(marker, sample), null, `the marker re-emits what it withheld: ${marker}`);
+      assert.ok(DENIED_CONTENT[i].re.test(sample), `content sample ${i} no longer trips the pattern it was written for`);
+    }
+
+    // DENIED_TEXT gates prose, and withholds the whole block.
+    for (const [i, sample] of textSamples.entries()) {
+      const kept = retainRecord(
+        { type: 'user', uuid: 'u2', sessionId: 's1', message: { role: 'user', content: [{ type: 'text', text: sample }] } },
+        ctx,
+        null,
+      );
+      const marker = kept.record.message.content[0].text;
+      assert.equal(leaked(marker, sample), null, `the marker re-emits what it withheld: ${marker}`);
+      assert.ok(DENIED_TEXT[i].re.test(sample), `text sample ${i} no longer trips the pattern it was written for`);
+    }
+
+    // The worst case, and the reason a per-person pattern collapses to ONE
+    // constant instead of getting a label of its own: a rule someone writes in
+    // their own denied.json is the case most likely to BE a person's name, and
+    // 72 bytes withheld with the name re-emitted beside the count is the whole
+    // removal undone. Fabricated name.
+    setUserDeny({ patterns: ['Aurelio Ferreira-Nkemdirim'] });
+    try {
+      const kept = retainRecord(
+        {
+          type: 'user',
+          uuid: 'u3',
+          sessionId: 's1',
+          message: { role: 'user', content: [{ type: 'text', text: 'ask Aurelio Ferreira-Nkemdirim about the invoice' }] },
+        },
+        ctx,
+        null,
+      );
+      const marker = kept.record.message.content[0].text;
+      assert.ok(
+        !/Aurelio|Nkemdirim/i.test(marker),
+        `a per-person deny pattern re-emitted the name it withheld: ${marker}`,
+      );
+    } finally {
+      setUserDeny({});
+    }
+  }],
+
+  ['F211', 'a prompt carried outside message gets the injection stripping prose gets', () => {
+    // The live shape of both records, with fabricated content.
+    const rec = (type, text) =>
+      type === 'last-prompt'
+        ? { type, uuid: 'u1', sessionId: 's1', timestamp: '2026-08-20T10:00:00.000Z', lastPrompt: text }
+        : { type, uuid: 'u2', sessionId: 's1', timestamp: '2026-08-20T10:00:00.000Z', operation: 'add', content: text };
+
+    for (const type of ['last-prompt', 'queue-operation']) {
+      // One context per shape: the two are deduped against each other within a
+      // session (PLAN C3), and identical stripped text is exactly what that
+      // dedupe drops.
+      const ctx = newRetentionContext((u) => u);
+      const kept = retainRecord(
+        rec(type, `run the tests <system-reminder>${NL}Goal check-in: memory index MEMORY.md${NL}</system-reminder>`),
+        ctx,
+        null,
+      );
+      assert.equal(kept.keep, true, `${type} lost the text the person actually typed`);
+      assert.equal(kept.record.text, 'run the tests', `${type} shipped the injected span: ${kept.record.text}`);
+      assert.ok(ctx.stats.injectedBytesDropped > 0, `${type} dropped the span without counting it`);
+    }
+
+    // A prompt that is NOTHING but an injection carries nothing anybody
+    // authored, and an empty shell is noise the residual scan then walks.
+    const ctx = newRetentionContext((u) => u);
+    assert.equal(
+      retainRecord(rec('last-prompt', '<system-reminder>memory index</system-reminder>'), ctx, null).keep,
+      false,
+      'a prompt of nothing but an injected span became an empty record',
+    );
+  }],
+
+  ['F210', 'a mode record that is not a string refuses, and a string one is stripped', () => {
+    const ctx = newRetentionContext((u) => u);
+    assert.throws(
+      () =>
+        retainRecord(
+          { type: 'mode', sessionId: 's1', mode: { name: 'plan', note: `see C:${BS}w${BS}private${BS}payroll.md` } },
+          ctx,
+          { file: 'a.jsonl', line: 9 },
+        ),
+      (err) => err instanceof RefusalError && /mode/.test(err.reason) && /object/.test(err.reason),
+      'a non-string mode was serialised into the export instead of refused',
+    );
+    assert.equal(ctx.stats.deniedBlocks, 0, 'nothing was withheld, so nothing may be counted as withheld');
+
+    // And the string form gets the same stripping the prose path gets, which
+    // is the half of the fail-open that a refusal alone does not close.
+    const kept = retainRecord(
+      {
+        type: 'mode',
+        sessionId: 's1',
+        mode: `plan C:${BS}w${BS}private${BS}payroll.md <system-reminder>memory index</system-reminder>`,
+      },
+      ctx,
+      null,
+    );
+    assert.ok(!kept.record.mode.includes('payroll'), `a deny-listed path shipped in a mode record: ${kept.record.mode}`);
+    assert.ok(
+      !kept.record.mode.includes('memory index'),
+      `an injected span shipped in a mode record: ${kept.record.mode}`,
+    );
+    assert.equal(ctx.stats.deniedPaths, 1, 'the withheld path was not counted');
+    assert.ok(ctx.stats.injectedBytesDropped > 0, 'the injected bytes were not counted');
   }],
 
 ];

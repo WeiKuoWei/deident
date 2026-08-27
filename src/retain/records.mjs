@@ -22,6 +22,7 @@ import {
   PATH_TOKEN_RE,
   DENIED_PATH_MARKER,
   DENIED_MARKER,
+  USER_DENY_REASON,
   DENIED_TEXT,
   INJECTED_SPANS,
 } from './constants.mjs';
@@ -254,7 +255,7 @@ function retainByType(rec, ctx, where) {
     case 'queue-operation':
       return retainPrompt(rec, ctx, 'queue-operation', rec.content, { operation: rec.operation ?? null });
     case 'mode':
-      return retainMode(rec, ctx);
+      return retainMode(rec, ctx, where);
     case 'system':
       return retainSystem(rec, ctx, where);
     default:
@@ -372,21 +373,8 @@ function retainBlock(block, ctx) {
   switch (block.type) {
     case 'text': {
       if (typeof block.text !== 'string' || block.text.length === 0) return null;
-      const rawText = stripInjected(block.text, ctx);
-      if (rawText.length === 0) return null;
-      // A deny-listed PATH inside prose is removed on its own, not by
-      // withholding the turn: an assistant paragraph naming
-      // `…/private/vendor-search/SCORECARD.md` is scoring evidence with one token
-      // in it that must not ship.
-      const text = stripDeniedPaths(rawText, ctx);
-      const credential = deniedTextReason(text);
-      if (credential !== null) {
-        const bytes = Buffer.byteLength(text, 'utf8');
-        ctx.stats.deniedBlocks += 1;
-        ctx.stats.deniedBytes += bytes;
-        return { type: 'text', text: DENIED_MARKER(bytes, credential) };
-      }
-      return { type: 'text', text };
+      const { text } = stripAuthored(block.text, ctx);
+      return text.length === 0 ? null : { type: 'text', text };
     }
 
     case 'thinking': {
@@ -527,16 +515,57 @@ function byteLength(v) {
   return typeof v === 'string' ? Buffer.byteLength(v, 'utf8') : null;
 }
 
-/** The first DENIED_TEXT pattern this prose trips, or null. */
+/**
+ * The one stripping order every kept string goes through.
+ *
+ * Injections first, because a `<system-reminder>` is nobody's text and taking
+ * it out can empty the string outright. Then the deny-listed PATHS inside
+ * prose, removed one token at a time rather than by withholding the turn: an
+ * assistant paragraph naming `…/private/vendor-search/SCORECARD.md` is scoring
+ * evidence with one token in it that must not ship. Then the whole-block
+ * denial, which is coarser on purpose.
+ *
+ * There were three copies of this order and one of them, retainPrompt's, was
+ * missing the first step entirely. One order, one place, so the next copy
+ * cannot lose a step quietly.
+ *
+ * @returns {{text: string, denied: boolean}} the stripped text or a
+ *   DENIED_MARKER, and '' when nothing authored is left
+ */
+function stripAuthored(raw, ctx) {
+  const text = stripDeniedPaths(stripInjected(raw, ctx), ctx);
+  if (text.length === 0) return { text: '', denied: false };
+  const why = deniedTextReason(text);
+  if (why === null) return { text, denied: false };
+  const bytes = Buffer.byteLength(text, 'utf8');
+  ctx.stats.deniedBlocks += 1;
+  ctx.stats.deniedBytes += bytes;
+  return { text: DENIED_MARKER(bytes, why), denied: true };
+}
+
+/** The LABEL of the first DENIED_TEXT pattern this prose trips, or null. */
 export function deniedTextReason(text) {
   if (typeof text !== 'string' || text.length === 0) return null;
-  // Same list as deniedReason at the sibling below. These two diverged and this
+  // Same lists as deniedReason at the sibling below. These two diverged and this
   // one gated user and assistant PROSE with the shipped patterns only, so a
   // per-person pattern withheld a tool result and not the sentence beside it.
-  for (const re of [...DENIED_TEXT, ...userDenyPatterns()]) {
+  //
+  // A label, never `m[0]`: the return value of this function IS the reason a
+  // DENIED_MARKER ships, so a match returned here is the withheld value handed
+  // straight to the recipient. See DENIED_PATH_REASON's comment, which reached
+  // that conclusion for the path half of the same question.
+  for (const { re, reason } of DENIED_TEXT) {
     re.lastIndex = 0;
-    const m = re.exec(text);
-    if (m !== null) return m[0].trim();
+    if (re.test(text)) return reason;
+  }
+  return userDenyReason(text);
+}
+
+/** Per-person rules, kept apart because they all collapse to one label. */
+function userDenyReason(text) {
+  for (const re of userDenyPatterns()) {
+    re.lastIndex = 0;
+    if (re.test(text)) return USER_DENY_REASON;
   }
   return null;
 }
@@ -575,14 +604,15 @@ function stripDeniedPaths(text, ctx) {
   });
 }
 
-/** The first deny pattern this text trips, shipped list first, or null. */
+/** The LABEL of the first deny pattern this text trips, shipped first, or null. */
 export function deniedReason(text) {
   if (typeof text !== 'string' || text.length === 0) return null;
-  for (const re of [...DENIED_CONTENT, ...userDenyPatterns()]) {
+  for (const { re, reason } of DENIED_CONTENT) {
     re.lastIndex = 0;
-    const m = re.exec(text);
-    if (m !== null) return m[0].trim();
+    if (re.test(text)) return reason;
   }
+  const mine = userDenyReason(text);
+  if (mine !== null) return mine;
   // The deny-list applied to the cwd only, so a Read, an Edit or a directory
   // listing of a deny-listed path from an ALLOWED directory was invisible to
   // all three levels of privacy-tiers §4. The reason is generic on purpose:
@@ -779,25 +809,27 @@ function attachmentText(value) {
  */
 function retainPrompt(rec, ctx, kind, rawPrompt, extra = {}) {
   if (typeof rawPrompt !== 'string' || rawPrompt.trim().length === 0) return null;
-  // These carry user prose, so they carry the same quoted paths prose does,
-  // and they were the one keep-path with no denial check at all. Measured on a
-  // real export: `private/payroll-ledger/backfill-payload…` and
+  // These carry user prose, so they carry everything prose carries, and they
+  // were the one keep-path with no denial check at all. Measured on a real
+  // export: `private/payroll-ledger/backfill-payload…` and
   // `.gitignore:8:/private/` survived here after every other route had been
   // closed. The path goes and the prompt stays: §C3 keeps this class precisely
   // because it carries text found nowhere else.
-  const text = stripDeniedPaths(rawPrompt, ctx);
-  const why = deniedTextReason(text);
-  if (why !== null) {
-    const bytes = Buffer.byteLength(text, 'utf8');
-    ctx.stats.deniedBlocks += 1;
-    ctx.stats.deniedBytes += bytes;
+  //
+  // What they also carry is the harness's own injections, which this path
+  // stripped on the message side and shipped whole here, with
+  // injectedBytesDropped reading 0 for every one of them.
+  const { text, denied } = stripAuthored(rawPrompt, ctx);
+  // A prompt that was nothing but an injection is nothing anybody authored.
+  if (text.length === 0) return null;
+  if (denied) {
     return prune({
       type: kind,
       uuid: rec.uuid ? ctx.rewriteUuid(rec.uuid) : null,
       sessionId: ctx.rewriteUuid(rec.sessionId),
       timestamp: quantise(rec.timestamp),
       cwd: rec.cwd ?? null,
-      text: DENIED_MARKER(bytes, why),
+      text,
       ...extra,
     });
   }
@@ -828,8 +860,27 @@ function retainPrompt(rec, ctx, kind, rawPrompt, extra = {}) {
   });
 }
 
-function retainMode(rec, ctx) {
-  const value = typeof rec.mode === 'string' ? rec.mode : JSON.stringify(rec.mode ?? null);
+/**
+ * The last deliberate fail-open in this table, and a high-frequency one:
+ * 7,400 `mode` records in the live corpus.
+ *
+ * This read `typeof rec.mode === 'string' ? rec.mode : JSON.stringify(...)`,
+ * so a non-string skipped every guarantee in this file at once. Constructed
+ * against the shipped code, a `mode` holding an object came out as one string
+ * carrying a deny-listed path, a memory filename, an intact
+ * `<system-reminder>` span and a credential shape, with deniedBlocks 0,
+ * deniedBytes 0, deniedPaths 0, injectedBytesDropped 0, and no refusal.
+ *
+ * Every mode in this corpus is a string, and that is a fact about one harness,
+ * not a guarantee: retainContent already refuses on a container that is
+ * neither array nor string, for the same reason (BRIEF §4.4).
+ */
+function retainMode(rec, ctx, where) {
+  if (typeof rec.mode !== 'string') {
+    throw unknown(`a mode record whose mode is not a string (${typeof rec.mode})`, where, 'a non-string mode');
+  }
+  const { text: value } = stripAuthored(rec.mode, ctx);
+  if (value.length === 0) return null;
   if (ctx.seenModes.has(value)) return null;
   ctx.seenModes.add(value);
   return prune({ type: 'mode', sessionId: ctx.rewriteUuid(rec.sessionId), mode: value });
