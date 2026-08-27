@@ -1334,6 +1334,62 @@ const FIXTURES = [
     }
   }],
 
+  // F214, the second wave from the same corpus: eight attachment sub-types, one
+  // system subtype and one content block type, each of which refuses the whole
+  // export until reviewed. None carries a user turn. The three that carry
+  // identity are the reason this is a drop and not a keep: `directory` is a
+  // listing of FILE NAMES, `pdf_reference` named a client solicitation document in its
+  // filename alone, and `bridge_status` carries a live claude.ai session URL.
+  ['F214', 'the second wave of sub-types is dropped, listing and solicitation and session URL and all', () => {
+    const ctx = newRetentionContext((u) => u);
+    const base = { uuid: 'a', sessionId: 's', timestamp: '2026-08-02T04:25:34.573Z', cwd: '/w' };
+    // Fabricated values, real shapes.
+    const attachments = [
+      { type: 'directory', path: '/w/acme', content: 'pricing.md', displayPath: 'acme' },
+      { type: 'task_status', taskId: 't', taskType: 'local_agent', description: 'Audit acme docs', status: 'running' },
+      { type: 'hook_non_blocking_error', hookName: 'SessionStart', stderr: 'acme-secret-path', stdout: '', exitCode: 1, command: 'node x.js' },
+      { type: 'workflow_keyword_request' },
+      { type: 'ultra_effort_exit' },
+      { type: 'pdf_reference', filename: '/w/acme-solicitation-12345.pdf', pageCount: 48, fileSize: 1 },
+      { type: 'already_read_file', filename: '/w/acme-thesis.md', displayPath: 'acme-thesis.md' },
+      { type: 'plan_mode_exit', planFilePath: '/w/plan-acme.md', planExists: false },
+    ];
+    for (const att of attachments) {
+      const out = retainRecord({ ...base, type: 'attachment', attachment: att }, ctx, null);
+      assert.equal(out.keep, false, `attachment ${att.type} must be dropped`);
+    }
+
+    const sys = retainRecord(
+      { ...base, type: 'system', subtype: 'bridge_status',
+        content: '/remote-control is active', url: 'https://claude.ai/code/session_013YhrdKKqWWuYZZ' },
+      ctx, null,
+    );
+    assert.equal(sys.keep, false, 'system/bridge_status must be dropped');
+
+    // The block type is dropped from inside a kept assistant turn, so the turn
+    // survives and the block does not.
+    const turn = retainRecord(
+      { ...base, type: 'assistant', message: { role: 'assistant', model: 'm', content: [
+        { type: 'text', text: 'kept' },
+        { type: 'fallback', from: { model: 'claude-fable-5' }, to: { model: 'claude-opus-5' } },
+      ] } },
+      ctx, null,
+    );
+    assert.equal(turn.keep, true, 'the turn carrying a fallback block must survive');
+    const blocks = turn.record.message.content;
+    assert.equal(blocks.length, 1, 'only the text block survives');
+    assert.equal(blocks[0].type, 'text');
+
+    // None of the identifying values reaches an export.
+    const all = JSON.stringify([
+      ...attachments.map((att) => retainRecord({ ...base, type: 'attachment', attachment: att }, ctx, null).record),
+      sys.record, turn.record,
+    ]);
+    for (const leaked of ['acme-solicitation-12345', 'acme-thesis', 'pricing.md', 'acme-secret-path', 'session_013YhrdKKqWWuYZZ', 'claude-fable-5']) {
+      assert.ok(!all.includes(leaked), `${leaked} must not survive`);
+    }
+  }],
+
   ['F35', 'the serialized-form scan catches an escaped CJK entity (§4.6)', () => {
     const t = buildTable([entity('P1', 'person', '林大明', 'PERSON_1')]);
     // JSON.stringify does not escape CJK by default, so the decoded form is
@@ -8840,6 +8896,7 @@ const FIXTURES = [
       { type: 'redacted_thinking', data: 'PROSE-REDACTED-THINKING' },
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'PROSE-IMAGE-BODY' } },
       { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'PROSE-DOCUMENT-BODY' } },
+      { type: 'fallback', from: { model: 'PROSE-FALLBACK-FROM' }, to: { model: 'PROSE-FALLBACK-TO' } },
     ];
     const stamp = { sessionId: sid, timestamp: '2026-08-20T10:11:12.345Z', cwd };
     const samples = [

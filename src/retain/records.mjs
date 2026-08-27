@@ -114,6 +114,29 @@ const ATTACHMENT_DROP = Object.freeze([
   'hook_cancelled',
   'workflow_size_guideline_change',
   'dynamic_skill',
+
+  // Eight more from the same live corpus that produced the three top-level
+  // additions. None carries a user turn; several carry identity, which is why
+  // they are dropped rather than left to the reader.
+  //
+  // `directory` is a listing: a path plus the FILE NAMES under it, which is
+  // the client and project vocabulary in its most concentrated form.
+  // `pdf_reference` and `already_read_file` are absolute paths plus a
+  // displayPath; the pdf_reference measured here named a client solicitation document
+  // in the filename alone. `plan_mode_exit` is a plan file path.
+  // `hook_non_blocking_error` carries up to a kilobyte of raw stderr plus the
+  // command line that produced it. `task_status` carries a model-written
+  // description and deltaSummary of the work -- prose, but not the user's.
+  // `workflow_keyword_request` and `ultra_effort_exit` are bare markers with
+  // no payload at all and are dropped for consistency, not for risk.
+  'directory',
+  'task_status',
+  'hook_non_blocking_error',
+  'workflow_keyword_request',
+  'ultra_effort_exit',
+  'pdf_reference',
+  'already_read_file',
+  'plan_mode_exit',
 ]);
 
 // PLAN §3.1 row 9: keep compact_boundary only. away_summary is prose naming
@@ -129,6 +152,13 @@ const SYSTEM_DROP = Object.freeze([
   'scheduled_task_fire',
   'model_consent_fallback',
   'model_refusal_fallback',
+
+  // `bridge_status` is the /remote-control banner. Its `content` is prose, but
+  // the record also carries a live `https://claude.ai/code/session_...` URL
+  // naming an account-scoped session id -- an identifier of exactly the class
+  // §F5 names as the one no detector matches, arriving on a subtype the plan
+  // never listed. Dropped whole.
+  'bridge_status',
 ]);
 
 // `shape-only` is a third decision beside keep and drop, and it exists for one
@@ -143,6 +173,10 @@ const BLOCK_DECISIONS = Object.freeze({
   text: 'keep',
   image: 'drop-counted',
   document: 'drop-counted',
+  // A model-fallback marker, `{from:{model}, to:{model}}`. No text, no
+  // identifier; it is here because an unreviewed block type refuses the export
+  // and this one has now been reviewed.
+  fallback: 'drop',
 });
 
 /**
