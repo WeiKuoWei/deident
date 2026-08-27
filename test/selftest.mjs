@@ -39,6 +39,7 @@ import { checkDeclaredValues } from '../src/verify/declared.mjs';
 import { residualScan, startsInsideEscape, jsonEscaped } from '../src/verify/residual.mjs';
 import { distillToolResult, retainToolUseResult } from '../src/retain/toolresult.mjs';
 import { newRetentionContext, retainRecord, quantise, rewriteUuidsInRecord, deniedReason,
+  RETENTION_TABLE,
 } from '../src/retain/records.mjs';
 import { resolveLineCwd, cwdChangeFrom } from '../src/corpus/cwdtrack.mjs';
 import { allowLine } from '../src/policy/linefilter.mjs';
@@ -100,7 +101,7 @@ import { CANDIDATE_CHUNK_CHARS } from '../src/retain/constants.mjs';
 import { DICTIONARY_FILENAME, mergeEntities } from '../src/policy/dictionary.mjs';
 import { parseCliArgs } from '../src/cli/args.mjs';
 import { checkRuntime, REQUIRED_NODE } from '../src/cli/runtime.mjs';
-import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings } from '../src/pipeline.mjs';
+import { serializeSessions, resolveOutDir, sanitizeEntryName, stripMintedSpellings, extractProseBySession } from '../src/pipeline.mjs';
 import { RefusalError, ReadError, UsageError } from '../src/cli/errors.mjs';
 
 // Both sides of every fold pair must be Han and nothing else. A pair that
@@ -8704,6 +8705,413 @@ const FIXTURES = [
     assert.ok(!text.includes('memory index'), `an injected span shipped in a queued command: ${text}`);
     assert.equal(ctx.stats.deniedPaths, 1, 'the withheld path was not counted');
     assert.ok(ctx.stats.injectedBytesDropped > 0, 'the injected bytes were not counted');
+  }],
+
+  // F204 and F205 come from a regression this suite was green through, like
+  // the three instances of this bug before it: `extractProseBySession` was a
+  // SECOND enumeration of where prose lives, naming `rec.message.content` and
+  // an attachment's top-level string values. When a `queued_command`'s
+  // `prompt` became a retained block array the enumeration stopped finding it,
+  // so the prompt was kept in the archive and never put in front of a reader.
+  // Measured end to end: a name appearing ONLY in a queued command went from
+  // reaching the reader to not reaching them, with the archive still shipping
+  // it, the export exiting 0 and all six checks green. 506 of the 527 prompts
+  // in that corpus had the plain-string shape that regressed.
+  //
+  // A name that is retained but invisible to the reader is un-declarable BY
+  // CONSTRUCTION: the candidates file is what a human reads, and the semantic
+  // pass is the only producer that can catch a name nothing else recognises.
+  //
+  // The one-line repair is not the deliverable; this fixture is. It drives one
+  // record of every `keep` row and one block of every reviewed block type
+  // through the real retainer and the real extractor, and fails on any prose
+  // the archive keeps and the reader is not shown.
+  ['F204', 'every field the retention tables keep is either shown to the reader or declared', () => {
+    const proseFields = RETENTION_TABLE.proseFields;
+    assert.ok(proseFields, 'records.mjs no longer publishes where prose lives; the extractor is guessing again');
+
+    const sid = '11111111-1111-4111-8111-111111111111';
+    const cwd = ['C:', 'Users', 'devuser', 'projects', 'alpha'].join(BS);
+    const uuid = (n) => '00000000-0000-4000-8000-0000000000' + String(n).padStart(2, '0');
+    // Every reviewed block type, each carrying a PROSE- sentinel, so a block
+    // that stops reaching the reader stops this fixture. `tool_use`'s sentinel
+    // sits inside `input`, which is the gap docs/limits.md declares: it must
+    // NOT arrive, and assertion 3 says so rather than leaving it silent.
+    const blocks = [
+      { type: 'text', text: 'PROSE-TEXT-BLOCK' },
+      { type: 'thinking', thinking: 'PROSE-THINKING-BLOCK' },
+      { type: 'tool_use', id: uuid(11), name: 'Edit', input: { file_path: 'a.txt', description: 'PROSE-TOOL-PARAMETER' } },
+      { type: 'tool_result', tool_use_id: uuid(11), content: 'PROSE-TOOL-RESULT' },
+      { type: 'redacted_thinking', data: 'PROSE-REDACTED-THINKING' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'PROSE-IMAGE-BODY' } },
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'PROSE-DOCUMENT-BODY' } },
+    ];
+    const stamp = { sessionId: sid, timestamp: '2026-08-20T10:11:12.345Z', cwd };
+    const samples = [
+      { type: 'user', uuid: uuid(1), parentUuid: uuid(2), ...stamp, isSidechain: true, isMeta: true,
+        message: { role: 'user', model: 'claude-x', content: blocks } },
+      { type: 'assistant', uuid: uuid(3), ...stamp,
+        message: { role: 'assistant', model: 'claude-x', content: [{ type: 'text', text: 'PROSE-ASSISTANT-TEXT' }] },
+        toolUseResult: { structuredPatch: [] } },
+      { type: 'attachment', uuid: uuid(4), ...stamp,
+        attachment: { type: 'queued_command', prompt: [{ type: 'text', text: 'PROSE-QUEUED-COMMAND' }] } },
+      { type: 'attachment', uuid: uuid(5), ...stamp,
+        attachment: { type: 'edited_text_file', filename: 'PROSE-EDITED-FILENAME', snippet: 'PROSE-EDITED-SNIPPET' } },
+      { type: 'attachment', uuid: uuid(6), ...stamp,
+        attachment: { type: 'file', filename: 'PROSE-FILE-FILENAME', content: 'PROSE-FILE-CONTENT' } },
+      { type: 'last-prompt', uuid: uuid(7), ...stamp, lastPrompt: 'PROSE-LAST-PROMPT' },
+      { type: 'queue-operation', uuid: uuid(8), ...stamp, operation: 'add', content: 'PROSE-QUEUE-OPERATION' },
+      { type: 'mode', uuid: uuid(9), ...stamp, mode: 'acceptEdits' },
+      { type: 'system', uuid: uuid(10), subtype: 'compact_boundary', ...stamp },
+    ];
+
+    // A `keep` row with no sample here is a row nobody checked, and all four
+    // instances of this bug began as exactly that.
+    const keepTypes = Object.entries(RETENTION_TABLE.topLevel)
+      .filter(([, d]) => d === 'keep')
+      .map(([t]) => t);
+    assert.deepEqual(
+      [...new Set(samples.map((r) => r.type))].sort(),
+      [...keepTypes].sort(),
+      'a top-level type is kept and this fixture has no sample of it',
+    );
+    assert.deepEqual(
+      samples.filter((r) => r.type === 'attachment').map((r) => r.attachment.type).sort(),
+      [...RETENTION_TABLE.attachmentKeep].sort(),
+      'an attachment sub-type is kept and this fixture has no sample of it',
+    );
+    assert.deepEqual(
+      blocks.map((b) => b.type).sort(),
+      Object.keys(RETENTION_TABLE.blocks).sort(),
+      'a block type has a retention decision and this fixture has no sample of it',
+    );
+    for (const b of blocks) {
+      assert.match(
+        JSON.stringify(b),
+        /PROSE-/,
+        `the ${b.type} sample carries no sentinel, so nothing about it is checked`,
+      );
+    }
+
+    const ctx = newRetentionContext((u) => u);
+    const records = [];
+    for (const rec of samples) {
+      const kept = retainRecord(rec, ctx, { file: 'f204.jsonl', line: 1 });
+      assert.equal(kept.keep, true, `a ${rec.type} sample was dropped, so this fixture checks nothing about it`);
+      records.push(kept.record);
+    }
+
+    const chunks = extractProseBySession([{ file: { sessionId: sid, mtimeMs: 0 }, records }])[0].chunks;
+
+    // Every string the retainer emitted, with whether it sits under a field the
+    // table declares 'skip'.
+    const fields = [];
+    const walk = (v, skipped) => {
+      if (Array.isArray(v)) {
+        for (const x of v) walk(x, skipped);
+        return;
+      }
+      if (v === null || typeof v !== 'object') return;
+      for (const [k, val] of Object.entries(v)) {
+        const s = skipped || proseFields[k] === 'skip';
+        if (typeof val === 'string') fields.push({ key: k, value: val, skipped: s });
+        else walk(val, s);
+      }
+    };
+    walk(records, false);
+
+    // 1. A `keep` row emitting a string field the table has never seen. The
+    //    extractor shows it to the reader rather than hiding it, which is the
+    //    safe direction of the two, but nobody DECIDED that and this is where
+    //    they do.
+    for (const f of fields) {
+      if (f.skipped) continue;
+      assert.ok(
+        f.key in proseFields,
+        `a retained record emits "${f.key}" and PROSE_FIELDS has no row for it: decide 'prose' or 'skip'`,
+      );
+    }
+
+    // 2. The invariant itself: prose the archive keeps reaches the reader.
+    const planted = fields.filter((f) => f.value.startsWith('PROSE-'));
+    assert.ok(planted.length >= 8, `retention destroyed the sentinels; only ${planted.length} survived`);
+    for (const f of planted) {
+      if (f.skipped) {
+        assert.ok(!chunks.includes(f.value), `"${f.key}" is declared 'skip' and the reader was shown it anyway`);
+        continue;
+      }
+      assert.ok(
+        chunks.includes(f.value),
+        `"${f.value}" is in the archive under "${f.key}" and never reaches deident-candidates.txt`,
+      );
+    }
+
+    // 3. And the declared gap is really a gap, so docs/limits.md is not
+    //    describing a limit the code quietly stopped having.
+    assert.ok(
+      planted.some((f) => f.value === 'PROSE-TOOL-PARAMETER' && f.skipped),
+      'a tool parameter is no longer withheld from the reader; docs/limits.md states that it is',
+    );
+  }],
+
+  ['F205', 'a queued command reaches deident-candidates.txt in a real export', () => {
+    // F204 asserts the invariant against the extractor. This asserts it
+    // against the artifact, because the suite is not the oracle: it was green
+    // through all four instances of this bug, and the thing that actually
+    // caught the regression was reading the file a human is handed.
+    //
+    // No fixture anywhere built an export containing a `queued_command`
+    // attachment, which is why a prompt could stop arriving with 200 fixtures
+    // green.
+    const root = tmpdir();
+    const out = path.join(root, 'out');
+    const saltDir = path.join(root, 'salt');
+    const dir = path.join(root, 'projects', 'ws');
+    fs.mkdirSync(dir, { recursive: true });
+    const cwd = ['C:', 'Users', 'devuser', 'projects', 'queued'].join(BS);
+    const sid = '77777777-7777-4777-8777-777777777771';
+    // Fabricated. SHAPE: a third party named ONLY inside a queued command,
+    // which is what a person types while the agent is busy. Nothing else in
+    // the corpus mentions them, so the semantic pass is the only producer that
+    // could ever put this name in front of a reader to be declared.
+    const ONLY_IN_QUEUE = 'ask Marguerite Okonkwo-Vance whether the invoice cleared';
+    const rows = [
+      {
+        type: 'user',
+        uuid: '00000000-0000-4000-8000-000000000801',
+        sessionId: sid,
+        timestamp: '2026-08-20T10:00:00.000Z',
+        cwd,
+        message: { role: 'user', content: [{ type: 'text', text: 'start the run and tell me when it is done' }] },
+      },
+      {
+        type: 'attachment',
+        uuid: '00000000-0000-4000-8000-000000000802',
+        sessionId: sid,
+        timestamp: '2026-08-20T10:01:00.000Z',
+        cwd,
+        // The live shape after 50df560: a block array, not a raw string.
+        attachment: { type: 'queued_command', prompt: [{ type: 'text', text: ONLY_IN_QUEUE }] },
+      },
+    ];
+    fs.writeFileSync(path.join(dir, `${sid}.jsonl`), rows.map((r) => JSON.stringify(r)).join(NL) + NL, 'utf8');
+
+    assert.equal(runCli(['scan', '--root', root, '--out', out, '--salt-dir', saltDir]).code, 0);
+    setTier(path.join(out, 'review.md'), 'queued', 'redact');
+
+    const first = runCli(['export', '--root', root, '--out', out, '--salt-dir', saltDir]);
+    assert.equal(first.code, 1, `the first export refuses for want of an entity list: ${first.out}`);
+    const candidates = fs.readFileSync(path.join(out, 'deident-candidates.txt'), 'utf8');
+    assert.ok(
+      candidates.includes(ONLY_IN_QUEUE),
+      'a queued command is kept in the archive and never put in front of the reader',
+    );
+
+    // And it is in the archive too, so this fixture cannot be satisfied by
+    // dropping the record instead of showing it.
+    fs.writeFileSync(
+      path.join(root, 'ents.json'),
+      JSON.stringify({ entities: [{ kind: 'person', spellings: ['Marguerite Okonkwo-Vance'], confidence: 'high' }] }),
+      'utf8',
+    );
+    const done = runCli([
+      'export', '--root', root, '--out', out, '--salt-dir', saltDir,
+      '--entities', path.join(root, 'ents.json'),
+    ]);
+    assert.equal(done.code, 0, done.out);
+    const zipName = fs.readdirSync(out).find((f) => f.endsWith('.zip'));
+    const body = readZipFile(path.join(out, zipName))
+      .filter((e) => e.name.endsWith('.jsonl'))
+      .map((e) => e.data)
+      .join(NL);
+    assert.ok(body.includes('whether the invoice cleared'), 'the queued command left the archive as well');
+    assert.ok(!body.includes('Okonkwo-Vance'), `the declared name shipped: ${body.slice(0, 400)}`);
+  }],
+
+  // F206 to F208 are the other two arms of the same leak F200 to F203 closed
+  // on `queued_command`. Two lines below the one that was fixed,
+  // `edited_text_file`'s `snippet` and `file`'s `content` were still copied
+  // into the output verbatim, so BLOCK_DECISIONS never saw them: no image
+  // placeholder, no document count, no `stripInjected`, no `deniedTextReason`.
+  // The attachment-level gate above them tests `deniedReason`, which returns
+  // null for anything that is not a string, so a block array walked past a
+  // check that was looking at `undefined`.
+  //
+  // Reproduced end to end through the real CLI: exit 0, six green checks, and
+  // a manifest printing `0 images  0 replaced with placeholders` and `0
+  // harness injections` over an archive holding a base64 image body, a
+  // credential, an injected span and an unreviewed block payload. It fires 58
+  // times in this author's own live corpus, so it is not a foreign-harness
+  // hypothetical, and it contradicts README's "Dropped: all images, all pasted
+  // documents, all code content".
+  ['F206', 'a pasted file and an edited snippet go through BLOCK_DECISIONS, like a queued command', () => {
+    const ctx = newRetentionContext((u) => u);
+    const rec = (attachment) => ({
+      type: 'attachment',
+      uuid: '11111111-2222-3333-4444-555555555555',
+      sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+      timestamp: '2026-08-20T10:00:00.000Z',
+      attachment,
+    });
+
+    // 1. The live shape: `file.content` as a block array with an image in it.
+    //    `iVBORw0KGgo` is the base64 prefix of every PNG, which is what was
+    //    grepped for in the shipped zip.
+    const pasted = retainRecord(
+      rec({
+        type: 'file',
+        file: {
+          filePath: 'notes.md',
+          content: [
+            { type: 'text', text: 'the chart from the deck' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgoSECRET' } },
+          ],
+        },
+      }),
+      ctx,
+      { file: 'a.jsonl', line: 1 },
+    );
+    assert.equal(pasted.keep, true, 'the pasted text still survives');
+    assert.ok(!JSON.stringify(pasted.record).includes('iVBORw0KGgo'), 'the base64 shipped inside a file attachment');
+    assert.deepEqual(pasted.record.attachment.content, [
+      { type: 'text', text: 'the chart from the deck' },
+      { type: 'image', redacted: 'replaced with a placeholder' },
+    ]);
+    // The manifest reports this number, and an un-counted image is an
+    // under-report of what was withheld: the half a reader cannot notice.
+    assert.equal(ctx.stats.images, 1, 'the image counter did not see it');
+
+    // 2. An `edited_text_file` snippet, the arm beside it, with a credential
+    //    and a harness injection in the same block.
+    const before = ctx.stats.injectedBytesDropped;
+    const edited = retainRecord(
+      rec({
+        type: 'edited_text_file',
+        filename: 'vault.md',
+        snippet: [
+          { type: 'text', text: 'Secret Key: A3-XXXXXX-YYYYYY <system-reminder>memory index</system-reminder>' },
+        ],
+      }),
+      ctx,
+      { file: 'a.jsonl', line: 2 },
+    );
+    assert.equal(edited.keep, true, 'the record survives with its body withheld');
+    const snippet = JSON.stringify(edited.record.attachment.snippet);
+    assert.ok(!snippet.includes('A3-XXXXXX'), `a credential shipped in a snippet: ${snippet}`);
+    assert.ok(!snippet.includes('memory index'), `an injected span shipped in a snippet: ${snippet}`);
+    assert.ok(ctx.stats.injectedBytesDropped > before, 'the injected bytes were not counted');
+
+    // 3. And the plain-string form still arrives, because that is the shape
+    //    the last one of these regressed on.
+    const plain = retainRecord(rec({ type: 'file', filename: 'a.txt', content: 'one line of notes' }), ctx, null);
+    assert.deepEqual(plain.record.attachment.content, [{ type: 'text', text: 'one line of notes' }]);
+
+    // 4. An unreviewed block refuses here as it does on the two paths that
+    //    already reached the dispatch. I7 held on one of three.
+    assert.throws(
+      () => retainRecord(rec({ type: 'file', filename: 'a.txt', content: [{ type: 'hologram' }] }), ctx, null),
+      (err) => err instanceof RefusalError && /hologram/.test(err.reason),
+      'an unreviewed block inside a pasted file was guessed about',
+    );
+  }],
+
+  ['F207', 'a document pasted into an attachment is counted, not shipped', () => {
+    // The `document` block was the FIRST instance of this disease, and only
+    // `image` was covered by a fixture: `documents` could go back to zero on
+    // every path and the suite would still be green. The manifest prints this
+    // counter beside the image one, so a silent zero is a promise that nothing
+    // was withheld.
+    const ctx = newRetentionContext((u) => u);
+    const kept = retainRecord(
+      {
+        type: 'attachment',
+        uuid: '11111111-2222-3333-4444-555555555555',
+        sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+        timestamp: '2026-08-20T10:00:00.000Z',
+        attachment: {
+          type: 'file',
+          filename: 'contract.pdf',
+          content: [
+            { type: 'text', text: 'the clause I meant' },
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQSECRET' } },
+          ],
+        },
+      },
+      ctx,
+      null,
+    );
+    assert.equal(ctx.stats.documents, 1, 'a pasted document was not counted');
+    assert.ok(!JSON.stringify(kept.record).includes('JVBERi0xLjQ'), 'the pdf body shipped');
+    assert.deepEqual(kept.record.attachment.content[1], { type: 'document', redacted: 'replaced with a placeholder' });
+  }],
+
+  ['F208', 'an attachment payload that is neither array nor string refuses, and names the field', () => {
+    // The relaxation `toolResultBytes` gets does not apply here: this text is
+    // KEPT, so an unhandled container shape is a silent drop of user text,
+    // which is the one outcome BRIEF 4.4's retention design forbids. The
+    // refusal has to say WHICH field it was, or the reader is told an
+    // attachment is unhandled and left to find out which of three payloads.
+    const ctx = newRetentionContext((u) => u);
+    const rec = (attachment) => ({
+      type: 'attachment',
+      uuid: '11111111-2222-3333-4444-555555555555',
+      sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+      attachment,
+    });
+
+    assert.throws(
+      () => retainRecord(rec({ type: 'file', filename: 'a.txt', content: { chunks: ['a'] } }), ctx, null),
+      (err) => err instanceof RefusalError && /file attachment content/.test(err.reason),
+      'a container-shaped file payload was dropped without naming the field',
+    );
+    assert.throws(
+      () => retainRecord(rec({ type: 'edited_text_file', filename: 'a.txt', snippet: { chunks: ['a'] } }), ctx, null),
+      (err) => err instanceof RefusalError && /edited_text_file snippet/.test(err.reason),
+      'a container-shaped snippet was dropped without naming the field',
+    );
+    assert.throws(
+      () => retainRecord(rec({ type: 'queued_command', prompt: { chunks: ['a'] } }), ctx, null),
+      (err) => err instanceof RefusalError && /queued_command prompt/.test(err.reason),
+      'a container-shaped prompt was dropped without naming the field',
+    );
+  }],
+
+  ['F209', 'a pasted file arrives in a box, and the box is not what BLOCK_DECISIONS is handed', () => {
+    // Measured over all 3,567 session files on this machine: every one of the
+    // 58 `file` attachments in the corpus is
+    // `att.content.file.content` beside a `filePath` and a line count, and
+    // `att.file.content` does not occur at all. Routing the arms through the
+    // dispatch without unwrapping that box therefore refused the whole export
+    // on the real corpus, which is docs/limits.md's cry-wolf failure: a
+    // refusal on a shape the corpus uses every day is not a safe default.
+    //
+    // The shape is written out here rather than described, so a version that
+    // changes it fails this instead of failing a user's export.
+    const ctx = newRetentionContext((u) => u);
+    const kept = retainRecord(
+      {
+        type: 'attachment',
+        uuid: '11111111-2222-3333-4444-555555555555',
+        sessionId: '66666666-7777-8888-9999-aaaaaaaaaaaa',
+        timestamp: '2026-08-20T10:00:00.000Z',
+        attachment: {
+          type: 'file',
+          filename: 'notes.md',
+          displayPath: 'notes.md',
+          content: {
+            type: 'text',
+            file: { filePath: 'notes.md', content: 'the paragraph I pasted', numLines: 1, startLine: 1, totalLines: 1 },
+          },
+        },
+      },
+      ctx,
+      { file: 'a.jsonl', line: 1 },
+    );
+
+    assert.equal(kept.keep, true, 'the real corpus shape refuses the export');
+    assert.deepEqual(kept.record.attachment.content, [{ type: 'text', text: 'the paragraph I pasted' }]);
+    // The box's own bookkeeping is not user text and does not ship.
+    assert.ok(!JSON.stringify(kept.record).includes('totalLines'), 'the wrapper shipped with the payload');
   }],
 
   ['F199', 'the fixture count in README is the number of fixtures', () => {

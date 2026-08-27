@@ -68,6 +68,7 @@ import {
   retainRecord,
   rewriteUuidsInRecord,
   RETENTION_TABLE,
+  PROSE_FIELDS,
 } from './retain/records.mjs';
 import {
   checkSubstitution,
@@ -1821,13 +1822,17 @@ function substituteAll(sessions, table) {
  * Step 11's input: prose only, grouped by session. Feeding a semantic pass
  * bytes nobody authored is how it starts inventing entities.
  *
- * This list is INCLUSIVE and that is now load-bearing rather than incidental.
- * `text`, `thinking`, the two prompt records and an attachment's strings are
- * what a reader is shown, and after the tool_result cut they are also very
- * nearly everything in the archive that a reader COULD be shown. The one thing
- * in the archive that is free text and is not here is a `tool_use` parameter;
- * see docs/limits.md, which states that gap with its measurement rather than
- * leaving it to be discovered.
+ * Where prose lives is decided by PROSE_FIELDS, in records.mjs beside the
+ * retention tables themselves. It used to be decided a second time here, by an
+ * enumeration that named two record types, two block types and scraped an
+ * attachment's string values, and that copy went stale the moment a
+ * `queued_command`'s `prompt` became a retained block array: see PROSE_FIELDS
+ * for the measurement. One list, read here rather than restated here.
+ *
+ * The one thing in the archive that is free text and is not shown is a
+ * `tool_use` parameter; see docs/limits.md, which states that gap with its
+ * measurement rather than leaving it to be discovered. It is a declared 'skip'
+ * row in PROSE_FIELDS rather than an absence from this function.
  *
  * Per session rather than one flat list, because the two questions the
  * candidates file now answers are per session: has this one's content changed
@@ -1835,30 +1840,45 @@ function substituteAll(sessions, table) {
  *
  * @returns {Array<{id: string, chunks: string[]}>}
  */
-function extractProseBySession(sessions) {
+export function extractProseBySession(sessions) {
   const out = [];
   for (const s of sessions) {
     const chunks = [];
-    for (const rec of s.records) {
-      if (rec.type === 'last-prompt' || rec.type === 'queue-operation') {
-        if (typeof rec.text === 'string') chunks.push(rec.text);
-        continue;
-      }
-      if (rec.type === 'attachment') {
-        for (const v of Object.values(rec.attachment ?? {})) if (typeof v === 'string') chunks.push(v);
-        continue;
-      }
-      for (const block of rec.message?.content ?? []) {
-        if (block?.type === 'text' && typeof block.text === 'string') chunks.push(block.text);
-        else if (block?.type === 'thinking' && typeof block.thinking === 'string') chunks.push(block.thinking);
-      }
-    }
+    for (const rec of s.records) collectProse(rec, chunks);
     // mtime rides along so coverageRefusal can mark a session that is still
     // being written. The file record is already in hand, and uncoveredSessions
     // spreads the row, so it costs one property and no plumbing.
     out.push({ id: s.file.sessionId, chunks, mtimeMs: s.file.mtimeMs });
   }
   return out;
+}
+
+/**
+ * Every prose string in one retained record, wherever the retention tables put
+ * it.
+ *
+ * Structural rather than positional on purpose. The bug this replaces was a
+ * function that knew prose lived at `rec.message.content` and at
+ * `rec.attachment`'s top level; a retained block array moved one level deeper
+ * than that and the prose stopped arriving, silently, with the export green.
+ * This walks whatever shape the retainer emitted and asks PROSE_FIELDS about
+ * each field it lands on, so a block array is found by being a block array and
+ * not by being at a remembered address.
+ */
+function collectProse(value, out) {
+  if (Array.isArray(value)) {
+    for (const v of value) collectProse(v, out);
+    return;
+  }
+  if (value === null || typeof value !== 'object') return;
+  for (const [key, v] of Object.entries(value)) {
+    if (PROSE_FIELDS[key] === 'skip') continue;
+    if (typeof v === 'string') {
+      if (v.length > 0) out.push(v);
+      continue;
+    }
+    collectProse(v, out);
+  }
 }
 
 /**
